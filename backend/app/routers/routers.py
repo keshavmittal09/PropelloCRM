@@ -22,7 +22,6 @@ from app.services.services import (
 )
 from app.services.memory_service import build_memory_brief
 from app.services.lead_service import create_notification
-import pandas as pd
 import io
 
 # ─── CONTACTS ────────────────────────────────────────────────────────────────
