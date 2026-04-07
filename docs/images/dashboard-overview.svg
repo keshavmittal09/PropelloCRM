@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8f3ed"/>
+      <stop offset="100%" stop-color="#efe4d7"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fbf7f1"/>
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="780" fill="url(#bg)"/>
+  <rect x="32" y="32" width="1336" height="716" rx="20" fill="#1b1512"/>
+  <rect x="58" y="58" width="280" height="664" rx="16" fill="#2a211c"/>
+  <rect x="366" y="58" width="976" height="664" rx="16" fill="url(#panel)"/>
+  <text x="84" y="110" fill="#f3e9df" font-size="34" font-family="Segoe UI, Arial" font-weight="700">Propello CRM</text>
+  <text x="84" y="140" fill="#bda995" font-size="12" font-family="Segoe UI, Arial">REAL ESTATE INTELLIGENCE</text>
+  <g fill="#bfae9c" font-family="Segoe UI, Arial" font-size="15">
+    <text x="84" y="210">Dashboard</text>
+    <text x="84" y="250">Pipeline</text>
+    <text x="84" y="290">All Leads</text>
+    <text x="84" y="330">Contacts</text>
+    <text x="84" y="370">Tasks</text>
+    <text x="84" y="410">Analytics</text>
+  </g>
+  <rect x="396" y="96" width="330" height="110" rx="14" fill="#fff" stroke="#e8ded2"/>
+  <rect x="744" y="96" width="280" height="110" rx="14" fill="#fff" stroke="#e8ded2"/>
+  <rect x="1042" y="96" width="270" height="110" rx="14" fill="#fff" stroke="#e8ded2"/>
+  <text x="420" y="132" fill="#7a6a5c" font-size="13" font-family="Segoe UI, Arial">Total Active Leads</text>
+  <text x="420" y="178" fill="#2e261f" font-size="34" font-family="Segoe UI, Arial" font-weight="700">124</text>
+  <text x="768" y="132" fill="#7a6a5c" font-size="13" font-family="Segoe UI, Arial">Hot Leads</text>
+  <text x="768" y="178" fill="#2e261f" font-size="34" font-family="Segoe UI, Arial" font-weight="700">31</text>
+  <text x="1066" y="132" fill="#7a6a5c" font-size="13" font-family="Segoe UI, Arial">Today's Follow-ups</text>
+  <text x="1066" y="178" fill="#2e261f" font-size="34" font-family="Segoe UI, Arial" font-weight="700">42</text>
+  <rect x="396" y="232" width="916" height="462" rx="14" fill="#fff" stroke="#e8ded2"/>
+  <text x="420" y="270" fill="#3b2f26" font-size="20" font-family="Segoe UI, Arial" font-weight="700">Pipeline Momentum</text>
+  <g>
+    <rect x="420" y="300" width="132" height="360" rx="10" fill="#f8f1e8"/>
+    <rect x="566" y="300" width="132" height="360" rx="10" fill="#f8f1e8"/>
+    <rect x="712" y="300" width="132" height="360" rx="10" fill="#f8f1e8"/>
+    <rect x="858" y="300" width="132" height="360" rx="10" fill="#f8f1e8"/>
+    <rect x="1004" y="300" width="132" height="360" rx="10" fill="#f8f1e8"/>
+    <rect x="1150" y="300" width="132" height="360" rx="10" fill="#f8f1e8"/>
+  </g>
+  <g fill="#3d332b" font-family="Segoe UI, Arial" font-size="12" font-weight="700">
+    <text x="458" y="326">New</text>
+    <text x="588" y="326">Contacted</text>
+    <text x="732" y="326">Visit</text>
+    <text x="873" y="326">Negotiation</text>
+    <text x="1046" y="326">Won</text>
+    <text x="1195" y="326">Nurture</text>
+  </g>
+  <rect x="434" y="346" width="104" height="90" rx="8" fill="#fff" stroke="#e7dcca"/>
+  <rect x="580" y="346" width="104" height="90" rx="8" fill="#fff" stroke="#e7dcca"/>
+  <rect x="580" y="446" width="104" height="90" rx="8" fill="#fff" stroke="#e7dcca"/>
+  <rect x="726" y="346" width="104" height="90" rx="8" fill="#fff" stroke="#e7dcca"/>
+  <rect x="872" y="346" width="104" height="90" rx="8" fill="#fff" stroke="#e7dcca"/>
+  <rect x="872" y="446" width="104" height="90" rx="8" fill="#fff" stroke="#e7dcca"/>
+  <rect x="1018" y="346" width="104" height="90" rx="8" fill="#fff" stroke="#e7dcca"/>
+  <text x="420" y="738" fill="#9b8b7e" font-size="13" font-family="Segoe UI, Arial">Product Preview: Dashboard + Pipeline Board (replace with real screenshots after deployment)</text>
+</svg>

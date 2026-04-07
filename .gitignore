@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.json
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs and temp
+*.log
+*.tmp
+*.temp
+
+# Local runtime files
+backend/propello.db
+backend/test_results.txt
+backend/verify_output.txt
+chatbot/

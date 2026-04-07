@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: propello-crm-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: WATI_API_KEY
+        sync: false
+      - key: WATI_BASE_URL
+        sync: false
+      - key: WHATSAPP_DEFAULT_COUNTRY_CODE
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: PRIYA_WEBHOOK_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

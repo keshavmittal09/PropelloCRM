@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="620" viewBox="0 0 1400 620">
+  <rect width="1400" height="620" fill="#f6efe6"/>
+  <text x="60" y="68" fill="#2f251d" font-size="34" font-family="Segoe UI, Arial" font-weight="700">Product Roadmap</text>
+  <line x1="90" y1="320" x2="1310" y2="320" stroke="#987f6a" stroke-width="4"/>
+
+  <g font-family="Segoe UI, Arial">
+    <circle cx="180" cy="320" r="18" fill="#3e3025"/>
+    <rect x="110" y="120" width="220" height="150" rx="12" fill="#fff" stroke="#e7dbcf"/>
+    <text x="134" y="158" fill="#3b2f26" font-size="18" font-weight="700">Phase 1: Live Now</text>
+    <text x="134" y="188" fill="#6b5b4d" font-size="13">Supabase production DB</text>
+    <text x="134" y="208" fill="#6b5b4d" font-size="13">Lead pipeline + timeline</text>
+    <text x="134" y="228" fill="#6b5b4d" font-size="13">15-min follow-up engine</text>
+
+    <circle cx="460" cy="320" r="18" fill="#6f5847"/>
+    <rect x="390" y="350" width="220" height="150" rx="12" fill="#fff" stroke="#e7dbcf"/>
+    <text x="414" y="388" fill="#3b2f26" font-size="18" font-weight="700">Phase 2: Next</text>
+    <text x="414" y="418" fill="#6b5b4d" font-size="13">WATI template messaging</text>
+    <text x="414" y="438" fill="#6b5b4d" font-size="13">Outbound auto-call integration</text>
+    <text x="414" y="458" fill="#6b5b4d" font-size="13">Campaign segmentation</text>
+
+    <circle cx="760" cy="320" r="18" fill="#6f5847"/>
+    <rect x="690" y="120" width="220" height="150" rx="12" fill="#fff" stroke="#e7dbcf"/>
+    <text x="714" y="158" fill="#3b2f26" font-size="18" font-weight="700">Phase 3</text>
+    <text x="714" y="188" fill="#6b5b4d" font-size="13">Role-based SLA dashboards</text>
+    <text x="714" y="208" fill="#6b5b4d" font-size="13">Forecasting + win probability</text>
+    <text x="714" y="228" fill="#6b5b4d" font-size="13">Smart task prioritization</text>
+
+    <circle cx="1060" cy="320" r="18" fill="#6f5847"/>
+    <rect x="990" y="350" width="220" height="150" rx="12" fill="#fff" stroke="#e7dbcf"/>
+    <text x="1014" y="388" fill="#3b2f26" font-size="18" font-weight="700">Phase 4</text>
+    <text x="1014" y="418" fill="#6b5b4d" font-size="13">Multichannel campaign studio</text>
+    <text x="1014" y="438" fill="#6b5b4d" font-size="13">A/B testing for scripts</text>
+    <text x="1014" y="458" fill="#6b5b4d" font-size="13">Advanced BI exports</text>
+  </g>
+</svg>

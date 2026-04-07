@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f5eee4"/>
+      <stop offset="100%" stop-color="#ecdcca"/>
+    </linearGradient>
+  </defs>
+  <rect width="1400" height="780" fill="url(#a)"/>
+  <rect x="34" y="34" width="1332" height="712" rx="20" fill="#15110f"/>
+  <rect x="58" y="58" width="1240" height="664" rx="16" fill="#fffaf4"/>
+  <rect x="84" y="90" width="768" height="600" rx="14" fill="#fff" stroke="#eadfce"/>
+  <rect x="874" y="90" width="398" height="284" rx="14" fill="#fff" stroke="#eadfce"/>
+  <rect x="874" y="406" width="398" height="284" rx="14" fill="#fff" stroke="#eadfce"/>
+  <text x="114" y="132" fill="#382c24" font-family="Segoe UI, Arial" font-size="28" font-weight="700">Lead 360 Profile</text>
+  <text x="114" y="168" fill="#7f6e5d" font-family="Segoe UI, Arial" font-size="14">Buyer persona, activity timeline, AI notes, communication controls</text>
+  <rect x="114" y="196" width="708" height="82" rx="10" fill="#fcf6ee"/>
+  <text x="136" y="227" fill="#4e4035" font-family="Segoe UI, Arial" font-size="15" font-weight="700">Rahul Sharma</text>
+  <text x="136" y="252" fill="#7f6e5d" font-family="Segoe UI, Arial" font-size="13">Budget 80L to 1.2Cr • Gurgaon • Stage: Negotiation • Score: Hot</text>
+  <g>
+    <rect x="114" y="296" width="708" height="72" rx="10" fill="#fff" stroke="#eadfce"/>
+    <rect x="114" y="378" width="708" height="72" rx="10" fill="#fff" stroke="#eadfce"/>
+    <rect x="114" y="460" width="708" height="72" rx="10" fill="#fff" stroke="#eadfce"/>
+    <rect x="114" y="542" width="708" height="72" rx="10" fill="#fff" stroke="#eadfce"/>
+  </g>
+  <text x="136" y="340" fill="#5d4f43" font-family="Segoe UI, Arial" font-size="13">Call logged • Requested Saturday site visit</text>
+  <text x="136" y="422" fill="#5d4f43" font-family="Segoe UI, Arial" font-size="13">WhatsApp sent • Brochure and payment plan delivered</text>
+  <text x="136" y="504" fill="#5d4f43" font-family="Segoe UI, Arial" font-size="13">AI analysis • Buying intent high, 14-day closure probability</text>
+  <text x="136" y="586" fill="#5d4f43" font-family="Segoe UI, Arial" font-size="13">Task created • Follow-up call in 15 min</text>
+  <text x="902" y="130" fill="#382c24" font-family="Segoe UI, Arial" font-size="22" font-weight="700">Quick Actions</text>
+  <rect x="902" y="150" width="340" height="56" rx="10" fill="#2f241d"/>
+  <rect x="902" y="216" width="340" height="56" rx="10" fill="#2f241d"/>
+  <rect x="902" y="282" width="340" height="56" rx="10" fill="#2f241d"/>
+  <g fill="#f4e7d9" font-family="Segoe UI, Arial" font-size="14" font-weight="700">
+    <text x="932" y="185">Send WhatsApp Follow-up</text>
+    <text x="932" y="251">Send Email Sequence</text>
+    <text x="932" y="317">Move Stage to Won</text>
+  </g>
+  <text x="902" y="446" fill="#382c24" font-family="Segoe UI, Arial" font-size="22" font-weight="700">Notifications</text>
+  <rect x="902" y="468" width="340" height="52" rx="8" fill="#fff" stroke="#eadfce"/>
+  <rect x="902" y="528" width="340" height="52" rx="8" fill="#fff" stroke="#eadfce"/>
+  <rect x="902" y="588" width="340" height="52" rx="8" fill="#fff" stroke="#eadfce"/>
+  <text x="920" y="500" fill="#6c5d50" font-family="Segoe UI, Arial" font-size="12">Lead info updated by manager</text>
+  <text x="920" y="560" fill="#6c5d50" font-family="Segoe UI, Arial" font-size="12">Task reminder: call due in 10 min</text>
+  <text x="920" y="620" fill="#6c5d50" font-family="Segoe UI, Arial" font-size="12">Follow-up sequence sent successfully</text>
+  <text x="84" y="742" fill="#9d8b7d" font-family="Segoe UI, Arial" font-size="13">Product Preview: Lead detail workspace (replace with real screenshot after deployment)</text>
+</svg>

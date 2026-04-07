@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="520" viewBox="0 0 1400 520">
+  <rect width="1400" height="520" fill="#f7f2ec"/>
+  <text x="50" y="62" fill="#2f251d" font-size="34" font-family="Segoe UI, Arial" font-weight="700">Lead Lifecycle Automation Flow</text>
+  <g font-family="Segoe UI, Arial" font-size="14" fill="#5f5044" font-weight="600">
+    <rect x="50" y="120" width="180" height="120" rx="14" fill="#fff" stroke="#e7dccf"/>
+    <text x="82" y="172">Lead Captured</text>
+    <text x="74" y="198">Website / Ads / AI</text>
+
+    <rect x="270" y="120" width="180" height="120" rx="14" fill="#fff" stroke="#e7dccf"/>
+    <text x="314" y="172">Dedup + Score</text>
+    <text x="301" y="198">Hot / Warm / Cold</text>
+
+    <rect x="490" y="120" width="180" height="120" rx="14" fill="#fff" stroke="#e7dccf"/>
+    <text x="530" y="172">Assign Agent</text>
+    <text x="514" y="198">Least busy routing</text>
+
+    <rect x="710" y="120" width="220" height="120" rx="14" fill="#fff" stroke="#e7dccf"/>
+    <text x="738" y="172">+15 min Follow-up</text>
+    <text x="736" y="198">WhatsApp + Email + Call task</text>
+
+    <rect x="970" y="120" width="180" height="120" rx="14" fill="#fff" stroke="#e7dccf"/>
+    <text x="1002" y="172">Activity Log</text>
+    <text x="1006" y="198">Timeline updates</text>
+
+    <rect x="1190" y="120" width="160" height="120" rx="14" fill="#fff" stroke="#e7dccf"/>
+    <text x="1226" y="172">Pipeline</text>
+    <text x="1216" y="198">Win or nurture</text>
+  </g>
+
+  <g stroke="#8e7a68" stroke-width="3" fill="none" marker-end="url(#arrow)">
+    <path d="M230 180 L270 180"/>
+    <path d="M450 180 L490 180"/>
+    <path d="M670 180 L710 180"/>
+    <path d="M930 180 L970 180"/>
+    <path d="M1150 180 L1190 180"/>
+  </g>
+
+  <rect x="70" y="300" width="1260" height="170" rx="14" fill="#fff" stroke="#e7dccf"/>
+  <text x="100" y="346" fill="#3f3228" font-size="20" font-family="Segoe UI, Arial" font-weight="700">Automated Safeguards</text>
+  <g fill="#645548" font-family="Segoe UI, Arial" font-size="14">
+    <text x="100" y="380">• Duplicate protection by phone ensures clean CRM records.</text>
+    <text x="100" y="406">• Stage transitions generate task reminders and internal notifications automatically.</text>
+    <text x="100" y="432">• Dormant and stale leads are auto-flagged for re-engagement campaigns.</text>
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#8e7a68"/>
+    </marker>
+  </defs>
+</svg>

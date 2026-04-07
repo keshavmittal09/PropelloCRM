@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+  <rect width="1400" height="820" fill="#f4efe8"/>
+  <text x="60" y="66" fill="#2f251d" font-size="36" font-family="Segoe UI, Arial" font-weight="700">PropelloCRM Production Architecture</text>
+  <rect x="60" y="100" width="300" height="180" rx="14" fill="#fff" stroke="#e6d9cb"/>
+  <text x="86" y="136" fill="#4b3d32" font-size="22" font-family="Segoe UI, Arial" font-weight="700">Users</text>
+  <text x="86" y="170" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Sales agents</text>
+  <text x="86" y="194" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Managers</text>
+  <text x="86" y="218" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Inbound prospects</text>
+
+  <rect x="460" y="100" width="360" height="180" rx="14" fill="#fff" stroke="#e6d9cb"/>
+  <text x="486" y="136" fill="#4b3d32" font-size="22" font-family="Segoe UI, Arial" font-weight="700">Frontend</text>
+  <text x="486" y="170" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Next.js 14 on Vercel</text>
+  <text x="486" y="194" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">TanStack Query + Zustand</text>
+  <text x="486" y="218" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Real-time notification polling</text>
+
+  <rect x="920" y="100" width="420" height="180" rx="14" fill="#fff" stroke="#e6d9cb"/>
+  <text x="946" y="136" fill="#4b3d32" font-size="22" font-family="Segoe UI, Arial" font-weight="700">Backend API</text>
+  <text x="946" y="170" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">FastAPI + Gunicorn on Render</text>
+  <text x="946" y="194" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">JWT auth, lead router, analytics</text>
+  <text x="946" y="218" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">APScheduler follow-up engine</text>
+
+  <rect x="120" y="360" width="500" height="200" rx="14" fill="#fff" stroke="#e6d9cb"/>
+  <text x="146" y="396" fill="#4b3d32" font-size="22" font-family="Segoe UI, Arial" font-weight="700">Data Layer</text>
+  <text x="146" y="430" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Supabase PostgreSQL (single source of truth)</text>
+  <text x="146" y="454" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Tables: leads, contacts, tasks, followups</text>
+  <text x="146" y="478" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">activities, notifications, site visits, agents</text>
+
+  <rect x="720" y="360" width="560" height="200" rx="14" fill="#fff" stroke="#e6d9cb"/>
+  <text x="746" y="396" fill="#4b3d32" font-size="22" font-family="Segoe UI, Arial" font-weight="700">Communication Layer</text>
+  <text x="746" y="430" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">WATI WhatsApp API (primary)</text>
+  <text x="746" y="454" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Twilio fallback (optional)</text>
+  <text x="746" y="478" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">SendGrid email automation</text>
+
+  <rect x="420" y="620" width="560" height="140" rx="14" fill="#fff" stroke="#e6d9cb"/>
+  <text x="446" y="656" fill="#4b3d32" font-size="22" font-family="Segoe UI, Arial" font-weight="700">Inbound Intelligence</text>
+  <text x="446" y="690" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Website forms, ad leads, Priya AI webhook, manual entries</text>
+  <text x="446" y="714" fill="#6e5f52" font-size="14" font-family="Segoe UI, Arial">Dedup, scoring, assignment, 15-minute follow-up automation</text>
+
+  <g stroke="#8f7b69" stroke-width="3" fill="none" marker-end="url(#arrow)">
+    <path d="M360 190 L460 190"/>
+    <path d="M820 190 L920 190"/>
+    <path d="M980 280 L980 360"/>
+    <path d="M580 560 L580 620"/>
+    <path d="M940 560 L760 620"/>
+    <path d="M370 460 L720 460"/>
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#8f7b69"/>
+    </marker>
+  </defs>
+</svg>
