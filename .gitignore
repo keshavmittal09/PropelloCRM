@@ -14,7 +14,7 @@ venv/
 !.env.example
 *.pem
 *.key
-*.json
+*.secret.json
 
 # Node / Next.js
 node_modules/
