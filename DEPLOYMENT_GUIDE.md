@@ -79,6 +79,7 @@ pip install -r requirements.txt
 Python runtime pin:
 
 - backend/runtime.txt is set to python-3.11.9 (required for stable pandas wheels on Render).
+- Also set Render service environment variable `PYTHON_VERSION=3.11.9` in dashboard to prevent fallback to Python 3.14.
 
 5. Start command:
 
