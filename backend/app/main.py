@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import asyncio
 from app.core.config import settings
 from app.db.base import init_db
 from app.jobs.scheduler import start_scheduler
@@ -27,7 +28,27 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Propello CRM API...")
-    await init_db()
+    last_error = None
+    for attempt in range(1, settings.DB_CONNECT_RETRIES + 1):
+        try:
+            await init_db()
+            last_error = None
+            break
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                "Database connection attempt %s/%s failed: %s",
+                attempt,
+                settings.DB_CONNECT_RETRIES,
+                e,
+            )
+            if attempt < settings.DB_CONNECT_RETRIES:
+                await asyncio.sleep(settings.DB_CONNECT_RETRY_DELAY_SECONDS)
+
+    if last_error:
+        logger.error("Database initialization failed after retries. Exiting startup.")
+        raise last_error
+
     start_scheduler()
     logger.info("Database initialized. Scheduler started.")
     yield

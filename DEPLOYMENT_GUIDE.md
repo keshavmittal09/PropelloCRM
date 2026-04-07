@@ -45,6 +45,11 @@ Notes:
 - DATABASE_URL must start with postgresql+asyncpg://
 - SQLite is blocked for production backend runtime.
 - URL-encode special characters in DB password (example: @ -> %40)
+- For Render, prefer Supabase Session Pooler URL (port 6543) to avoid routing issues with direct DB host.
+
+Recommended DATABASE_URL format (Render + Supabase):
+
+postgresql+asyncpg://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres?ssl=require
 
 ## Frontend (Vercel)
 
@@ -162,3 +167,12 @@ python migrate_sqlite_to_supabase.py
 2. Redeploy backend service.
 3. Redeploy frontend with previous env-validated build.
 4. Re-run smoke tests.
+
+## 13. Troubleshooting: Network Is Unreachable
+
+If startup fails with `OSError: [Errno 101] Network is unreachable` from asyncpg:
+
+1. Replace DATABASE_URL with Supabase Session Pooler URL (6543) instead of direct host `db.<project-ref>.supabase.co:5432`.
+2. Ensure `?ssl=require` is present in DATABASE_URL.
+3. Verify Render env var has no quotes or extra spaces.
+4. Redeploy after clearing build cache.

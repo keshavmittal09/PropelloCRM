@@ -11,6 +11,8 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str  # postgresql+asyncpg://user:pass@host/db
+    DB_CONNECT_RETRIES: int = 12
+    DB_CONNECT_RETRY_DELAY_SECONDS: int = 5
 
     @field_validator("DATABASE_URL")
     @classmethod
