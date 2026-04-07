@@ -55,6 +55,7 @@ class Settings(BaseSettings):
 
     # Frontend URL (for CORS)
     FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL_REGEX: str = r"https://.*\.vercel\.app"
 
     class Config:
         env_file = ".env"
