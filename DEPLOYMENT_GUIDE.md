@@ -76,6 +76,10 @@ postgresql:// -> postgresql+asyncpg://
 
 pip install -r requirements.txt
 
+Python runtime pin:
+
+- backend/runtime.txt is set to python-3.11.9 (required for stable pandas wheels on Render).
+
 5. Start command:
 
 gunicorn app.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120
