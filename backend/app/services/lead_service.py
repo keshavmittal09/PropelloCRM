@@ -212,6 +212,48 @@ async def process_inbound_lead(db: AsyncSession, data: InboundLead) -> dict:
                 meta={"source": data.source, "call_duration": data.call_duration_seconds, "duplicate": True},
             )
 
+            # If Priya captured scheduling intent on a returning lead, make sure
+            # the CRM reflects this by creating/updating a scheduled site visit.
+            appointment_context = extract_appointment_context(data) if data.source == "priya_ai" else None
+            if appointment_context:
+                from app.models.models import SiteVisit
+
+                visit_result = await db.execute(
+                    select(SiteVisit)
+                    .where(SiteVisit.lead_id == existing_lead.id, SiteVisit.status == "scheduled")
+                    .order_by(SiteVisit.created_at.desc())
+                    .limit(1)
+                )
+                scheduled_visit = visit_result.scalar_one_or_none()
+
+                if not scheduled_visit:
+                    scheduled_visit = SiteVisit(
+                        lead_id=existing_lead.id,
+                        scheduled_at=datetime.utcnow() + timedelta(days=1),
+                        agent_id=existing_lead.assigned_to,
+                        notes=f"AI extracted appointment intent: {appointment_context}. Please verify exact time.",
+                        status="scheduled",
+                    )
+                    db.add(scheduled_visit)
+                elif appointment_context not in (scheduled_visit.notes or ""):
+                    existing_notes = scheduled_visit.notes or ""
+                    scheduled_visit.notes = (
+                        f"{existing_notes}\nAdditional appointment context: {appointment_context}"
+                    ).strip()
+
+                if existing_lead.stage not in ("site_visit_scheduled", "site_visit_done", "won", "lost"):
+                    existing_lead.stage = "site_visit_scheduled"
+                    existing_lead.stage_changed_at = datetime.utcnow()
+
+                await log_activity(
+                    db, existing_lead.id, contact.id,
+                    activity_type="site_visit",
+                    title="Appointment intent captured by Priya",
+                    description=appointment_context,
+                    outcome="appointment_detected",
+                    meta={"source": data.source, "auto_scheduled": True},
+                )
+
             # Rebuild Priya memory brief
             existing_lead.priya_memory_brief = await build_memory_brief(db, existing_lead, contact)
             await db.commit()
