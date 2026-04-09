@@ -12,22 +12,32 @@ export function NotificationBell() {
   const { data: notifications } = useNotifications()
   const router = useRouter()
   const qc = useQueryClient()
-  const prevLatestIdRef = useRef<string | null>(null)
+  const seenIdsRef = useRef<Set<string>>(new Set())
   const initializedRef = useRef(false)
   
   const unreadCount = notifications?.filter(n => !n.is_read).length ?? 0
 
   useEffect(() => {
-    const latest = notifications?.[0]
+    if (!notifications) return
+
     if (!initializedRef.current) {
-      prevLatestIdRef.current = latest?.id ?? null
+      for (const n of notifications) {
+        seenIdsRef.current.add(n.id)
+      }
       initializedRef.current = true
       return
     }
 
-    if (latest?.id && latest.id !== prevLatestIdRef.current) {
-      toast.success(latest.body ? `${latest.title}: ${latest.body}` : latest.title)
-      prevLatestIdRef.current = latest.id
+    const newcomers = notifications.filter(n => !seenIdsRef.current.has(n.id))
+    if (!newcomers.length) return
+
+    for (const n of newcomers) {
+      seenIdsRef.current.add(n.id)
+    }
+
+    const popup = newcomers.find(n => !n.is_read) ?? newcomers[0]
+    if (popup) {
+      toast.success(popup.body ? `${popup.title}: ${popup.body}` : popup.title)
     }
   }, [notifications])
 
