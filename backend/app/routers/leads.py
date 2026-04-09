@@ -407,8 +407,10 @@ async def delete_lead(
     
     from sqlalchemy import delete
     from app.models.models import Activity, Task, SiteVisit
+    from app.models.followup import FollowUp
     await db.execute(delete(Activity).where(Activity.lead_id == lead_id))
     await db.execute(delete(Task).where(Task.lead_id == lead_id))
+    await db.execute(delete(FollowUp).where(FollowUp.lead_id == lead_id))
     await db.execute(delete(SiteVisit).where(SiteVisit.lead_id == lead_id))
     await db.execute(delete(Lead).where(Lead.id == lead_id))
     await db.commit()
