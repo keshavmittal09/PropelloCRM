@@ -46,6 +46,7 @@ async def list_leads(
     source: Optional[str] = Query(None),
     lead_score: Optional[str] = Query(None),
     assigned_to: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     skip: int = Query(0),
     limit: int = Query(50),
@@ -66,6 +67,8 @@ async def list_leads(
         query = query.where(Lead.lead_score == lead_score)
     if assigned_to:
         query = query.where(Lead.assigned_to == assigned_to)
+    if campaign_id:
+        query = query.where(Lead.campaign_id == campaign_id)
 
     # Agents only see their own leads
     if current_user.role == "agent":

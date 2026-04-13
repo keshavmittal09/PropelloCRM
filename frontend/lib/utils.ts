@@ -67,6 +67,7 @@ export const sourceLabels: Record<LeadSource, string> = {
   walk_in:        'Walk-in',
   referral:       'Referral',
   email_campaign: 'Email',
+  campaign:       'Campaign',
   manual:         'Manual',
 }
 
@@ -80,6 +81,7 @@ export const sourceColors: Record<string, string> = {
   walk_in:        'bg-green-100 text-green-700',
   referral:       'bg-teal-100 text-teal-700',
   email_campaign: 'bg-cyan-100 text-cyan-700',
+  campaign:       'bg-violet-100 text-violet-700',
   manual:         'bg-gray-100 text-gray-600',
 }
 
@@ -100,6 +102,7 @@ export const activityIcons: Record<string, string> = {
   stage_change:   '🔄',
   priya_call:     '🤖',
   property_shown: '🏗️',
+  campaign_call:  '📣',
   task_completed: '✅',
   lead_created:   '🆕',
 }

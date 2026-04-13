@@ -1,9 +1,9 @@
 export type Role = 'admin' | 'manager' | 'agent'
 export type LeadStage = 'new' | 'contacted' | 'site_visit_scheduled' | 'site_visit_done' | 'negotiation' | 'won' | 'lost' | 'nurture'
 export type LeadScore = 'hot' | 'warm' | 'cold'
-export type LeadSource = 'priya_ai' | 'website' | 'facebook_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'walk_in' | 'referral' | 'email_campaign' | 'manual'
+export type LeadSource = 'priya_ai' | 'website' | 'facebook_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'walk_in' | 'referral' | 'email_campaign' | 'manual' | 'campaign'
 export type TaskStatus = 'pending' | 'done' | 'overdue' | 'cancelled'
-export type ActivityType = 'call' | 'whatsapp' | 'email' | 'site_visit' | 'note' | 'stage_change' | 'priya_call' | 'property_shown' | 'task_completed' | 'lead_created'
+export type ActivityType = 'call' | 'whatsapp' | 'email' | 'site_visit' | 'note' | 'stage_change' | 'priya_call' | 'property_shown' | 'task_completed' | 'lead_created' | 'campaign_call'
 
 export interface Agent {
   id: string
@@ -40,6 +40,8 @@ export interface Lead {
   location_preference: string | null
   timeline: string | null
   assigned_to: string | null
+  campaign_id: string | null
+  project_ids: string[] | null
   lost_reason: string | null
   days_in_stage: number
   priority: string
@@ -56,9 +58,14 @@ export interface Activity {
   id: string
   lead_id: string
   type: ActivityType
+  campaign_id: string | null
   title: string
   description: string | null
   outcome: string | null
+  recording_url: string | null
+  transcript: string | null
+  call_summary: string | null
+  call_eval_tag: string | null
   performed_by: string | null
   performed_at: string
   meta: Record<string, unknown> | null
@@ -171,4 +178,91 @@ export interface TokenResponse {
   access_token: string
   token_type: string
   agent: Agent
+}
+
+export interface Campaign {
+  id: string
+  name: string
+  agent_name: string
+  project_id: string | null
+  total_calls: number
+  hot_count: number
+  warm_count: number
+  cold_count: number
+  new_leads_created: number
+  existing_leads_updated: number
+  skipped_duplicates: number
+  failed_rows: number
+  created_at: string
+}
+
+export interface CampaignRow {
+  call_id: string
+  name: string
+  phone_number: string
+  transcript: string
+  recording_url: string
+  extracted_entities: string
+  call_eval_tag: string
+  summary: string
+}
+
+export interface CampaignPreview {
+  rows: CampaignRow[]
+  total: number
+  format_detected: 'csv' | 'json'
+}
+
+export interface CampaignIngestPayload {
+  campaign_name: string
+  agent_name: string
+  rows: CampaignRow[]
+}
+
+export interface CampaignLeadSummary {
+  lead_id: string
+  name: string
+  phone: string
+  score: LeadScore
+  stage: LeadStage
+  priority: 'high' | 'normal' | 'low'
+  summary: string | null
+  action: 'created' | 'updated'
+}
+
+export interface CampaignResult {
+  campaign_id: string
+  total: number
+  hot: number
+  warm: number
+  cold: number
+  created: number
+  updated: number
+  skipped_duplicates: number
+  failed_rows: number
+  leads: CampaignLeadSummary[]
+}
+
+export interface CampaignDetail extends Campaign {
+  project_name: string | null
+  leads: Lead[]
+}
+
+export interface Project {
+  id: string
+  name: string
+  developer: string | null
+  location: string | null
+  city: string | null
+  bhk_options: string[] | null
+  price_range_min: number | null
+  price_range_max: number | null
+  brochure_url: string | null
+  status: 'active' | 'completed' | 'upcoming'
+  created_at: string
+}
+
+export interface ProjectDetail {
+  project: Project
+  leads: Lead[]
 }

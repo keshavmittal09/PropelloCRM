@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { leadsApi, tasksApi, analyticsApi, notificationsApi, propertiesApi, contactsApi, visitsApi } from '@/lib/api'
+import { campaignsApi, leadsApi, projectsApi, tasksApi, analyticsApi, notificationsApi, propertiesApi, contactsApi, visitsApi } from '@/lib/api'
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
 export const useLeads = (params?: Record<string, string>) =>
@@ -92,3 +92,19 @@ export const useContacts = (search?: string) =>
 // ─── VISITS ──────────────────────────────────────────────────────────────────
 export const useVisits = () =>
   useQuery({ queryKey: ['visits'], queryFn: () => visitsApi.list(), refetchInterval: 10000 })
+
+// ─── CAMPAIGNS ─────────────────────────────────────────────────────────────
+export const useCampaigns = (skip = 0, limit = 50) =>
+  useQuery({ queryKey: ['campaigns', skip, limit], queryFn: () => campaignsApi.getCampaigns(skip, limit) })
+
+export const useCampaign = (id: string) =>
+  useQuery({ queryKey: ['campaign', id], queryFn: () => campaignsApi.getCampaign(id), enabled: !!id })
+
+export const useProjects = () =>
+  useQuery({ queryKey: ['projects'], queryFn: campaignsApi.listProjects })
+
+export const useProjectsModule = () =>
+  useQuery({ queryKey: ['projects-module'], queryFn: projectsApi.list })
+
+export const useProjectDetail = (id: string) =>
+  useQuery({ queryKey: ['project-detail', id], queryFn: () => projectsApi.detail(id), enabled: !!id })

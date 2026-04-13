@@ -12,7 +12,7 @@ import type { LeadStage, LeadScore } from '@/lib/types'
 
 const STAGES: LeadStage[] = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture']
 const SCORES: LeadScore[] = ['hot', 'warm', 'cold']
-const SOURCES = ['priya_ai', 'website', 'facebook_ads', 'google_ads', '99acres', 'magicbricks', 'walk_in', 'referral', 'email_campaign', 'manual']
+const SOURCES = ['priya_ai', 'website', 'facebook_ads', 'google_ads', '99acres', 'magicbricks', 'walk_in', 'referral', 'email_campaign', 'manual', 'campaign']
 
 export default function LeadsPage() {
   const router = useRouter()
@@ -22,18 +22,22 @@ export default function LeadsPage() {
   const [stage, setStage] = useState('')
   const [score, setScore] = useState('')
   const [source, setSource] = useState('')
+  const [campaignId, setCampaignId] = useState('')
   const [showNewLead, setShowNewLead] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     setStage(params.get('stage') ?? '')
     setScore(params.get('lead_score') ?? '')
+    setSource(params.get('source') ?? '')
+    setCampaignId(params.get('campaign_id') ?? '')
   }, [])
 
   const { data: leads, isLoading } = useLeads({
     ...(stage && { stage }),
     ...(score && { lead_score: score }),
     ...(source && { source }),
+    ...(campaignId && { campaign_id: campaignId }),
     ...(search && { search }),
   })
 

@@ -36,6 +36,11 @@ function LeadCard({ lead, isDragging = false }: { lead: Lead; isDragging?: boole
       {(lead.budget_min || lead.budget_max) && (
         <p className="text-[13px] text-[#2b241e] mt-2 font-medium tracking-wide">{formatBudget(lead.budget_min, lead.budget_max)}</p>
       )}
+      {lead.campaign_id && (
+        <p className="text-[11px] inline-flex items-center px-2 py-0.5 rounded-full bg-[#efe3d7] text-[#6a4a33] mt-2">
+          📣 Campaign
+        </p>
+      )}
       {lead.location_preference && (
         <p className="text-[12px] text-[#8a7d6f] mt-0.5 truncate">{lead.location_preference}</p>
       )}
