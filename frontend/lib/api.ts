@@ -3,7 +3,7 @@ import type {
   Agent, Lead, Contact, Property, Task, Activity,
   SiteVisit, Notification, AnalyticsSummary, FunnelStage,
   SourceStat, AgentStat, KanbanBoard, TokenResponse,
-  Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult, Project
+  Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult, Project, ProjectDetail
 } from './types'
 
 const api = axios.create({
@@ -134,6 +134,15 @@ export const campaignsApi = {
     api.get<Project[]>('/api/campaigns/projects').then(r => r.data),
   assignProject: (campaignId: string, projectId: string) =>
     api.patch(`/api/campaigns/${campaignId}/project/${projectId}`).then(r => r.data),
+}
+
+export const projectsApi = {
+  list: () => api.get<Project[]>('/api/projects').then(r => r.data),
+  create: (payload: Record<string, unknown>) => api.post<Project>('/api/projects', payload).then(r => r.data),
+  detail: (id: string) => api.get<ProjectDetail>(`/api/projects/${id}`).then(r => r.data),
+  update: (id: string, payload: Record<string, unknown>) => api.patch<Project>(`/api/projects/${id}`, payload).then(r => r.data),
+  addLeadTag: (projectId: string, leadId: string) => api.post(`/api/projects/${projectId}/leads/${leadId}`).then(r => r.data),
+  removeLeadTag: (projectId: string, leadId: string) => api.delete(`/api/projects/${projectId}/leads/${leadId}`).then(r => r.data),
 }
 
 export default api

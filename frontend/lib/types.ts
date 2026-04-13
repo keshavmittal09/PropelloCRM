@@ -261,3 +261,8 @@ export interface Project {
   status: 'active' | 'completed' | 'upcoming'
   created_at: string
 }
+
+export interface ProjectDetail {
+  project: Project
+  leads: Lead[]
+}

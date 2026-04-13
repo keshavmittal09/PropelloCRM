@@ -100,56 +100,119 @@ def _load_entities(extracted_entities: str) -> dict:
         return {}
 
 
+def _pattern_count(text: str, patterns: list[str]) -> int:
+    count = 0
+    for pattern in patterns:
+        if re.search(pattern, text):
+            count += 1
+    return count
+
+
+def _signal_features(text: str) -> dict:
+    hot_patterns = [
+        r"\bsite\s*visit\s*(confirmed|scheduled|arranged)?\b",
+        r"\bpick[- ]?up\s*(arranged|confirmed)?\b",
+        r"\bfamily\s+(is\s+)?(coming|visiting|visit)\b",
+        r"\b(visit|come)\s+(tomorrow|today|this\s+week)\b",
+        r"\bwhatsapp\s+(details|brochure|price|pricing)\b",
+        r"\b(2|3|4)\s*bhk\b",
+        r"\bcarpet\s*area\b",
+        r"\bloading\s*percentage\b",
+        r"\bdown\s*payment\b",
+        r"\bpayment\s*plan\b",
+        r"\bhome\s*loan\b",
+        r"\b(booked|book|finali[sz]e|confirm(ed)?)\b",
+    ]
+
+    warm_patterns = [
+        r"\bcould\s*visit\b",
+        r"\bmight\s*visit\b",
+        r"\bwill\s*think\b",
+        r"\bcheck\s*with\s*family\b",
+        r"\bcall\s*back\b",
+        r"\bneeds?\s*more\s*time\b",
+        r"\bif\s*price\s*is\s*right\b",
+        r"\binterested\b",
+        r"\bcredai\s*expo\b",
+    ]
+
+    cold_patterns = [
+        r"\bnot\s*interested\b",
+        r"\bno\s*interest\b",
+        r"\bdon[’']?t\s*want\b",
+        r"\balready\s*(bought|invested)\b",
+        r"\bbudget\s*too\s*low\b",
+        r"\bvoicemail\b",
+        r"\bdid\s*not\s*answer\b",
+        r"\bno\s*next\s*step\b",
+        r"\bremove\b",
+        r"\bdo\s*not\s*call\b",
+    ]
+
+    concrete_hot_patterns = [
+        r"\bsite\s*visit\s*(confirmed|scheduled|arranged)\b",
+        r"\bpick[- ]?up\s*(arranged|confirmed)\b",
+        r"\b(visit|come)\s*(tomorrow|today)\b",
+    ]
+
+    return {
+        "hot_count": _pattern_count(text, hot_patterns),
+        "warm_count": _pattern_count(text, warm_patterns),
+        "cold_count": _pattern_count(text, cold_patterns),
+        "concrete_hot": _pattern_count(text, concrete_hot_patterns) > 0,
+    }
+
+
 def classify_lead(summary: str, transcript: str, call_eval_tag: str, extracted_entities: str) -> dict:
     summary_l = _safe_str(summary).lower()
     transcript_l = _safe_str(transcript).lower()
     eval_l = _safe_str(call_eval_tag).lower()
     entities = _load_entities(extracted_entities)
 
-    hot_signals = [
-        "site visit confirmed", "site visit scheduled", "site visit", "pick-up arranged", "pickup arranged",
-        "family is coming", "will come tomorrow", "whatsapp details", "brochure", "pricing",
-        "carpet area", "bhk", "floor preference", "loading percentage", "down payment", "payment plan",
-        "home loan", "booked", "interested to book", "finalise", "confirm",
-    ]
-    warm_signals = [
-        "could visit", "might visit", "will think", "if price is right", "check with family",
-        "call back", "needs more time", "credai expo", "interested but",
-    ]
-    cold_signals = [
-        "not interested", "no interest", "don't want", "already bought", "already invested",
-        "budget too low", "voicemail", "did not answer", "remove", "don't call again", "do not call",
-    ]
+    summary_features = _signal_features(summary_l)
+    transcript_features = _signal_features(transcript_l)
 
-    blob = f"{summary_l}\n{transcript_l}"
-    has_hot = _contains_any(blob, hot_signals)
-    has_warm = _contains_any(blob, warm_signals)
-    has_cold = _contains_any(blob, cold_signals)
+    # Summary is primary signal source; transcript acts as fallback/secondary evidence.
+    hot_score = (summary_features["hot_count"] * 3) + (transcript_features["hot_count"] * 2)
+    warm_score = (summary_features["warm_count"] * 3) + (transcript_features["warm_count"] * 2)
+    cold_score = (summary_features["cold_count"] * 3) + (transcript_features["cold_count"] * 2)
 
-    if eval_l == "yes" and _contains_any(summary_l, ["interested", "visit", "details", "discussed"]):
-        has_hot = has_hot or _contains_any(summary_l, ["visit", "pick-up", "pickup", "tomorrow", "arranged"])
-        has_warm = has_warm or not has_hot
-    if eval_l == "no" and not has_hot:
-        has_cold = True
+    if eval_l == "yes":
+        if hot_score > 0:
+            hot_score += 2
+        else:
+            warm_score += 2
+    elif eval_l == "no":
+        cold_score += 2
 
     if entities:
         budget = _safe_str(entities.get("budget", "")).lower()
         timeline = _safe_str(entities.get("timeline", "")).lower()
+        visit = _safe_str(entities.get("site_visit", "")).lower()
         if budget and timeline and _contains_any(timeline, ["immediate", "1 month", "this week"]):
-            has_hot = True
+            hot_score += 2
+        if _contains_any(visit, ["yes", "scheduled", "confirmed"]):
+            hot_score += 3
 
-    if has_hot and has_cold:
+    has_hot = hot_score > 0
+    has_cold = cold_score > 0
+    concrete_hot = summary_features["concrete_hot"] or transcript_features["concrete_hot"]
+
+    # Mixed-signals rule from spec: hot + cold becomes warm unless hot is concrete.
+    if has_hot and has_cold and not concrete_hot:
         score = "warm"
-    elif has_hot:
+    elif hot_score >= max(warm_score, cold_score) and hot_score > 0:
         score = "hot"
-    elif has_warm:
-        score = "warm"
-    elif has_cold:
+    elif cold_score > max(hot_score, warm_score):
         score = "cold"
     else:
         score = "warm"
 
-    if score == "hot" and _contains_any(blob, ["site visit", "visit", "pick-up", "pickup", "tomorrow", "arranged"]):
+    blob = f"{summary_l}\n{transcript_l}"
+    if score == "hot" and (
+        concrete_hot
+        or _contains_any(blob, ["site visit", "visit", "pick-up", "pickup", "tomorrow", "arranged"])
+    ):
         return {
             "score": "hot",
             "stage": "site_visit_scheduled",

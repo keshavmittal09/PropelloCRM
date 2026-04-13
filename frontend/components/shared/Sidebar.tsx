@@ -13,6 +13,7 @@ const nav = [
   { href: '/campaigns',  label: 'Campaigns',   icon: '📣' },
   { href: '/leads/nurture',label: 'Re-engagement', icon: '♻️' },
   { href: '/contacts',   label: 'Contacts',    icon: '👥' },
+  { href: '/projects',   label: 'Projects',    icon: '🏗️' },
   { href: '/properties', label: 'Properties',  icon: '🏠' },
   { href: '/tasks',      label: 'Tasks',       icon: '✓' },
   { href: '/visits',     label: 'Site Visits', icon: '📅' },

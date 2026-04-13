@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { campaignsApi, leadsApi, tasksApi, analyticsApi, notificationsApi, propertiesApi, contactsApi, visitsApi } from '@/lib/api'
+import { campaignsApi, leadsApi, projectsApi, tasksApi, analyticsApi, notificationsApi, propertiesApi, contactsApi, visitsApi } from '@/lib/api'
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
 export const useLeads = (params?: Record<string, string>) =>
@@ -102,3 +102,9 @@ export const useCampaign = (id: string) =>
 
 export const useProjects = () =>
   useQuery({ queryKey: ['projects'], queryFn: campaignsApi.listProjects })
+
+export const useProjectsModule = () =>
+  useQuery({ queryKey: ['projects-module'], queryFn: projectsApi.list })
+
+export const useProjectDetail = (id: string) =>
+  useQuery({ queryKey: ['project-detail', id], queryFn: () => projectsApi.detail(id), enabled: !!id })
