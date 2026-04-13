@@ -48,18 +48,24 @@ class Activity(Base):
     type: Mapped[str] = mapped_column(
         SAEnum("call", "whatsapp", "email", "site_visit", "note",
                "stage_change", "priya_call", "property_shown",
-               "task_completed", "lead_created", name="activity_type")
+               "task_completed", "lead_created", "campaign_call", name="activity_type")
     )
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     outcome: Mapped[str | None] = mapped_column(String(100), nullable=True)
     performed_by: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True)
+    campaign_id: Mapped[str | None] = mapped_column(String, ForeignKey("campaigns.id"), nullable=True, index=True)
+    recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    call_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    call_eval_tag: Mapped[str | None] = mapped_column(String(10), nullable=True)
     performed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # flexible: duration, transcript, etc.
 
     lead = relationship("Lead", back_populates="activities")
     contact = relationship("Contact", back_populates="activities")
     performed_by_agent = relationship("Agent", back_populates="activities")
+    campaign = relationship("Campaign", back_populates="activities")
 
 
 class Task(Base):

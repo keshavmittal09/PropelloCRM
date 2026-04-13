@@ -2,7 +2,8 @@ import axios from 'axios'
 import type {
   Agent, Lead, Contact, Property, Task, Activity,
   SiteVisit, Notification, AnalyticsSummary, FunnelStage,
-  SourceStat, AgentStat, KanbanBoard, TokenResponse
+  SourceStat, AgentStat, KanbanBoard, TokenResponse,
+  Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult, Project
 } from './types'
 
 const api = axios.create({
@@ -110,6 +111,29 @@ export const analyticsApi = {
 export const notificationsApi = {
   list: () => api.get<Notification[]>('/api/notifications').then(r => r.data),
   readAll: () => api.patch('/api/notifications/read-all').then(r => r.data),
+}
+
+// ─── CAMPAIGNS ─────────────────────────────────────────────────────────────
+export const campaignsApi = {
+  uploadCampaignPreview: (file: File, campaignName: string, agentName = 'Niharika') => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('campaign_name', campaignName)
+    form.append('agent_name', agentName)
+    return api.post<CampaignPreview>('/api/campaigns/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data)
+  },
+  ingestCampaign: (payload: CampaignIngestPayload) =>
+    api.post<CampaignResult>('/api/campaigns/ingest', payload).then(r => r.data),
+  getCampaigns: (skip = 0, limit = 50) =>
+    api.get<Campaign[]>('/api/campaigns', { params: { skip, limit } }).then(r => r.data),
+  getCampaign: (id: string) =>
+    api.get<CampaignDetail>(`/api/campaigns/${id}`).then(r => r.data),
+  listProjects: () =>
+    api.get<Project[]>('/api/campaigns/projects').then(r => r.data),
+  assignProject: (campaignId: string, projectId: string) =>
+    api.patch(`/api/campaigns/${campaignId}/project/${projectId}`).then(r => r.data),
 }
 
 export default api

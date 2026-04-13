@@ -10,6 +10,7 @@ const nav = [
   { href: '/',           label: 'Dashboard',   icon: '▦' },
   { href: '/leads/board',label: 'Pipeline',    icon: '⬛' },
   { href: '/leads',      label: 'All Leads',   icon: '☰' },
+  { href: '/campaigns',  label: 'Campaigns',   icon: '📣' },
   { href: '/leads/nurture',label: 'Re-engagement', icon: '♻️' },
   { href: '/contacts',   label: 'Contacts',    icon: '👥' },
   { href: '/properties', label: 'Properties',  icon: '🏠' },

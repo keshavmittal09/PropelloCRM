@@ -187,6 +187,8 @@ class LeadResponse(BaseModel):
     location_preference: Optional[str]
     timeline: Optional[str]
     assigned_to: Optional[str]
+    campaign_id: Optional[str] = None
+    project_ids: Optional[list[str]] = None
     lost_reason: Optional[str]
     days_in_stage: int
     priority: str
@@ -220,6 +222,11 @@ class ActivityResponse(BaseModel):
     title: str
     description: Optional[str]
     outcome: Optional[str]
+    campaign_id: Optional[str] = None
+    recording_url: Optional[str] = None
+    transcript: Optional[str] = None
+    call_summary: Optional[str] = None
+    call_eval_tag: Optional[str] = None
     performed_by: Optional[str]
     performed_at: datetime
     meta: Optional[Any]
@@ -356,3 +363,91 @@ class MemoryResponse(BaseModel):
     lead: Optional[LeadResponse]
     priya_memory_brief: Optional[str]
     call_count: int
+
+
+class CampaignRow(BaseModel):
+    call_id: str = ""
+    name: str = ""
+    phone_number: str = ""
+    transcript: str = ""
+    recording_url: str = ""
+    extracted_entities: str = ""
+    call_eval_tag: str = ""
+    summary: str = ""
+
+
+class CampaignUploadPreview(BaseModel):
+    rows: list[CampaignRow]
+    total: int
+    format_detected: str
+
+
+class CampaignIngestRequest(BaseModel):
+    campaign_name: str
+    agent_name: str = "Niharika"
+    rows: list[CampaignRow]
+
+
+class CampaignLeadSummary(BaseModel):
+    lead_id: str
+    name: str
+    phone: str
+    score: str
+    stage: str
+    priority: str
+    summary: Optional[str] = None
+    action: str
+
+
+class CampaignIngestResult(BaseModel):
+    campaign_id: str
+    total: int
+    hot: int
+    warm: int
+    cold: int
+    created: int
+    updated: int
+    skipped_duplicates: int = 0
+    failed_rows: int = 0
+    leads: list[CampaignLeadSummary]
+
+
+class CampaignResponse(BaseModel):
+    id: str
+    name: str
+    project_id: Optional[str]
+    agent_name: Optional[str]
+    total_calls: int
+    hot_count: int
+    warm_count: int
+    cold_count: int
+    new_leads_created: int
+    existing_leads_updated: int
+    skipped_duplicates: int = 0
+    failed_rows: int = 0
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProjectResponse(BaseModel):
+    id: str
+    name: str
+    developer: Optional[str]
+    location: Optional[str]
+    city: Optional[str]
+    bhk_options: Optional[list[str]] = None
+    price_range_min: Optional[float]
+    price_range_max: Optional[float]
+    brochure_url: Optional[str]
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignDetailResponse(CampaignResponse):
+    project_name: Optional[str] = None
+    leads: list[LeadResponse] = Field(default_factory=list)

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     # Priya AI webhook secret
     PRIYA_WEBHOOK_SECRET: str = "priya-secret-change-in-prod"
+    CAMPAIGN_WEBHOOK_SECRET: str = "campaign-secret-change-in-prod"
 
     # Groq AI (for lead analysis engine)
     GROQ_API_KEY: str = ""

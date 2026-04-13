@@ -40,6 +40,8 @@ export default function LostReasonModal({ onConfirm, onCancel }: { onConfirm: (r
 
 // ─── LEAD TIMELINE ────────────────────────────────────────────────────────────
 export function LeadTimeline({ activities }: { activities: Activity[] }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
   if (!activities.length) return <p className="text-sm text-gray-400 text-center py-8">No activity yet</p>
   return (
     <div className="space-y-0">
@@ -56,7 +58,48 @@ export function LeadTimeline({ activities }: { activities: Activity[] }) {
               <p className="text-sm font-medium text-gray-900">{act.title}</p>
               <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(act.performed_at)}</span>
             </div>
-            {act.description && <p className="text-sm text-gray-600 mt-0.5">{act.description}</p>}
+            {act.type === 'campaign_call' && (
+              <div className="mt-2 border border-indigo-100 rounded-xl bg-indigo-50/30 p-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-600 text-white">Campaign Call</span>
+                  {act.call_eval_tag && (
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${act.call_eval_tag.toLowerCase() === 'yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {act.call_eval_tag.toLowerCase() === 'yes' ? 'Objective Met ✓' : 'Objective Not Met ✗'}
+                    </span>
+                  )}
+                  {(act.meta as any)?.campaign_name && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                      📣 {String((act.meta as any).campaign_name).slice(0, 20)}
+                    </span>
+                  )}
+                </div>
+
+                {(act.call_summary || act.description) && (
+                  <p className="text-sm text-gray-700 mt-2">{act.call_summary || act.description}</p>
+                )}
+
+                {act.recording_url && (
+                  <audio controls src={act.recording_url} className="w-full mt-2 h-8" />
+                )}
+
+                {act.transcript && (
+                  <div className="mt-2">
+                    <button
+                      onClick={() => setExpanded(prev => ({ ...prev, [act.id]: !prev[act.id] }))}
+                      className="text-xs text-indigo-700 hover:underline"
+                    >
+                      {expanded[act.id] ? 'Hide Transcript' : 'View Transcript'}
+                    </button>
+                    {expanded[act.id] && (
+                      <p className="text-xs whitespace-pre-wrap text-gray-600 mt-1 bg-white rounded-lg p-2 border border-indigo-100">
+                        {act.transcript.length > 2000 ? `${act.transcript.slice(0, 2000)}...` : act.transcript}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {act.type !== 'campaign_call' && act.description && <p className="text-sm text-gray-600 mt-0.5">{act.description}</p>}
             {act.outcome && <span className="text-xs text-indigo-600 font-medium">{act.outcome}</span>}
             {act.performed_by_agent && <p className="text-xs text-gray-400 mt-0.5">by {act.performed_by_agent.name}</p>}
           </div>
