@@ -77,7 +77,15 @@ export default function CampaignsPage() {
       <Sidebar />
       <main className="flex-1 overflow-auto p-8">
         <h1 className="text-3xl font-semibold text-[#2a231d] tracking-tight mb-2">Campaign Ingestion</h1>
-        <p className="text-sm text-[#7f7266] mb-8">Upload Niharika campaign output and auto-classify leads.</p>
+        <div className="flex flex-wrap items-center gap-3 mb-8">
+          <p className="text-sm text-[#7f7266]">Upload Niharika campaign output and auto-classify leads.</p>
+          <button
+            onClick={() => router.push('/campaigns/dashboard')}
+            className="px-4 py-1.5 rounded-full border border-[#d8c4ad] bg-white text-xs font-semibold text-[#5f5348] hover:bg-[#fcf7f0] transition-colors"
+          >
+            Open Campaign Dashboard Hub
+          </button>
+        </div>
 
         {!preview && !result && (
           <section className="max-w-3xl bg-white border border-[#eadfce] rounded-3xl p-6 shadow-sm space-y-4">
@@ -104,12 +112,12 @@ export default function CampaignsPage() {
             <label className="block border-2 border-dashed border-[#d8c4ad] rounded-2xl p-6 text-center bg-[#fffaf5] hover:bg-[#fff7ef] transition-colors cursor-pointer">
               <input
                 type="file"
-                accept=".csv,.json"
+                accept=",csv,.json,.xlsx,.xls"
                 className="hidden"
                 onChange={(e) => onChooseFile(e.target.files?.[0] ?? null)}
               />
-              <p className="text-sm text-[#5f5348] font-medium">Drag & drop or choose CSV / JSON file</p>
-              <p className="text-xs text-[#8a7d70] mt-1">Accepted formats: .csv, .json</p>
+              <p className="text-sm text-[#5f5348] font-medium">Drag & drop or choose CSV / JSON / Excel file</p>
+              <p className="text-xs text-[#8a7d70] mt-1">Accepted formats: .csv, .json, .xlsx, .xls</p>
               {file && <p className="text-xs text-[#2a231d] mt-3 font-semibold">Selected: {file.name}</p>}
             </label>
 
@@ -187,6 +195,20 @@ export default function CampaignsPage() {
                   Skipped duplicates: {result.skipped_duplicates} · Failed rows: {result.failed_rows}
                 </p>
               )}
+              {result.tier_distribution && Object.keys(result.tier_distribution).length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-[#f0e5d7]">
+                  <span className="text-xs text-[#8c7f73] font-medium self-center mr-1">Priority Tiers:</span>
+                  {Object.entries(result.tier_distribution).sort(([a], [b]) => a.localeCompare(b)).map(([tier, count]) => (
+                    <span key={tier} className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                      tier === 'P1' ? 'bg-red-50 text-red-700 border-red-200' :
+                      tier === 'P2' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                      tier === 'P3' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                      tier === 'P4' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                      'bg-gray-50 text-gray-500 border-gray-200'
+                    }`}>{tier}: {count as number}</span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="bg-white border border-[#eadfce] rounded-3xl p-6 shadow-sm">
@@ -221,7 +243,13 @@ export default function CampaignsPage() {
                 </table>
               </div>
 
-              <div className="flex gap-3 mt-4">
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  onClick={() => router.push(`/campaigns/${result.campaign_id}/dashboard`)}
+                  className="px-5 py-2.5 rounded-full bg-gradient-to-r from-[#c86f43] to-[#e8a06c] text-white text-sm font-semibold shadow-md hover:opacity-90 transition-opacity"
+                >
+                  📊 Open Campaign Dashboard
+                </button>
                 <button
                   onClick={() => router.push(`/leads?source=campaign&campaign_id=${result.campaign_id}`)}
                   className="px-4 py-2 rounded-full bg-[#2a231d] text-white text-sm font-semibold"

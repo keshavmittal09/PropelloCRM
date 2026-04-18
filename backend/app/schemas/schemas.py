@@ -374,6 +374,15 @@ class CampaignRow(BaseModel):
     extracted_entities: str = ""
     call_eval_tag: str = ""
     summary: str = ""
+    # Extended fields from campaign Excel schema (optional for backward compatibility)
+    other_info: str = ""
+    attempt_number: Optional[int] = 1
+    call_conversation_quality: str = ""
+    call_dialing_at: Optional[str] = None
+    call_ringing_at: Optional[str] = None
+    user_picked_up: Optional[str] = None
+    num_of_retries: Optional[int] = 0
+    dial_status_reason: str = ""
 
 
 class CampaignUploadPreview(BaseModel):
@@ -395,6 +404,8 @@ class CampaignLeadSummary(BaseModel):
     score: str
     stage: str
     priority: str
+    priority_tier: Optional[str] = None
+    priority_score: Optional[int] = None
     summary: Optional[str] = None
     action: str
 
@@ -409,6 +420,7 @@ class CampaignIngestResult(BaseModel):
     updated: int
     skipped_duplicates: int = 0
     failed_rows: int = 0
+    tier_distribution: dict[str, int] = Field(default_factory=dict)
     leads: list[CampaignLeadSummary]
 
 
@@ -451,3 +463,79 @@ class ProjectResponse(BaseModel):
 class CampaignDetailResponse(CampaignResponse):
     project_name: Optional[str] = None
     leads: list[LeadResponse] = Field(default_factory=list)
+
+
+class CampaignAttemptStat(BaseModel):
+    attempt: int
+    total: int
+    connected: int
+    rate: float
+
+
+class CampaignInsight(BaseModel):
+    id: str
+    title: str
+    description: str
+    severity: str
+    metric_value: str
+    recommendation: str
+
+
+class CampaignTranscriptBucket(BaseModel):
+    bucket: str
+    count: int
+    avg_quality: float
+
+
+class CampaignAnalyticsResponse(BaseModel):
+    campaign_id: str
+    campaign_name: str
+    total_dialed: int
+    total_connected: int
+    connection_rate: float
+    eval_yes: int
+    eval_no: int
+    eval_empty: int
+    avg_clarity: float
+    avg_professionalism: float
+    avg_problem_resolution: float
+    avg_overall_quality: float
+    attempt_stats: list[CampaignAttemptStat] = Field(default_factory=list)
+    tier_distribution: dict[str, int] = Field(default_factory=dict)
+    hot_count: int
+    warm_count: int
+    cold_count: int
+    insights: list[CampaignInsight] = Field(default_factory=list)
+    transcript_length_buckets: list[CampaignTranscriptBucket] = Field(default_factory=list)
+
+
+class CampaignLeadDetailResponse(BaseModel):
+    lead_id: str
+    name: str
+    phone: str
+    priority_tier: str
+    priority_score: int
+    lead_score: str
+    stage: str
+    attempt_number: int = 1
+    call_eval_tag: str = ""
+    summary: str = ""
+    transcript: str = ""
+    recording_url: str = ""
+    extracted_entities: dict[str, Any] = Field(default_factory=dict)
+    call_quality: dict[str, Any] = Field(default_factory=dict)
+    call_dialing_at: Optional[str] = None
+    user_picked_up: Optional[str] = None
+    num_of_retries: int = 0
+    ai_analysis: Optional[Any] = None
+    assigned_agent_name: Optional[str] = None
+    assigned_agent_id: Optional[str] = None
+    action: str
+
+
+class AgentAssignment(BaseModel):
+    agent_id: str
+    agent_name: str
+    lead_count: int
+    tier_breakdown: dict[str, int] = Field(default_factory=dict)
+    leads: list[CampaignLeadDetailResponse] = Field(default_factory=list)

@@ -11,6 +11,7 @@ const nav = [
   { href: '/leads/board',label: 'Pipeline',    icon: '⬛' },
   { href: '/leads',      label: 'All Leads',   icon: '☰' },
   { href: '/campaigns',  label: 'Campaigns',   icon: '📣' },
+  { href: '/campaigns/dashboard', label: 'Campaign Dashboard', icon: '📈' },
   { href: '/leads/nurture',label: 'Re-engagement', icon: '♻️' },
   { href: '/contacts',   label: 'Contacts',    icon: '👥' },
   { href: '/projects',   label: 'Projects',    icon: '🏗️' },

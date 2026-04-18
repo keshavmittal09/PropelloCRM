@@ -47,7 +47,15 @@ export default function CampaignDetailPage() {
         ) : (
           <>
             <h1 className="text-3xl font-semibold text-[#2a231d] tracking-tight">{campaign.name}</h1>
-            <p className="text-sm text-[#7f7266] mt-1">Agent: {campaign.agent_name || 'Niharika'} · {new Date(campaign.created_at).toLocaleString()}</p>
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <p className="text-sm text-[#7f7266]">Agent: {campaign.agent_name || 'Niharika'} · {new Date(campaign.created_at).toLocaleString()}</p>
+              <button
+                onClick={() => router.push(`/campaigns/${campaignId}/dashboard`)}
+                className="px-4 py-1.5 rounded-full bg-gradient-to-r from-[#c86f43] to-[#e8a06c] text-white text-xs font-semibold shadow-sm hover:opacity-90 transition-opacity"
+              >
+                📊 Open Analytics Dashboard
+              </button>
+            </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mt-6">
               <Stat label="Total" value={campaign.total_calls} />

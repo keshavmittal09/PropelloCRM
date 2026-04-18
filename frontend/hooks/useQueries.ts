@@ -100,6 +100,27 @@ export const useCampaigns = (skip = 0, limit = 50) =>
 export const useCampaign = (id: string) =>
   useQuery({ queryKey: ['campaign', id], queryFn: () => campaignsApi.getCampaign(id), enabled: !!id })
 
+export const useCampaignAnalytics = (id: string) =>
+  useQuery({
+    queryKey: ['campaign-analytics', id],
+    queryFn: () => campaignsApi.getCampaignAnalytics(id),
+    enabled: !!id,
+  })
+
+export const useCampaignLeadsDetail = (id: string, params?: { tier?: string; search?: string }) =>
+  useQuery({
+    queryKey: ['campaign-leads-detail', id, params?.tier ?? '', params?.search ?? ''],
+    queryFn: () => campaignsApi.getCampaignLeadsDetail(id, params),
+    enabled: !!id,
+  })
+
+export const useAgentAssignments = (id: string) =>
+  useQuery({
+    queryKey: ['campaign-agent-assignments', id],
+    queryFn: () => campaignsApi.getAgentAssignments(id),
+    enabled: !!id,
+  })
+
 export const useProjects = () =>
   useQuery({ queryKey: ['projects'], queryFn: campaignsApi.listProjects })
 

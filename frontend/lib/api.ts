@@ -3,7 +3,8 @@ import type {
   Agent, Lead, Contact, Property, Task, Activity,
   SiteVisit, Notification, AnalyticsSummary, FunnelStage,
   SourceStat, AgentStat, KanbanBoard, TokenResponse,
-  Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult, Project, ProjectDetail
+  Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult,
+  CampaignAnalytics, CampaignLeadDetail, AgentAssignment, Project, ProjectDetail
 } from './types'
 
 const api = axios.create({
@@ -130,6 +131,16 @@ export const campaignsApi = {
     api.get<Campaign[]>('/api/campaigns', { params: { skip, limit } }).then(r => r.data),
   getCampaign: (id: string) =>
     api.get<CampaignDetail>(`/api/campaigns/${id}`).then(r => r.data),
+  getCampaignAnalytics: (id: string) =>
+    api.get<CampaignAnalytics>(`/api/campaigns/${id}/analytics`).then(r => r.data),
+  getCampaignLeadsDetail: (id: string, params?: { tier?: string; search?: string }) =>
+    api.get<CampaignLeadDetail[]>(`/api/campaigns/${id}/leads-detail`, { params }).then(r => r.data),
+  triggerAiAnalysis: (id: string) =>
+    api.post<{ analyzed: number; skipped: number; errors: number; message: string }>(`/api/campaigns/${id}/analyze-ai`).then(r => r.data),
+  getAgentAssignments: (id: string) =>
+    api.get<AgentAssignment[]>(`/api/campaigns/${id}/agent-assignments`).then(r => r.data),
+  executeAgentAssignment: (id: string) =>
+    api.post<{ assigned: number; agents: number }>(`/api/campaigns/${id}/assign-agents`).then(r => r.data),
   listProjects: () =>
     api.get<Project[]>('/api/campaigns/projects').then(r => r.data),
   assignProject: (campaignId: string, projectId: string) =>

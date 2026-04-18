@@ -12,13 +12,16 @@ from app.core.dependencies import get_current_user, get_db
 from app.models.agent import Agent
 from app.models.campaign import Campaign, Project
 from app.schemas.schemas import (
+    CampaignAnalyticsResponse,
     CampaignDetailResponse,
     CampaignIngestRequest,
     CampaignIngestResult,
+    CampaignLeadDetailResponse,
     CampaignLeadSummary,
     CampaignResponse,
     CampaignRow,
     CampaignUploadPreview,
+    AgentAssignment,
     LeadResponse,
     ProjectResponse,
 )
@@ -79,6 +82,7 @@ async def ingest_campaign(
 
     seen_phones: set[str] = set()
     hot = warm = cold = created = updated = failed_rows = skipped_duplicates = 0
+    tier_dist: dict[str, int] = {}
     processed: list[CampaignLeadSummary] = []
 
     for row in payload.rows:
@@ -108,6 +112,10 @@ async def ingest_campaign(
                 created += 1
             else:
                 updated += 1
+
+            # Track tier distribution
+            tier = outcome.get("priority_tier", "P7")
+            tier_dist[tier] = tier_dist.get(tier, 0) + 1
 
             processed.append(CampaignLeadSummary(**outcome))
         except Exception:
@@ -142,6 +150,7 @@ async def ingest_campaign(
         updated=updated,
         skipped_duplicates=skipped_duplicates,
         failed_rows=failed_rows,
+        tier_distribution=tier_dist,
         leads=processed,
     )
 
@@ -266,6 +275,97 @@ async def assign_campaign_project(
 
     await db.commit()
     return {"status": "ok", "campaign_id": campaign_id, "project_id": project_id}
+
+
+# ─── CAMPAIGN ANALYTICS DASHBOARD ENDPOINTS ─────────────────────────────────
+
+@router.get("/{campaign_id}/analytics", response_model=CampaignAnalyticsResponse)
+async def get_campaign_analytics(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Get full analytics data for the campaign dashboard."""
+    del current_user
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import compute_campaign_analytics
+    analytics = await compute_campaign_analytics(campaign_id, db)
+    return CampaignAnalyticsResponse(**analytics)
+
+
+@router.get("/{campaign_id}/leads-detail", response_model=list[CampaignLeadDetailResponse])
+async def get_campaign_leads_detail(
+    campaign_id: str,
+    tier: Optional[str] = Query(None, description="Filter by priority tier (P1-P7)"),
+    search: Optional[str] = Query(None, description="Search by name or phone"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Get detailed lead list for campaign dashboard with filters."""
+    del current_user
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import get_campaign_leads_detail
+    details = await get_campaign_leads_detail(campaign_id, db, tier_filter=tier, search=search)
+    return [CampaignLeadDetailResponse(**d) for d in details]
+
+
+@router.get("/{campaign_id}/agent-assignments", response_model=list[AgentAssignment])
+async def get_agent_assignments(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Get auto-computed agent assignments for campaign leads."""
+    del current_user
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import compute_agent_assignments
+    assignments = await compute_agent_assignments(campaign_id, db)
+    return [AgentAssignment(**a) for a in assignments]
+
+
+@router.post("/{campaign_id}/assign-agents")
+async def execute_agent_assignment(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Execute auto-assignment — actually assigns leads to agents in DB."""
+    if current_user.role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only admin/manager can assign agents")
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import execute_agent_assignments
+    result = await execute_agent_assignments(campaign_id, db)
+    await db.commit()
+    return result
+
+
+@router.post("/{campaign_id}/analyze-ai")
+async def trigger_ai_analysis(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Trigger AI analysis on all connected calls in the campaign."""
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_ai_analyzer import batch_analyze_campaign
+    result = await batch_analyze_campaign(campaign_id, db)
+    return result
 
 
 @router.get("/{campaign_id}", response_model=CampaignDetailResponse)

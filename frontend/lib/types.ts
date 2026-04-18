@@ -205,12 +205,102 @@ export interface CampaignRow {
   extracted_entities: string
   call_eval_tag: string
   summary: string
+  other_info?: string
+  attempt_number?: number
+  call_conversation_quality?: string
+  call_dialing_at?: string | null
+  call_ringing_at?: string | null
+  user_picked_up?: string | null
+  num_of_retries?: number
+  dial_status_reason?: string
+}
+
+export interface CampaignAttemptStat {
+  attempt: number
+  total: number
+  connected: number
+  rate: number
+}
+
+export interface CampaignInsight {
+  id: string
+  title: string
+  description: string
+  severity: 'critical' | 'warning' | 'info'
+  metric_value: string
+  recommendation: string
+}
+
+export interface CampaignTranscriptBucket {
+  bucket: string
+  count: number
+  avg_quality: number
+}
+
+export interface CampaignAnalytics {
+  campaign_id: string
+  campaign_name: string
+  total_dialed: number
+  total_connected: number
+  connection_rate: number
+  eval_yes: number
+  eval_no: number
+  eval_empty: number
+  avg_clarity: number
+  avg_professionalism: number
+  avg_problem_resolution: number
+  avg_overall_quality: number
+  attempt_stats: CampaignAttemptStat[]
+  tier_distribution: Record<string, number>
+  hot_count: number
+  warm_count: number
+  cold_count: number
+  insights: CampaignInsight[]
+  transcript_length_buckets: CampaignTranscriptBucket[]
+}
+
+export interface CampaignLeadDetail {
+  lead_id: string
+  name: string
+  phone: string
+  priority_tier: string
+  priority_score: number
+  lead_score: LeadScore
+  stage: LeadStage | string
+  attempt_number: number
+  call_eval_tag: string
+  summary: string
+  transcript: string
+  recording_url: string
+  extracted_entities: Record<string, unknown>
+  call_quality: {
+    clarity?: number
+    professionalism?: number
+    problem_resolution?: number
+    overall_quality?: number
+    [key: string]: unknown
+  }
+  call_dialing_at: string | null
+  user_picked_up: string | null
+  num_of_retries: number
+  ai_analysis: Record<string, unknown> | null
+  assigned_agent_name: string | null
+  assigned_agent_id?: string | null
+  action: 'created' | 'updated' | string
+}
+
+export interface AgentAssignment {
+  agent_id: string
+  agent_name: string
+  lead_count: number
+  tier_breakdown: Record<string, number>
+  leads: CampaignLeadDetail[]
 }
 
 export interface CampaignPreview {
   rows: CampaignRow[]
   total: number
-  format_detected: 'csv' | 'json'
+  format_detected: 'csv' | 'json' | 'xlsx' | 'xls'
 }
 
 export interface CampaignIngestPayload {
@@ -240,6 +330,7 @@ export interface CampaignResult {
   updated: number
   skipped_duplicates: number
   failed_rows: number
+  tier_distribution: Record<string, number>
   leads: CampaignLeadSummary[]
 }
 
