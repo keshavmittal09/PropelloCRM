@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import CampaignLeadDrawer from '@/components/leads/CampaignLeadDrawer'
-import { useCampaignAnalytics, useCampaignLeadsDetail, useAgentAssignments } from '@/hooks/useQueries'
-import { campaignsApi } from '@/lib/api'
-import type { CampaignLeadDetail, CampaignInsight } from '@/lib/types'
+import { useCampaign, useCampaignAnalytics, useCampaignLeadsDetail, useAgentAssignments } from '@/hooks/useQueries'
+import { authApi, campaignsApi } from '@/lib/api'
+import type { Agent, CampaignLeadDetail, CampaignInsight } from '@/lib/types'
+import { useAuthStore } from '@/store/useAuthStore'
 import toast from 'react-hot-toast'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -71,6 +72,7 @@ function Skeleton() {
 export default function CampaignDashboardPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const { agent: currentAgent } = useAuthStore()
   const campaignId = params?.id ?? ''
 
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
@@ -78,12 +80,39 @@ export default function CampaignDashboardPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedLead, setSelectedLead] = useState<CampaignLeadDetail | null>(null)
   const [aiRunning, setAiRunning] = useState(false)
+  const [aiRunMessage, setAiRunMessage] = useState<string | null>(null)
+  const [removingProject, setRemovingProject] = useState(false)
+  const [removingCampaign, setRemovingCampaign] = useState(false)
+  const [availableAgents, setAvailableAgents] = useState<Agent[]>([])
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
 
-  const { data: analytics, isLoading: analyticsLoading } = useCampaignAnalytics(campaignId)
+  const { data: campaign, refetch: refetchCampaign } = useCampaign(campaignId)
+  const {
+    data: analytics,
+    isLoading: analyticsLoading,
+    isError: analyticsError,
+    error: analyticsErrorObj,
+  } = useCampaignAnalytics(campaignId)
   const { data: leads, isLoading: leadsLoading, refetch: refetchLeads } = useCampaignLeadsDetail(
     campaignId, { tier: tierFilter || undefined, search: searchQuery || undefined }
   )
-  const { data: assignments, refetch: refetchAssignments } = useAgentAssignments(campaignId)
+  const { data: assignments, refetch: refetchAssignments } = useAgentAssignments(campaignId, selectedAgentIds)
+  const canManageProject = ['admin', 'manager'].includes(currentAgent?.role || '')
+  const canRemoveCampaign = ['admin', 'manager'].includes(currentAgent?.role || '')
+
+  useEffect(() => {
+    authApi.listAgents()
+      .then((data) => {
+        const active = (data || []).filter((a) => a.is_active)
+        setAvailableAgents(active)
+        const defaults = active.filter((a) => a.role === 'call_agent').map((a) => a.id)
+        setSelectedAgentIds(defaults)
+      })
+      .catch(() => {
+        setAvailableAgents([])
+        setSelectedAgentIds([])
+      })
+  }, [])
 
   const tierData = useMemo(() => {
     if (!analytics?.tier_distribution) return []
@@ -104,11 +133,31 @@ export default function CampaignDashboardPage() {
 
   const handleRunAi = async () => {
     setAiRunning(true)
+    setAiRunMessage(null)
     try {
       const result = await campaignsApi.triggerAiAnalysis(campaignId)
-      toast.success(`AI analysis complete: ${result.analyzed} calls analyzed`)
+      const resultMessage = String(result?.message || '').trim()
+      const messageLower = resultMessage.toLowerCase()
+
+      if (messageLower.includes('not configured') || messageLower.includes('disabled')) {
+        setAiRunMessage(resultMessage)
+        toast.error(resultMessage)
+        return
+      }
+
+      if ((result?.analyzed ?? 0) <= 0) {
+        const fallbackMessage = resultMessage || `No calls analyzed. Skipped: ${result?.skipped ?? 0}`
+        setAiRunMessage(fallbackMessage)
+        toast(fallbackMessage)
+      } else {
+        const successMessage = resultMessage || `AI analysis complete: ${result.analyzed} calls analyzed`
+        setAiRunMessage(successMessage)
+        toast.success(successMessage)
+      }
+
       refetchLeads()
     } catch (e: any) {
+      setAiRunMessage(null)
       toast.error(e?.response?.data?.detail || e?.response?.data?.message || 'AI analysis failed')
     } finally {
       setAiRunning(false)
@@ -117,12 +166,45 @@ export default function CampaignDashboardPage() {
 
   const handleAssignAgents = async () => {
     try {
-      const result = await campaignsApi.executeAgentAssignment(campaignId)
+      const result = await campaignsApi.executeAgentAssignment(campaignId, selectedAgentIds)
       toast.success(`Assigned ${result.assigned} leads to ${result.agents} agents`)
       refetchAssignments()
       refetchLeads()
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'Assignment failed')
+    }
+  }
+
+  const handleRemoveProject = async () => {
+    if (!campaignId) return
+    setRemovingProject(true)
+    try {
+      await campaignsApi.removeProject(campaignId)
+      toast.success('Project link removed from campaign')
+      await refetchCampaign()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Unable to remove project link')
+    } finally {
+      setRemovingProject(false)
+    }
+  }
+
+  const handleRemoveCampaign = async () => {
+    if (!campaignId || !campaign?.name) return
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Remove campaign \"${campaign.name}\"? This action cannot be undone.`)
+      if (!confirmed) return
+    }
+
+    setRemovingCampaign(true)
+    try {
+      await campaignsApi.deleteCampaign(campaignId)
+      toast.success('Campaign removed')
+      router.push('/campaigns')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Unable to remove campaign')
+    } finally {
+      setRemovingCampaign(false)
     }
   }
 
@@ -139,6 +221,31 @@ export default function CampaignDashboardPage() {
             {analytics?.campaign_name || 'Campaign Dashboard'}
           </h1>
           <p className="text-sm text-[#7f7266] mt-1">Call Campaign Analytics & Priority Queue</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {campaign?.project_name ? (
+              <span className="inline-flex items-center rounded-full border border-[#e4d6c6] bg-white px-3 py-1 text-xs font-semibold text-[#5f5348]">
+                Linked project: {campaign.project_name}
+              </span>
+            ) : null}
+            {canRemoveCampaign ? (
+              <button
+                onClick={handleRemoveCampaign}
+                disabled={removingCampaign}
+                className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 disabled:opacity-50"
+              >
+                {removingCampaign ? 'Removing...' : 'Remove Campaign'}
+              </button>
+            ) : null}
+            {canManageProject && campaign?.project_id ? (
+              <button
+                onClick={handleRemoveProject}
+                disabled={removingProject}
+                className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 disabled:opacity-50"
+              >
+                {removingProject ? 'Removing...' : 'Remove Project Link'}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -157,7 +264,11 @@ export default function CampaignDashboardPage() {
         </div>
 
         <div className="px-8 pb-10">
-          {analyticsLoading ? <Skeleton /> : (
+          {analyticsLoading ? <Skeleton /> : analyticsError ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+              Unable to load campaign analytics. {String((analyticsErrorObj as any)?.message || 'Please check backend logs and retry.')}
+            </div>
+          ) : (
             <>
               {activeTab === 'Overview' && analytics && <OverviewTab analytics={analytics} tierData={tierData} qualityRadar={qualityRadar} />}
               {activeTab === 'Priority Queue' && (
@@ -173,10 +284,24 @@ export default function CampaignDashboardPage() {
               )}
               {activeTab === 'Insights' && analytics && <InsightsTab insights={analytics.insights} />}
               {activeTab === 'Agent Assignment' && (
-                <AgentAssignmentTab assignments={assignments || []} onAssign={handleAssignAgents} onSelectLead={setSelectedLead} />
+                <AgentAssignmentTab
+                  assignments={assignments || []}
+                  availableAgents={availableAgents}
+                  selectedAgentIds={selectedAgentIds}
+                  onSelectedAgentIdsChange={setSelectedAgentIds}
+                  onAssign={handleAssignAgents}
+                  onSelectLead={setSelectedLead}
+                />
               )}
               {activeTab === 'AI Analysis' && (
-                <AiAnalysisTab leads={leads || []} loading={leadsLoading} running={aiRunning} onRunAi={handleRunAi} onSelectLead={setSelectedLead} />
+                <AiAnalysisTab
+                  leads={leads || []}
+                  loading={leadsLoading}
+                  running={aiRunning}
+                  lastRunMessage={aiRunMessage}
+                  onRunAi={handleRunAi}
+                  onSelectLead={setSelectedLead}
+                />
               )}
             </>
           )}
@@ -395,7 +520,12 @@ function PriorityQueueTab({ leads, loading, tierFilter, searchQuery, onTierChang
 
 function InsightsTab({ insights }: { insights: CampaignInsight[] }) {
   if (!insights.length) {
-    return <p className="text-[#8c7f73] text-sm">No insights computed yet. Upload campaign data first.</p>
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        No AI insights available yet. Ensure campaign has connected calls and backend AI config is enabled
+        (set <span className="font-semibold">GROQ_API_KEY</span> and keep <span className="font-semibold">CAMPAIGN_AI_ENABLED=true</span>).
+      </div>
+    )
   }
 
   return (
@@ -423,17 +553,49 @@ function InsightsTab({ insights }: { insights: CampaignInsight[] }) {
 
 // ─── TAB: AGENT ASSIGNMENT ──────────────────────────────────────────────────
 
-function AgentAssignmentTab({ assignments, onAssign, onSelectLead }: {
+function AgentAssignmentTab({
+  assignments,
+  availableAgents,
+  selectedAgentIds,
+  onSelectedAgentIdsChange,
+  onAssign,
+  onSelectLead,
+}: {
   assignments: ReturnType<typeof useAgentAssignments>['data'] extends (infer U)[] ? U[] : never[]
+  availableAgents: Agent[]
+  selectedAgentIds: string[]
+  onSelectedAgentIdsChange: (ids: string[]) => void
   onAssign: () => void
   onSelectLead: (l: CampaignLeadDetail) => void
 }) {
+  const callAgents = availableAgents.filter((a) => a.role === 'call_agent')
+  const defaultMode = selectedAgentIds.length === 0
+
+  const toggleAgent = (agentId: string) => {
+    if (selectedAgentIds.includes(agentId)) {
+      onSelectedAgentIdsChange(selectedAgentIds.filter((id) => id !== agentId))
+      return
+    }
+    onSelectedAgentIdsChange([...selectedAgentIds, agentId])
+  }
+
+  const useDefaultCallAgents = () => {
+    onSelectedAgentIdsChange(callAgents.map((a) => a.id))
+  }
+
+  const clearSelection = () => {
+    onSelectedAgentIdsChange([])
+  }
+
   return (
     <div className="space-y-6 crm-page-enter">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-[#2a231d]">Agent Assignment</h3>
-          <p className="text-sm text-[#7f7266]">Auto-distribute leads to calling agents based on priority</p>
+          <p className="text-sm text-[#7f7266]">
+            Assignment is priority-based: top half of leads (higher priority) and bottom half are split across agent halves.
+            Only selected agents are used. If none are selected, default pool is role: call_agent.
+          </p>
         </div>
         <button
           onClick={onAssign}
@@ -443,9 +605,40 @@ function AgentAssignmentTab({ assignments, onAssign, onSelectLead }: {
         </button>
       </div>
 
+      <div className="bg-white border border-[#eadfce] rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-[#2a231d]">Selected Agents</p>
+          <div className="flex gap-2">
+            <button onClick={useDefaultCallAgents} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#d8c4ad] text-[#6a4b32] hover:bg-[#fcf7f0]">Use default call_agent</button>
+            <button onClick={clearSelection} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#e3d7c8] text-[#7f7266] hover:bg-[#faf5ef]">Clear</button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {availableAgents.map((agent) => {
+            const selected = selectedAgentIds.includes(agent.id)
+            return (
+              <button
+                key={agent.id}
+                onClick={() => toggleAgent(agent.id)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${selected ? 'border-[#2a231d] bg-[#2a231d] text-white' : 'border-[#e2d2bd] bg-white text-[#5f5348] hover:bg-[#fcf7f0]'}`}
+              >
+                {agent.name} ({agent.role})
+              </button>
+            )
+          })}
+        </div>
+
+        <p className="text-[11px] text-[#8c7f73] mt-3">
+          {defaultMode
+            ? `No explicit selection active. Using default role call_agent (${callAgents.length} agent(s)).`
+            : `Using ${selectedAgentIds.length} selected agent(s) for this assignment run.`}
+        </p>
+      </div>
+
       {assignments.length === 0 ? (
         <div className="bg-white border border-[#eadfce] rounded-3xl p-8 text-center">
-          <p className="text-[#8c7f73]">No calling agents found. Create agents with &quot;call&quot; in their name to enable auto-assignment.</p>
+          <p className="text-[#8c7f73]">No assignment candidates found. Select agents, or create active users with role call_agent.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -496,15 +689,27 @@ function AgentAssignmentTab({ assignments, onAssign, onSelectLead }: {
 
 // ─── TAB: AI ANALYSIS ───────────────────────────────────────────────────────
 
-function AiAnalysisTab({ leads, loading, running, onRunAi, onSelectLead }: {
+function AiAnalysisTab({ leads, loading, running, lastRunMessage, onRunAi, onSelectLead }: {
   leads: CampaignLeadDetail[]
   loading: boolean
   running: boolean
+  lastRunMessage?: string | null
   onRunAi: () => void
   onSelectLead: (l: CampaignLeadDetail) => void
 }) {
-  const analyzedLeads = leads.filter(l => l.ai_analysis && Object.keys(l.ai_analysis).length > 0)
-  const pendingLeads = leads.filter(l => (!l.ai_analysis || Object.keys(l.ai_analysis).length === 0) && l.transcript && l.transcript !== 'transcript not found' && l.transcript.length > 50)
+  const analyzedLeads = leads.filter((l) => l.ai_analysis && Object.keys(l.ai_analysis).length > 0)
+  const pendingLeads = leads.filter((l) => {
+    const hasAnalysis = Boolean(l.ai_analysis && Object.keys(l.ai_analysis).length > 0)
+    const transcript = String(l.transcript || '').trim()
+    const summary = String(l.summary || '').trim()
+    const evalTag = String(l.call_eval_tag || '').trim().toLowerCase()
+
+    const hasTranscriptContext = transcript.length > 20 && transcript.toLowerCase() !== 'transcript not found'
+    const hasSummaryContext = summary.length > 20
+    const isConnected = evalTag === 'yes' || hasTranscriptContext || hasSummaryContext
+
+    return !hasAnalysis && isConnected && (hasTranscriptContext || hasSummaryContext)
+  })
 
   return (
     <div className="space-y-6 crm-page-enter">
@@ -528,6 +733,12 @@ function AiAnalysisTab({ leads, loading, running, onRunAi, onSelectLead }: {
           ) : `🤖 Run AI Analysis (${pendingLeads.length} calls)`}
         </button>
       </div>
+
+      {lastRunMessage ? (
+        <div className="rounded-xl border border-[#eadfce] bg-white px-4 py-3 text-xs text-[#5f5348]">
+          {lastRunMessage}
+        </div>
+      ) : null}
 
       {loading ? <Skeleton /> : analyzedLeads.length === 0 ? (
         <div className="bg-white border border-[#eadfce] rounded-3xl p-12 text-center">

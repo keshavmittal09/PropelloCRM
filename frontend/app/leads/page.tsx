@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useLeads } from '@/hooks/useQueries'
+import { useLeadsPaginated } from '@/hooks/useQueries'
 import Sidebar from '@/components/shared/Sidebar'
 import { ScoreBadge, SourceTag, DaysInStage } from '@/components/shared/Badges'
 import { formatBudget, formatDate, stageConfig } from '@/lib/utils'
@@ -13,6 +13,7 @@ import type { LeadStage, LeadScore } from '@/lib/types'
 const STAGES: LeadStage[] = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture']
 const SCORES: LeadScore[] = ['hot', 'warm', 'cold']
 const SOURCES = ['priya_ai', 'website', 'facebook_ads', 'google_ads', '99acres', 'magicbricks', 'walk_in', 'referral', 'email_campaign', 'manual', 'campaign']
+const PAGE_SIZE = 25
 
 export default function LeadsPage() {
   const router = useRouter()
@@ -23,6 +24,7 @@ export default function LeadsPage() {
   const [score, setScore] = useState('')
   const [source, setSource] = useState('')
   const [campaignId, setCampaignId] = useState('')
+  const [page, setPage] = useState(1)
   const [showNewLead, setShowNewLead] = useState(false)
 
   useEffect(() => {
@@ -33,13 +35,27 @@ export default function LeadsPage() {
     setCampaignId(params.get('campaign_id') ?? '')
   }, [])
 
-  const { data: leads, isLoading } = useLeads({
+  useEffect(() => {
+    setPage(1)
+  }, [stage, score, source, campaignId, search])
+
+  const { data: leadsPage, isLoading } = useLeadsPaginated({
     ...(stage && { stage }),
     ...(score && { lead_score: score }),
     ...(source && { source }),
     ...(campaignId && { campaign_id: campaignId }),
     ...(search && { search }),
+    page,
+    page_size: PAGE_SIZE,
   })
+
+  const leads = leadsPage?.items ?? []
+  const totalLeads = leadsPage?.total ?? 0
+  const totalPages = Math.max(leadsPage?.total_pages ?? 1, 1)
+  const visibleStart = totalLeads === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const visibleEnd = totalLeads === 0 ? 0 : Math.min(page * PAGE_SIZE, totalLeads)
+  const startPage = Math.max(1, Math.min(page - 2, totalPages - 4))
+  const endPage = Math.min(totalPages, startPage + 4)
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -49,7 +65,9 @@ export default function LeadsPage() {
         <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h2 className="text-xl font-bold text-gray-900">All Leads</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{leads?.length ?? 0} leads found</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {totalLeads} leads found {totalLeads > 0 ? `· Showing ${visibleStart}-${visibleEnd}` : ''}
+            </p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => router.push('/leads/board')}
@@ -87,8 +105,8 @@ export default function LeadsPage() {
             {SOURCES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
           </select>
 
-          {(stage || score || source || search) && (
-            <button onClick={() => { setStage(''); setScore(''); setSource(''); setSearch('') }}
+          {(stage || score || source || search || campaignId) && (
+            <button onClick={() => { setStage(''); setScore(''); setSource(''); setCampaignId(''); setSearch('') }}
               className="px-3 py-2 text-sm text-gray-500 hover:text-red-600 border border-gray-200 rounded-lg hover:border-red-200">
               Clear filters
             </button>
@@ -101,51 +119,114 @@ export default function LeadsPage() {
             <div className="flex justify-center py-20">
               <div className="animate-spin w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full" />
             </div>
-          ) : !leads?.length ? (
+          ) : !leads.length ? (
             <div className="text-center py-20">
               <p className="text-gray-400 text-lg">No leads found</p>
               <p className="text-gray-300 text-sm mt-1">Try adjusting your filters</p>
             </div>
           ) : (
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-100">
-                    {['Contact', 'Score', 'Stage', 'Budget', 'Source', 'Days', 'Agent', 'Created'].map(h => (
-                      <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {leads.map(lead => (
-                    <tr key={lead.id}
-                      className="border-b border-gray-50 hover:bg-indigo-50/30 cursor-pointer transition-colors"
-                      onClick={() => router.push(`/leads/${lead.id}`)}>
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-900">{lead.contact?.name}</p>
-                        <p className="text-xs text-gray-400">{lead.contact?.phone}</p>
-                      </td>
-                      <td className="px-4 py-3"><ScoreBadge score={lead.lead_score} /></td>
-                      <td className="px-4 py-3">
-                        <span className="flex items-center gap-1.5 text-sm text-gray-700">
-                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: stageConfig[lead.stage].color }} />
-                          {stageConfig[lead.stage].label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{formatBudget(lead.budget_min, lead.budget_max)}</td>
-                      <td className="px-4 py-3"><SourceTag source={lead.source} /></td>
-                      <td className="px-4 py-3"><DaysInStage days={lead.days_in_stage} /></td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{lead.assigned_agent?.name?.split(' ')[0] ?? '—'}</td>
-                      <td className="px-4 py-3 text-xs text-gray-400">{formatDate(lead.created_at)}</td>
+            <div className="space-y-4">
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      {['Contact', 'Score', 'Stage', 'Budget', 'Source', 'Days', 'Agent', 'Created'].map(h => (
+                        <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
+                      ))}
                     </tr>
+                  </thead>
+                  <tbody>
+                    {leads.map(lead => (
+                      <tr key={lead.id}
+                        className="border-b border-gray-50 hover:bg-indigo-50/30 cursor-pointer transition-colors"
+                        onClick={() => router.push(`/leads/${lead.id}`)}>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-semibold text-gray-900">{lead.contact?.name}</p>
+                          <p className="text-xs text-gray-400">{lead.contact?.phone}</p>
+                        </td>
+                        <td className="px-4 py-3"><ScoreBadge score={lead.lead_score} /></td>
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-1.5 text-sm text-gray-700">
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: stageConfig[lead.stage].color }} />
+                            {stageConfig[lead.stage].label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{formatBudget(lead.budget_min, lead.budget_max)}</td>
+                        <td className="px-4 py-3"><SourceTag source={lead.source} /></td>
+                        <td className="px-4 py-3"><DaysInStage days={lead.days_in_stage} /></td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{lead.assigned_agent?.name?.split(' ')[0] ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-400">{formatDate(lead.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-xs text-gray-500">
+                  Page {page} of {totalPages}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50"
+                  >
+                    Prev
+                  </button>
+
+                  {startPage > 1 && (
+                    <>
+                      <button
+                        onClick={() => setPage(1)}
+                        className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm"
+                      >
+                        1
+                      </button>
+                      {startPage > 2 && <span className="px-1 text-gray-400">...</span>}
+                    </>
+                  )}
+
+                  {Array.from({ length: endPage - startPage + 1 }, (_, idx) => startPage + idx).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setPage(pageNum)}
+                      className={`px-3 py-1.5 rounded-lg border text-sm ${
+                        pageNum === page
+                          ? 'border-indigo-600 bg-indigo-600 text-white'
+                          : 'border-gray-200 bg-white text-gray-700'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
                   ))}
-                </tbody>
-              </table>
+
+                  {endPage < totalPages && (
+                    <>
+                      {endPage < totalPages - 1 && <span className="px-1 text-gray-400">...</span>}
+                      <button
+                        onClick={() => setPage(totalPages)}
+                        className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm"
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
-        {showNewLead && <NewLeadModal onClose={() => setShowNewLead(false)} onCreated={() => { setShowNewLead(false); qc.invalidateQueries({ queryKey: ['leads'] }) }} />}
+        {showNewLead && <NewLeadModal onClose={() => setShowNewLead(false)} onCreated={() => { setShowNewLead(false); qc.invalidateQueries({ queryKey: ['leads'] }); qc.invalidateQueries({ queryKey: ['leads-paginated'] }) }} />}
       </main>
     </div>
   )

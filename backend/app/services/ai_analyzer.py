@@ -64,13 +64,25 @@ Subject: [subject line]
 [email body]"""
 
 
-async def _call_groq(system_prompt: str, user_content: str) -> Optional[str]:
+async def _call_groq(system_prompt: str, user_content: str, expect_json: bool = False) -> Optional[str]:
     """Call Groq's LLM API using httpx (OpenAI-compatible endpoint)."""
     if not settings.GROQ_API_KEY:
         logger.warning("GROQ_API_KEY not configured — AI analysis skipped")
         return None
 
     try:
+        payload = {
+            "model": settings.GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 500,
+        }
+        if expect_json:
+            payload["response_format"] = {"type": "json_object"}
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -78,15 +90,7 @@ async def _call_groq(system_prompt: str, user_content: str) -> Optional[str]:
                     "Authorization": f"Bearer {settings.GROQ_API_KEY}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": settings.GROQ_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 500,
-                },
+                json=payload,
             )
             response.raise_for_status()
             data = response.json()
@@ -154,9 +158,10 @@ async def analyze_lead(db: AsyncSession, lead: Lead, contact: Contact) -> Option
     activities = result.scalars().all()
 
     context = _build_lead_context(lead, contact, activities)
-    raw_response = await _call_groq(ANALYSIS_SYSTEM_PROMPT, context)
+    raw_response = await _call_groq(ANALYSIS_SYSTEM_PROMPT, context, expect_json=True)
 
     if not raw_response:
+        logger.warning("AI analysis skipped for lead %s: no Groq response", lead.id)
         return None
 
     try:
@@ -239,4 +244,6 @@ async def suggest_followup_message(
 
     prompt = FOLLOWUP_SYSTEM_PROMPT.replace("{channel}", channel)
     message = await _call_groq(prompt, context)
-    return message
+    if message:
+        return message
+    return None

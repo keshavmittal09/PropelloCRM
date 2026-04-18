@@ -1,9 +1,9 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import case, or_, select
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.core.dependencies import get_db, get_current_user
 from app.models.agent import Agent
 from app.models.contact import Contact
@@ -165,6 +165,34 @@ async def update_property(property_id: str, data: PropertyUpdate, db: AsyncSessi
 
 tasks_router = APIRouter()
 
+
+def _normalize_naive_datetime(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is not None and value.utcoffset() is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def _task_query_options():
+    return (
+        selectinload(Task.assigned_agent),
+        selectinload(Task.lead).selectinload(Lead.contact),
+        selectinload(Task.lead).selectinload(Lead.assigned_agent),
+    )
+
+
+async def _load_task_for_response(db: AsyncSession, task_id: str) -> Task:
+    result = await db.execute(
+        select(Task)
+        .options(*_task_query_options())
+        .where(Task.id == task_id)
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
 @tasks_router.get("", response_model=list[TaskResponse])
 async def list_tasks(
     status: Optional[str] = None,
@@ -173,42 +201,118 @@ async def list_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    query = select(Task).options(selectinload(Task.assigned_agent)).order_by(Task.due_at.asc())
-    if current_user.role == "agent":
+    now = datetime.utcnow()
+    priority_order = case(
+        (Task.priority == "high", 0),
+        (Task.priority == "normal", 1),
+        (Task.priority == "low", 2),
+        else_=3,
+    )
+    query = (
+        select(Task)
+        .options(*_task_query_options())
+        .order_by(priority_order.asc(), Task.due_at.asc(), Task.created_at.desc())
+    )
+    if current_user.role != "admin":
         query = query.where(Task.assigned_to == current_user.id)
-    if status:
+    if status == "overdue":
+        query = query.where(
+            Task.due_at.is_not(None),
+            Task.due_at < now,
+            Task.status.in_(["pending", "overdue"]),
+        )
+    elif status == "pending":
+        query = query.where(
+            Task.status == "pending",
+            or_(Task.due_at.is_(None), Task.due_at >= now),
+        )
+    elif status:
         query = query.where(Task.status == status)
-    if assigned_to and current_user.role != "agent":
+    if assigned_to and current_user.role == "admin":
         query = query.where(Task.assigned_to == assigned_to)
     if lead_id:
         query = query.where(Task.lead_id == lead_id)
     result = await db.execute(query)
-    return [TaskResponse.model_validate(t) for t in result.scalars().all()]
+    tasks = result.scalars().all()
+
+    # Keep task state fresh even when the scheduler hasn't run yet.
+    if status == "overdue":
+        needs_commit = False
+        for task in tasks:
+            if task.status == "pending":
+                task.status = "overdue"
+                needs_commit = True
+        if needs_commit:
+            await db.commit()
+
+    return [TaskResponse.model_validate(t) for t in tasks]
 
 @tasks_router.get("/today", response_model=list[TaskResponse])
 async def todays_tasks(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
     today_end = datetime.utcnow().replace(hour=23, minute=59, second=59)
-    result = await db.execute(
-        select(Task).options(selectinload(Task.assigned_agent), selectinload(Task.lead))
-        .where(Task.assigned_to == current_user.id)
+    priority_order = case(
+        (Task.priority == "high", 0),
+        (Task.priority == "normal", 1),
+        (Task.priority == "low", 2),
+        else_=3,
+    )
+    query = (
+        select(Task)
+        .options(*_task_query_options())
         .where(Task.status == "pending")
         .where(Task.due_at <= today_end)
-        .order_by(Task.due_at.asc())
+        .order_by(priority_order.asc(), Task.due_at.asc())
     )
+    if current_user.role != "admin":
+        query = query.where(Task.assigned_to == current_user.id)
+
+    result = await db.execute(query)
     return [TaskResponse.model_validate(t) for t in result.scalars().all()]
 
 @tasks_router.get("/overdue", response_model=list[TaskResponse])
 async def overdue_tasks(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
-    result = await db.execute(
-        select(Task).options(selectinload(Task.assigned_agent))
-        .where(Task.status == "overdue")
-        .order_by(Task.due_at.asc())
+    now = datetime.utcnow()
+    priority_order = case(
+        (Task.priority == "high", 0),
+        (Task.priority == "normal", 1),
+        (Task.priority == "low", 2),
+        else_=3,
     )
-    return [TaskResponse.model_validate(t) for t in result.scalars().all()]
+    query = (
+        select(Task)
+        .options(*_task_query_options())
+        .where(
+            Task.due_at.is_not(None),
+            Task.due_at < now,
+            Task.status.in_(["pending", "overdue"]),
+        )
+        .order_by(priority_order.asc(), Task.due_at.asc())
+    )
+    if current_user.role != "admin":
+        query = query.where(Task.assigned_to == current_user.id)
+
+    result = await db.execute(query)
+    tasks = result.scalars().all()
+    needs_commit = False
+    for task in tasks:
+        if task.status == "pending":
+            task.status = "overdue"
+            needs_commit = True
+    if needs_commit:
+        await db.commit()
+
+    return [TaskResponse.model_validate(t) for t in tasks]
 
 @tasks_router.post("", response_model=TaskResponse)
 async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
-    task = Task(**data.model_dump(), created_by=current_user.id)
+    payload = data.model_dump()
+    payload["due_at"] = _normalize_naive_datetime(payload.get("due_at"))
+    if current_user.role != "admin":
+        if payload.get("assigned_to") and payload.get("assigned_to") != current_user.id:
+            raise HTTPException(status_code=403, detail="Only admin can assign tasks to other users")
+        payload["assigned_to"] = current_user.id
+
+    task = Task(**payload, created_by=current_user.id)
     db.add(task)
     await db.flush()
 
@@ -223,14 +327,17 @@ async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db), curr
         )
 
     await db.commit()
-    await db.refresh(task)
-    return TaskResponse.model_validate(task)
+    response_task = await _load_task_for_response(db, task.id)
+    return TaskResponse.model_validate(response_task)
 
 @tasks_router.patch("/{task_id}/complete", response_model=TaskResponse)
 async def complete_task(task_id: str, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if current_user.role != "admin" and task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to complete this task")
+
     task.status = "done"
     task.completed_at = datetime.utcnow()
 
@@ -251,15 +358,26 @@ async def complete_task(task_id: str, db: AsyncSession = Depends(get_db), curren
         )
 
     await db.commit()
-    await db.refresh(task)
-    return TaskResponse.model_validate(task)
+    response_task = await _load_task_for_response(db, task.id)
+    return TaskResponse.model_validate(response_task)
 
 @tasks_router.patch("/{task_id}", response_model=TaskResponse)
 async def update_task(task_id: str, data: TaskUpdate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    for k, v in data.model_dump(exclude_unset=True).items():
+
+    is_admin_scope = current_user.role == "admin"
+    if not is_admin_scope and task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this task")
+
+    update_payload = data.model_dump(exclude_unset=True)
+    if "due_at" in update_payload:
+        update_payload["due_at"] = _normalize_naive_datetime(update_payload.get("due_at"))
+    if not is_admin_scope and "assigned_to" in update_payload and update_payload.get("assigned_to") != current_user.id:
+        raise HTTPException(status_code=403, detail="Only admin can assign tasks to other users")
+
+    for k, v in update_payload.items():
         setattr(task, k, v)
 
     if task.assigned_to:
@@ -273,8 +391,8 @@ async def update_task(task_id: str, data: TaskUpdate, db: AsyncSession = Depends
         )
 
     await db.commit()
-    await db.refresh(task)
-    return TaskResponse.model_validate(task)
+    response_task = await _load_task_for_response(db, task.id)
+    return TaskResponse.model_validate(response_task)
 
 
 # ─── SITE VISITS ─────────────────────────────────────────────────────────────
@@ -295,7 +413,7 @@ async def list_visits(
         )
         .order_by(SiteVisit.scheduled_at.asc())
     )
-    if current_user.role == "agent":
+    if current_user.role in ["agent", "call_agent"]:
         query = query.where(SiteVisit.agent_id == current_user.id)
     if lead_id:
         query = query.where(SiteVisit.lead_id == lead_id)

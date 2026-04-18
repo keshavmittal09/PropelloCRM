@@ -9,6 +9,7 @@ from app.routers.auth import router as auth_router
 from app.routers.leads import router as leads_router
 from app.routers.webhooks import router as webhooks_router
 from app.routers.ai import router as ai_router
+from app.routers.campaign_dashboard import router as campaign_dashboard_router
 from app.routers.campaigns import router as campaigns_router
 from app.routers.projects import router as projects_router
 from app.routers.priya_bridge import router as priya_router
@@ -80,6 +81,7 @@ app.include_router(auth_router,          prefix="/api/auth",          tags=["Aut
 app.include_router(leads_router,         prefix="/api/leads",         tags=["Leads"])
 app.include_router(webhooks_router,      prefix="/api/webhooks",      tags=["Webhooks"])
 app.include_router(ai_router,            prefix="/api/ai",            tags=["AI Engine"])
+app.include_router(campaign_dashboard_router, prefix="/api/campaign", tags=["Campaign Dashboard"])
 app.include_router(campaigns_router,     prefix="/api/campaigns",     tags=["Campaigns"])
 app.include_router(projects_router,      prefix="/api/projects",      tags=["Projects"])
 app.include_router(priya_router,         prefix="/api/priya",         tags=["Priya Bridge"])

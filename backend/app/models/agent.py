@@ -12,7 +12,7 @@ class Agent(Base):
     name: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String)
-    role: Mapped[str] = mapped_column(SAEnum("admin", "manager", "agent", name="agent_role"), default="agent")
+    role: Mapped[str] = mapped_column(SAEnum("admin", "manager", "agent", "call_agent", name="agent_role"), default="agent")
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

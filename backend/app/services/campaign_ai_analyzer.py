@@ -73,6 +73,7 @@ async def _call_groq(system_prompt: str, user_content: str) -> Optional[str]:
                     ],
                     "temperature": 0.2,
                     "max_tokens": 600,
+                    "response_format": {"type": "json_object"},
                 },
             )
             response.raise_for_status()
@@ -81,6 +82,22 @@ async def _call_groq(system_prompt: str, user_content: str) -> Optional[str]:
     except Exception as e:
         logger.error(f"Groq API call failed for campaign analysis: {e}")
         return None
+
+
+def _activity_is_connected(activity: Activity) -> bool:
+    meta = activity.meta or {}
+    eval_tag = _safe_str(activity.call_eval_tag).lower()
+    transcript = _safe_str(activity.transcript)
+    summary = _safe_str(activity.call_summary)
+
+    if meta.get("is_connected") is True:
+        return True
+    if eval_tag == "yes":
+        return True
+    if _is_connected(transcript):
+        return True
+
+    return bool(summary and summary.lower() not in {"summary not found", "none", "null"} and len(summary) > 20)
 
 
 def _build_call_context(activity: Activity) -> str:
@@ -126,7 +143,7 @@ def _build_call_context(activity: Activity) -> str:
 
 async def analyze_campaign_call(activity: Activity) -> Optional[dict]:
     """Analyze a single campaign call using Groq."""
-    if not _is_connected(activity.transcript or ""):
+    if not _activity_is_connected(activity):
         return None
 
     context = _build_call_context(activity)
@@ -172,7 +189,7 @@ async def batch_analyze_campaign(campaign_id: str, db: AsyncSession) -> dict:
 
     for activity in activities:
         # Skip no-connect calls
-        if not _is_connected(activity.transcript or ""):
+        if not _activity_is_connected(activity):
             skipped += 1
             continue
 

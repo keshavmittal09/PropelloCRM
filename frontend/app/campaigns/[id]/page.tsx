@@ -6,17 +6,23 @@ import Sidebar from '@/components/shared/Sidebar'
 import { campaignsApi } from '@/lib/api'
 import { useCampaign, useProjects } from '@/hooks/useQueries'
 import { ScoreBadge } from '@/components/shared/Badges'
+import { useAuthStore } from '@/store/useAuthStore'
 import toast from 'react-hot-toast'
 
 export default function CampaignDetailPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const { agent } = useAuthStore()
   const campaignId = params?.id ?? ''
 
   const { data: campaign, isLoading, refetch } = useCampaign(campaignId)
   const { data: projects } = useProjects()
   const [assigning, setAssigning] = useState(false)
+  const [removingProject, setRemovingProject] = useState(false)
+  const [removingCampaign, setRemovingCampaign] = useState(false)
   const [selectedProject, setSelectedProject] = useState('')
+  const canManageProject = ['admin', 'manager'].includes(agent?.role || '')
+  const canRemoveCampaign = ['admin', 'manager'].includes(agent?.role || '')
 
   const sortedLeads = useMemo(() => {
     if (!campaign?.leads) return []
@@ -38,6 +44,39 @@ export default function CampaignDetailPage() {
     }
   }
 
+  const removeProject = async () => {
+    if (!campaignId) return
+    setRemovingProject(true)
+    try {
+      await campaignsApi.removeProject(campaignId)
+      toast.success('Project unlinked from campaign')
+      await refetch()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to remove project')
+    } finally {
+      setRemovingProject(false)
+    }
+  }
+
+  const removeCampaign = async () => {
+    if (!campaignId || !campaign?.name) return
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Remove campaign \"${campaign.name}\"? This action cannot be undone.`)
+      if (!confirmed) return
+    }
+
+    setRemovingCampaign(true)
+    try {
+      await campaignsApi.deleteCampaign(campaignId)
+      toast.success('Campaign removed')
+      router.push('/campaigns')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to remove campaign')
+    } finally {
+      setRemovingCampaign(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-[#f7f5f2]">
       <Sidebar />
@@ -55,6 +94,15 @@ export default function CampaignDetailPage() {
               >
                 📊 Open Analytics Dashboard
               </button>
+              {canRemoveCampaign ? (
+                <button
+                  onClick={removeCampaign}
+                  disabled={removingCampaign}
+                  className="px-4 py-1.5 rounded-full border border-red-200 bg-red-50 text-red-700 text-xs font-semibold disabled:opacity-50"
+                >
+                  {removingCampaign ? 'Removing...' : 'Remove Campaign'}
+                </button>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mt-6">
@@ -70,6 +118,17 @@ export default function CampaignDetailPage() {
               <p className="text-sm text-[#5f5348]">
                 Linked project: <span className="font-semibold text-[#2a231d]">{campaign.project_name || 'Not linked'}</span>
               </p>
+              {campaign.project_id && canManageProject && (
+                <div className="mt-3">
+                  <button
+                    onClick={removeProject}
+                    disabled={removingProject}
+                    className="px-4 py-2 rounded-full border border-red-200 bg-red-50 text-red-700 text-sm font-semibold disabled:opacity-50"
+                  >
+                    {removingProject ? 'Removing...' : 'Remove Project Link'}
+                  </button>
+                </div>
+              )}
               {!campaign.project_id && (
                 <div className="mt-3 flex gap-2 flex-wrap">
                   <select

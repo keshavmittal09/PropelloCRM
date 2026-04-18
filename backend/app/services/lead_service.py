@@ -84,7 +84,7 @@ async def get_least_busy_agent(db: AsyncSession) -> Optional[str]:
     result = await db.execute(
         select(Agent.id, func.count(Lead.id).label("lead_count"))
         .outerjoin(Lead, and_(Lead.assigned_to == Agent.id, Lead.stage.notin_(["won", "lost", "nurture"])))
-        .where(Agent.is_active == True, Agent.role == "agent")
+        .where(Agent.is_active == True, Agent.role.in_(["agent", "call_agent"]))
         .group_by(Agent.id)
         .order_by("lead_count")
         .limit(1)

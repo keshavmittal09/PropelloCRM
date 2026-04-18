@@ -22,6 +22,10 @@ class AgentCreate(BaseModel):
     role: str = "agent"
     phone: Optional[str] = None
 
+
+class AgentRoleUpdate(BaseModel):
+    role: str
+
 class AgentResponse(BaseModel):
     id: str
     name: str

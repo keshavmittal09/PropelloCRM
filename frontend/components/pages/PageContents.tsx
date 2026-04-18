@@ -1,19 +1,48 @@
 'use client'
 // ─── TASKS PAGE ──────────────────────────────────────────────────────────────
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import { useAllTasks, useCompleteTask } from '@/hooks/useQueries'
 import { useContacts, useProperties, useVisits } from '@/hooks/useQueries'
 import { formatDateTime, formatDate, formatCurrency } from '@/lib/utils'
-import { contactsApi, propertiesApi, visitsApi } from '@/lib/api'
+import { authApi, contactsApi, propertiesApi, tasksApi, visitsApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@/store/useAuthStore'
+import type { Agent, Task } from '@/lib/types'
 import toast from 'react-hot-toast'
 
 export function TasksPageContent() {
   const router = useRouter()
+  const qc = useQueryClient()
+  const { agent } = useAuthStore()
+  const canViewAll = agent?.role === 'admin'
+  const canEditAll = agent?.role === 'admin'
+
   const [filter, setFilter] = useState<'pending' | 'overdue' | 'done'>('pending')
-  const { data: tasks, isLoading } = useAllTasks({ status: filter })
+  const [assigneeFilter, setAssigneeFilter] = useState('all')
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+
+  useEffect(() => {
+    if (!canViewAll) {
+      setAgents([])
+      setAssigneeFilter('all')
+      return
+    }
+
+    authApi.listAgents().then(setAgents).catch(() => setAgents([]))
+  }, [canViewAll])
+
+  const params: Record<string, string> = { status: filter }
+  if (canViewAll && assigneeFilter !== 'all') {
+    params.assigned_to = assigneeFilter
+  }
+  if (!canViewAll && agent?.id) {
+    params.assigned_to = agent.id
+  }
+
+  const { data: tasks, isLoading } = useAllTasks(params)
   const { mutateAsync: complete } = useCompleteTask()
 
   const priorityColor: Record<string, string> = {
@@ -29,19 +58,35 @@ export function TasksPageContent() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-4xl font-semibold tracking-tight text-[#1f1914]">Tasks</h2>
-            <p className="text-[#7a7065] font-medium tracking-wide text-sm mt-1.5">Follow-ups and action items across all leads</p>
+            <p className="text-[#7a7065] font-medium tracking-wide text-sm mt-1.5">
+              {canViewAll ? 'Track and manage assignments across all agents' : 'Your assigned follow-ups and action items'}
+            </p>
           </div>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex gap-2 mb-8 bg-[#faf5ee] border border-[#e8ddcf] p-1.5 rounded-full w-fit">
-          {(['pending', 'overdue', 'done'] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`px-5 py-2 rounded-full text-sm font-semibold transition-all capitalize ${filter === f ? 'bg-white text-[#2b241f] shadow-sm ring-1 ring-black/5' : 'text-[#8a7f74] hover:text-[#2b241f]'}`}>
-              {f}
-              {f === 'overdue' && <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">!</span>}
-            </button>
-          ))}
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-2 bg-[#faf5ee] border border-[#e8ddcf] p-1.5 rounded-full w-fit">
+            {(['pending', 'overdue', 'done'] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)}
+                className={`px-5 py-2 rounded-full text-sm font-semibold transition-all capitalize ${filter === f ? 'bg-white text-[#2b241f] shadow-sm ring-1 ring-black/5' : 'text-[#8a7f74] hover:text-[#2b241f]'}`}>
+                {f}
+                {f === 'overdue' && <span className="ml-1.5 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">!</span>}
+              </button>
+            ))}
+          </div>
+
+          {canViewAll ? (
+            <select
+              value={assigneeFilter}
+              onChange={(e) => setAssigneeFilter(e.target.value)}
+              className="rounded-xl border border-[#e8ddcf] bg-white px-3 py-2 text-sm text-[#4b3f32]"
+            >
+              <option value="all">All assignees</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -50,36 +95,201 @@ export function TasksPageContent() {
           <div className="text-center py-20"><p className="text-gray-400">No {filter} tasks</p></div>
         ) : (
           <div className="crm-surface rounded-3xl overflow-hidden shadow-sm">
-            {tasks.map((task, i) => (
-              <div key={task.id} className={`flex items-center gap-4 px-6 py-4 ${i < tasks.length - 1 ? 'border-b border-[#eee5d9]' : ''} ${task.status === 'overdue' ? 'bg-red-50/20' : 'hover:bg-[#f9f4ee]'}`}>
-                {task.status !== 'done' && (
-                  <button onClick={() => complete(task.id).then(() => toast.success('Done!'))}
-                    className="w-5 h-5 rounded border-2 border-gray-300 hover:border-emerald-500 flex-shrink-0 transition-colors" />
-                )}
-                {task.status === 'done' && <div className="w-5 h-5 rounded bg-emerald-100 border-2 border-emerald-400 flex-shrink-0 flex items-center justify-center text-emerald-600 text-xs">✓</div>}
-
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${task.status === 'overdue' ? 'text-red-700' : task.status === 'done' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-                    {task.title}
-                  </p>
-                  {task.due_at && <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(task.due_at)}</p>}
-                </div>
-
-                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${priorityColor[task.priority] ?? priorityColor.normal}`}>
-                  {task.priority}
-                </span>
-
-                {task.lead_id && (
-                  <button onClick={() => router.push(`/leads/${task.lead_id}`)}
-                    className="text-xs text-[#a65630] hover:underline flex-shrink-0">
-                    View lead →
-                  </button>
-                )}
-              </div>
-            ))}
+            <table className="w-full">
+              <thead className="border-b border-[#eee5d9] bg-[#fbf7f0]">
+                <tr>
+                  <th className="px-5 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Task</th>
+                  <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Assigned To</th>
+                  <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Due</th>
+                  <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Priority</th>
+                  <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Status</th>
+                  <th className="px-4 py-3 text-right text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((task) => (
+                  <tr key={task.id} className={`border-b border-[#eee5d9] ${task.status === 'overdue' ? 'bg-red-50/20' : 'hover:bg-[#f9f4ee]'}`}>
+                    <td className="px-5 py-4">
+                      <p className={`text-sm font-semibold ${task.status === 'done' ? 'line-through text-gray-400' : 'text-[#2f261f]'}`}>{task.title}</p>
+                      {task.description ? <p className="mt-1 text-xs text-[#8a7f74] line-clamp-2">{task.description}</p> : null}
+                    </td>
+                    <td className="px-4 py-4 text-sm text-[#5f5348]">{task.assigned_agent?.name || 'Unassigned'}</td>
+                    <td className="px-4 py-4 text-sm text-[#5f5348]">{task.due_at ? formatDateTime(task.due_at) : 'No due date'}</td>
+                    <td className="px-4 py-4">
+                      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${priorityColor[task.priority] ?? priorityColor.normal}`}>
+                        {task.priority}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        task.status === 'done'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : task.status === 'overdue'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-[#f7f2ec] text-[#61584f]'
+                      }`}>{task.status}</span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex justify-end gap-2">
+                        {task.status !== 'done' ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await complete(task.id)
+                                toast.success('Task marked done')
+                                qc.invalidateQueries({ queryKey: ['tasks'] })
+                              } catch (e: any) {
+                                toast.error(e?.response?.data?.detail ?? 'Unable to mark task done')
+                              }
+                            }}
+                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                          >
+                            Done
+                          </button>
+                        ) : null}
+                        {task.lead_id ? (
+                          <button onClick={() => router.push(`/leads/${task.lead_id}`)} className="rounded-lg border border-[#e6d9c8] bg-white px-2 py-1 text-[11px] font-semibold text-[#7f6a54]">
+                            Lead
+                          </button>
+                        ) : null}
+                        {canEditAll ? (
+                          <button onClick={() => setEditingTask(task)} className="rounded-lg border border-[#d7b899] bg-[#f8e9d7] px-2 py-1 text-[11px] font-semibold text-[#6f4d2f]">
+                            Edit
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
+
+        {canEditAll && editingTask ? (
+          <TaskEditModal
+            task={editingTask}
+            agents={agents}
+            onClose={() => setEditingTask(null)}
+            onSaved={() => {
+              setEditingTask(null)
+              qc.invalidateQueries({ queryKey: ['tasks'] })
+            }}
+          />
+        ) : null}
       </main>
+    </div>
+  )
+}
+
+function TaskEditModal({
+  task,
+  agents,
+  onClose,
+  onSaved,
+}: {
+  task: Task
+  agents: Agent[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const toDatetimeLocalValue = (value: string | null | undefined) => {
+    if (!value) return ''
+    const normalized = value.replace(' ', 'T')
+    if (normalized.length >= 16) {
+      return normalized.slice(0, 16)
+    }
+
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) return ''
+
+    const pad = (num: number) => num.toString().padStart(2, '0')
+    return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
+  }
+
+  const [form, setForm] = useState({
+    title: task.title,
+    description: task.description || '',
+    status: task.status,
+    priority: task.priority,
+    assigned_to: task.assigned_to || '',
+    due_at: toDatetimeLocalValue(task.due_at),
+  })
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await tasksApi.update(task.id, {
+        title: form.title,
+        description: form.description || null,
+        status: form.status,
+        priority: form.priority,
+        assigned_to: form.assigned_to || null,
+        due_at: form.due_at ? `${form.due_at}:00` : null,
+      })
+      toast.success('Task updated')
+      onSaved()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to update task')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl max-h-[90vh] overflow-auto">
+        <h3 className="font-semibold text-[#2a231d] text-lg">Edit Task</h3>
+        <div className="mt-4 space-y-3">
+          <input
+            value={form.title}
+            onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+            className="w-full rounded-xl border border-[#e8dccd] px-3 py-2 text-sm"
+            placeholder="Task title"
+          />
+          <textarea
+            rows={3}
+            value={form.description}
+            onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+            className="w-full rounded-xl border border-[#e8dccd] px-3 py-2 text-sm"
+            placeholder="Task description"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <select value={form.status} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value as Task['status'] }))} className="rounded-xl border border-[#e8dccd] px-3 py-2 text-sm bg-white">
+              <option value="pending">pending</option>
+              <option value="overdue">overdue</option>
+              <option value="done">done</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+            <select value={form.priority} onChange={(e) => setForm((prev) => ({ ...prev, priority: e.target.value as Task['priority'] }))} className="rounded-xl border border-[#e8dccd] px-3 py-2 text-sm bg-white">
+              <option value="high">high</option>
+              <option value="normal">normal</option>
+              <option value="low">low</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <select value={form.assigned_to} onChange={(e) => setForm((prev) => ({ ...prev, assigned_to: e.target.value }))} className="rounded-xl border border-[#e8dccd] px-3 py-2 text-sm bg-white">
+              <option value="">Unassigned</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <input
+              type="datetime-local"
+              value={form.due_at}
+              onChange={(e) => setForm((prev) => ({ ...prev, due_at: e.target.value }))}
+              className="rounded-xl border border-[#e8dccd] px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+        <div className="mt-6 flex gap-3">
+          <button onClick={onClose} className="flex-1 rounded-full border border-[#e6dacb] px-4 py-2 text-sm text-[#7f6a54]">Cancel</button>
+          <button onClick={save} disabled={saving || !form.title.trim()} className="flex-1 rounded-full bg-[#2f2317] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

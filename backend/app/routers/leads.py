@@ -1,9 +1,10 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload
 from datetime import datetime
+from pydantic import BaseModel
 from app.core.dependencies import get_db, get_current_user
 from app.core.config import settings
 from app.models.agent import Agent
@@ -20,6 +21,14 @@ from app.services.memory_service import build_memory_brief
 from app.schemas.schemas import WhatsAppSend, PropertyResponse
 
 router = APIRouter()
+
+
+class LeadPageResponse(BaseModel):
+    items: list[LeadResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 @router.post("/inbound", response_model=InboundLeadResponse)
@@ -71,7 +80,7 @@ async def list_leads(
         query = query.where(Lead.campaign_id == campaign_id)
 
     # Agents only see their own leads
-    if current_user.role == "agent":
+    if current_user.role in ["agent", "call_agent"]:
         query = query.where(Lead.assigned_to == current_user.id)
 
     if search:
@@ -82,6 +91,69 @@ async def list_leads(
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)
     return [LeadResponse.model_validate(l) for l in result.scalars().all()]
+
+
+@router.get("/paginated", response_model=LeadPageResponse)
+async def list_leads_paginated(
+    stage: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    lead_score: Optional[str] = Query(None),
+    assigned_to: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    filters = []
+
+    if stage:
+        filters.append(Lead.stage == stage)
+    if source:
+        filters.append(Lead.source == source)
+    if lead_score:
+        filters.append(Lead.lead_score == lead_score)
+    if assigned_to:
+        filters.append(Lead.assigned_to == assigned_to)
+    if campaign_id:
+        filters.append(Lead.campaign_id == campaign_id)
+
+    if current_user.role in ["agent", "call_agent"]:
+        filters.append(Lead.assigned_to == current_user.id)
+
+    base_query = select(Lead)
+    count_query = select(func.count(Lead.id))
+
+    if search:
+        search_expr = or_(Contact.name.ilike(f"%{search}%"), Contact.phone.ilike(f"%{search}%"))
+        base_query = base_query.join(Contact).where(search_expr)
+        count_query = count_query.select_from(Lead).join(Contact).where(search_expr)
+
+    if filters:
+        base_query = base_query.where(*filters)
+        count_query = count_query.where(*filters)
+
+    total = (await db.execute(count_query)).scalar() or 0
+
+    data_query = (
+        base_query
+        .options(selectinload(Lead.contact), selectinload(Lead.assigned_agent))
+        .order_by(Lead.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    result = await db.execute(data_query)
+    items = [LeadResponse.model_validate(l) for l in result.scalars().all()]
+
+    return LeadPageResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size if total else 1,
+    )
 
 
 @router.get("/board", response_model=dict)
@@ -96,7 +168,7 @@ async def kanban_board(
         .options(selectinload(Lead.contact), selectinload(Lead.assigned_agent))
         .where(Lead.stage.in_(stages))
     )
-    if current_user.role == "agent":
+    if current_user.role in ["agent", "call_agent"]:
         query = query.where(Lead.assigned_to == current_user.id)
 
     result = await db.execute(query)
@@ -402,7 +474,7 @@ async def delete_lead(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager"] and current_user.role != "agent":
+    if current_user.role not in ["admin", "manager", "agent", "call_agent"]:
         raise HTTPException(status_code=403, detail="Not authorized")
     lead = await db.get(Lead, lead_id)
     if not lead:
