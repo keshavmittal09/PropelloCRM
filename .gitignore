@@ -4,8 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
-.venv/
-venv/
+.venv310/
+venv310/
 .pytest_cache/
 
 # Environment and secrets
