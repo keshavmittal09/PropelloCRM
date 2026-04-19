@@ -44,7 +44,7 @@ export function LeadTimeline({ activities }: { activities: Activity[] }) {
 
   if (!activities.length) return <p className="text-sm text-gray-400 text-center py-8">No activity yet</p>
   return (
-    <div className="space-y-0">
+    <div className="space-y-0 max-h-[62vh] overflow-y-auto pr-1">
       {activities.map((act, i) => (
         <div key={act.id} className="flex gap-3 group">
           <div className="flex flex-col items-center">
@@ -238,7 +238,7 @@ export function PropertyMatchPanel({ leadId }: { leadId: string }) {
   if (!properties?.length) return <p className="text-sm text-gray-400">No matching properties found</p>
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
       {properties.map(p => (
         <div key={p.id} className="border border-gray-200 rounded-xl p-3 bg-white">
           <p className="text-sm font-semibold text-gray-900">{p.title}</p>
@@ -265,7 +265,7 @@ export function TaskList({ tasks }: { tasks: Task[] }) {
   if (!tasks.length) return <p className="text-sm text-gray-400 py-4 text-center">No tasks</p>
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
       {tasks.map(t => (
         <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border ${t.status === 'overdue' ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'}`}>
           <button onClick={() => complete(t.id)}

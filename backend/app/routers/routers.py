@@ -249,7 +249,8 @@ async def list_tasks(
 
 @tasks_router.get("/today", response_model=list[TaskResponse])
 async def todays_tasks(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
-    today_end = datetime.utcnow().replace(hour=23, minute=59, second=59)
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
     priority_order = case(
         (Task.priority == "high", 0),
         (Task.priority == "normal", 1),
@@ -260,6 +261,7 @@ async def todays_tasks(db: AsyncSession = Depends(get_db), current_user: Agent =
         select(Task)
         .options(*_task_query_options())
         .where(Task.status == "pending")
+        .where(Task.due_at >= today_start)
         .where(Task.due_at <= today_end)
         .order_by(priority_order.asc(), Task.due_at.asc())
     )
