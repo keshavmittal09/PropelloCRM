@@ -28,6 +28,7 @@ export default function Dashboard() {
   const { data: notifications } = useNotifications()
   const { mutateAsync: complete } = useCompleteTask()
   const { data: sourceStats } = useSourceStats()
+  const dashboardTasks = (tasks ?? []).slice(0, 12)
 
   const markAllRead = async () => {
     await notificationsApi.readAll()
@@ -70,8 +71,14 @@ export default function Dashboard() {
                 <p className="text-[#afa499] text-xs mt-1">Great job staying on top of things.</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {tasks.map(t => (
+              <>
+                {tasks.length > dashboardTasks.length && (
+                  <p className="text-xs text-[#8f8378] mb-2">
+                    Showing {dashboardTasks.length} of {tasks.length} tasks.
+                  </p>
+                )}
+                <div className="space-y-2 max-h-[34rem] overflow-y-auto pr-1">
+                  {dashboardTasks.map(t => (
                   <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${t.status === 'overdue' ? 'border-red-200 bg-red-50/50' : 'border-[#eadfce] bg-[#fffdf9] hover:border-[#dcc9b3]'}`}>
                     <button onClick={() => complete(t.id).then(() => toast.success('Task done!'))}
                       className="w-5 h-5 rounded border-2 border-[#c6b9aa] hover:border-emerald-500 flex-shrink-0 mt-0.5 transition-colors" />
@@ -88,8 +95,9 @@ export default function Dashboard() {
                       <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium flex-shrink-0">High</span>
                     )}
                   </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
 
