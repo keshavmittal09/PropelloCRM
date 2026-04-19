@@ -3,7 +3,15 @@ import type {
   Agent, Lead, Contact, Property, Task, Activity,
   SiteVisit, Notification, AnalyticsSummary, FunnelStage,
   SourceStat, AgentStat, KanbanBoard, TokenResponse,
-  Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult, Project, ProjectDetail
+  Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult,
+  CampaignAnalytics, CampaignLeadDetail, AgentAssignment, Project, ProjectDetail,
+  LeadPaginatedResponse,
+  CampaignDashboardAnalytics,
+  CampaignDashboardBatch,
+  CampaignDashboardFlag,
+  CampaignDashboardLeadDetails,
+  CampaignDashboardProgress,
+  CampaignDashboardResults,
 } from './types'
 
 const api = axios.create({
@@ -41,6 +49,8 @@ export const authApi = {
   listAgents: () => api.get<Agent[]>('/api/auth/agents').then(r => r.data),
   createAgent: (data: { name: string; email: string; password: string; role: string; phone?: string }) =>
     api.post<Agent>('/api/auth/agents', data).then(r => r.data),
+  updateAgentRole: (id: string, role: string) =>
+    api.patch<Agent>(`/api/auth/agents/${id}/role`, { role }).then(r => r.data),
   deleteAgent: (id: string) => api.delete(`/api/auth/agents/${id}`).then(r => r.data),
 }
 
@@ -48,6 +58,8 @@ export const authApi = {
 export const leadsApi = {
   list: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; search?: string; skip?: number; limit?: number }) =>
     api.get<Lead[]>('/api/leads', { params }).then(r => r.data),
+  listPaginated: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; campaign_id?: string; search?: string; page?: number; page_size?: number }) =>
+    api.get<LeadPaginatedResponse>('/api/leads/paginated', { params }).then(r => r.data),
   board: () => api.get<KanbanBoard>('/api/leads/board').then(r => r.data),
   get: (id: string) => api.get<Lead>(`/api/leads/${id}`).then(r => r.data),
   create: (data: Record<string, unknown>) => api.post<Lead>('/api/leads', data).then(r => r.data),
@@ -130,10 +142,71 @@ export const campaignsApi = {
     api.get<Campaign[]>('/api/campaigns', { params: { skip, limit } }).then(r => r.data),
   getCampaign: (id: string) =>
     api.get<CampaignDetail>(`/api/campaigns/${id}`).then(r => r.data),
+  getCampaignAnalytics: (id: string) =>
+    api.get<CampaignAnalytics>(`/api/campaigns/${id}/analytics`).then(r => r.data),
+  getCampaignLeadsDetail: (id: string, params?: { tier?: string; search?: string }) =>
+    api.get<CampaignLeadDetail[]>(`/api/campaigns/${id}/leads-detail`, { params }).then(r => r.data),
+  triggerAiAnalysis: (id: string) =>
+    api.post<{ analyzed: number; skipped: number; errors: number; message: string }>(`/api/campaigns/${id}/analyze-ai`).then(r => r.data),
+  getAgentAssignments: (id: string, selectedAgentIds?: string[]) =>
+    api.get<AgentAssignment[]>(`/api/campaigns/${id}/agent-assignments`, {
+      params: selectedAgentIds && selectedAgentIds.length > 0
+        ? { selected_agent_ids: selectedAgentIds }
+        : undefined,
+    }).then(r => r.data),
+  executeAgentAssignment: (id: string, selectedAgentIds?: string[]) =>
+    api.post<{ assigned: number; agents: number }>(`/api/campaigns/${id}/assign-agents`, {
+      selected_agent_ids: selectedAgentIds || [],
+    }).then(r => r.data),
   listProjects: () =>
     api.get<Project[]>('/api/campaigns/projects').then(r => r.data),
   assignProject: (campaignId: string, projectId: string) =>
     api.patch(`/api/campaigns/${campaignId}/project/${projectId}`).then(r => r.data),
+  removeProject: (campaignId: string) =>
+    api.delete(`/api/campaigns/${campaignId}/project`).then(r => r.data),
+  deleteCampaign: (campaignId: string) =>
+    api.delete<{ status: string; campaign_id: string; campaign_name: string }>(`/api/campaigns/${campaignId}`).then(r => r.data),
+}
+
+// ─── CAMPAIGN DASHBOARD (UNIFIED) ─────────────────────────────────────────
+export const campaignDashboardApi = {
+  uploadCallSheet: (file: File, campaignName: string) => {
+    const form = new FormData()
+    form.append('campaign_name', campaignName)
+    form.append('file', file)
+    return api.post<{ batch_id: string; status: string; message: string }>(
+      '/api/campaign/upload-call-sheet',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    ).then(r => r.data)
+  },
+  getBatches: (limit = 25) =>
+    api.get<{ count: number; items: CampaignDashboardBatch[] }>('/api/campaign/batches', { params: { limit } }).then(r => r.data),
+  deleteBatch: (batchId: string) =>
+    api.delete<{ status: string; batch_id: string; batch_name: string; deleted: boolean }>(`/api/campaign/batch/${batchId}`).then(r => r.data),
+  getStatus: (batchId: string) =>
+    api.get<{ batch_id: string; analysis_status: string; progress: CampaignDashboardProgress }>(`/api/campaign/campaign-status/${batchId}`).then(r => r.data),
+  getResults: (batchId: string, params?: { page?: number; limit?: number; priority_tier?: string; intent_level?: string; search?: string; dnd_only?: boolean }) =>
+    api.get<CampaignDashboardResults>(`/api/campaign/campaign-results/${batchId}`, { params }).then(r => r.data),
+  getLeadDetails: (leadId: string) =>
+    api.get<CampaignDashboardLeadDetails>(`/api/campaign/lead-details/${leadId}`).then(r => r.data),
+  updateLeadAction: (leadId: string, payload: Record<string, unknown>) =>
+    api.post(`/api/campaign/update-lead-action/${leadId}`, payload).then(r => r.data),
+  campaignChat: (batchId: string, question: string, history: Array<{ role: string; content: string }> = []) =>
+    api.post<{ answer: string }>('/api/campaign/campaign-chat', { batch_id: batchId, question, history }).then(r => r.data),
+  callbackScript: (leadId: string, force = false) =>
+    api.post<{ lead_id: string; callback_script: string; cached: boolean }>(`/api/campaign/callback-script/${leadId}`, null, { params: { force } }).then(r => r.data),
+  redFlags: (batchId: string, unresolvedOnly = true) =>
+    api.get<{ batch_id: string; total: number; flags: CampaignDashboardFlag[] }>(`/api/campaign/campaign-red-flags/${batchId}`, { params: { unresolved_only: unresolvedOnly } }).then(r => r.data),
+  resolveFlag: (flagId: string, resolved = true) =>
+    api.post(`/api/campaign/resolve-flag/${flagId}`, { resolved }).then(r => r.data),
+  analytics: (batchId: string) =>
+    api.get<CampaignDashboardAnalytics>(`/api/campaign/campaign-analytics/${batchId}`).then(r => r.data),
+  triggerWorkflow: (batchId: string, webhookUrl?: string) =>
+    api.post<{ status: string; batch_id: string; leads_sent: number }>('/api/campaign/trigger-workflow', {
+      batch_id: batchId,
+      webhook_url: webhookUrl,
+    }).then(r => r.data),
 }
 
 export const projectsApi = {

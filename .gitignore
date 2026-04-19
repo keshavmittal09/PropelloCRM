@@ -4,8 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
-.venv/
-venv/
+.venv310/
+venv310/
 .pytest_cache/
 
 # Environment and secrets
@@ -37,3 +37,7 @@ backend/propello.db
 backend/test_results.txt
 backend/verify_output.txt
 chatbot/
+pcrmFINAL.md
+docs/call-campaign-workflow-pipeline.md
+
+anti

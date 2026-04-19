@@ -18,14 +18,14 @@ start "Propello CRM Backend" cmd /k "cd /d backend && uvicorn app.main:app --hos
 echo [2/3] Starting CRM Frontend Server (Next.js)...
 start "Propello CRM Frontend" cmd /k "cd /d frontend && npx next dev -p 3000"
 
-echo [3/3] Starting Priya Chatbot Server (FastAPI)...
-start "Priya Chatbot" cmd /k "cd /d chatbot && uvicorn app:app --host 0.0.0.0 --port 8001 --reload"
+@REM echo [3/3] Starting Priya Chatbot Server (FastAPI)...
+@REM start "Priya Chatbot" cmd /k "cd /d chatbot && uvicorn app:app --host 0.0.0.0 --port 8001 --reload"
 
 echo.
 echo All servers are starting up in separate windows!
 echo Please wait a few seconds, then open:
 echo   CRM Dashboard: http://localhost:3000
-echo   Chatbot UI:    http://localhost:8001
+@REM echo   Chatbot UI:    http://localhost:8001
 echo.
 echo Note: Keep the two new Command Prompt windows open while using the CRM.
 echo ===========================================

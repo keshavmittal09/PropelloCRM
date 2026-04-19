@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     # Groq AI (for lead analysis engine)
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    CAMPAIGN_AI_ENABLED: bool = True
 
     # Supabase
     SUPABASE_URL: str = ""

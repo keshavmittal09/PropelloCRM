@@ -4,7 +4,7 @@ import Sidebar from '@/components/shared/Sidebar'
 import { useAuthStore } from '@/store/useAuthStore'
 import { authApi } from '@/lib/api'
 import toast from 'react-hot-toast'
-import { Agent } from '@/lib/types'
+import { Agent, Role } from '@/lib/types'
 
 export default function SettingsPage() {
   const { agent } = useAuthStore()
@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editingRoleAgent, setEditingRoleAgent] = useState<Agent | null>(null)
 
   const fetchAgents = async () => {
     try {
@@ -44,6 +45,18 @@ export default function SettingsPage() {
       setDeletingId(null)
     }
   }
+
+  const handleRoleUpdate = async (agentId: string, role: Role) => {
+    try {
+      await authApi.updateAgentRole(agentId, role)
+      toast.success('Role updated')
+      await fetchAgents()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to update role')
+    }
+  }
+
+  const roleLabel = (role: string) => role === 'call_agent' ? 'Call Agent' : role.charAt(0).toUpperCase() + role.slice(1)
 
   if (!canViewTeam) {
     return (
@@ -107,7 +120,7 @@ export default function SettingsPage() {
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-600">{a.email}</td>
                       <td className="py-3 px-4 text-sm text-gray-600">{a.phone ?? '—'}</td>
-                      <td className="py-3 px-4 text-sm capitalize">{a.role}</td>
+                      <td className="py-3 px-4 text-sm capitalize">{roleLabel(a.role)}</td>
                       <td className="py-3 px-4">
                         <span className={`text-xs px-2 py-0.5 rounded-full ${a.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {a.is_active ? 'Active' : 'Inactive'}
@@ -116,13 +129,21 @@ export default function SettingsPage() {
                       <td className="py-3 px-4 text-sm text-gray-500">{new Date(a.created_at).toLocaleDateString()}</td>
                       <td className="py-3 pl-4">
                         {canManageTeam ? (
-                          <button
-                            onClick={() => handleDelete(a.id)}
-                            disabled={deletingId === a.id || a.id === agent?.id}
-                            className="text-xs text-red-600 hover:text-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            {deletingId === a.id ? 'Removing...' : a.id === agent?.id ? 'Current user' : 'Remove'}
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => setEditingRoleAgent(a)}
+                              className="text-xs text-[#a65630] hover:text-[#8e4728]"
+                            >
+                              Assign role
+                            </button>
+                            <button
+                              onClick={() => handleDelete(a.id)}
+                              disabled={deletingId === a.id || a.id === agent?.id}
+                              className="text-xs text-red-600 hover:text-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {deletingId === a.id ? 'Removing...' : a.id === agent?.id ? 'Current user' : 'Remove'}
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-xs text-gray-400">View only</span>
                         )}
@@ -136,6 +157,16 @@ export default function SettingsPage() {
         </section>
         
         {canManageTeam && showAdd && <AddAgentModal onClose={() => setShowAdd(false)} onAdded={fetchAgents} />}
+                {canManageTeam && editingRoleAgent && (
+                  <RoleAssignModal
+                    agent={editingRoleAgent}
+                    onClose={() => setEditingRoleAgent(null)}
+                    onSave={async (role) => {
+                      await handleRoleUpdate(editingRoleAgent.id, role)
+                      setEditingRoleAgent(null)
+                    }}
+                  />
+                )}
       </main>
     </div>
   )
@@ -172,6 +203,7 @@ function AddAgentModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
           <div>
             <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))} className="w-full px-4 py-3 border border-gray-200/80 rounded-xl text-sm outline-none bg-[#fbfbfd]">
               <option value="agent">Agent</option>
+              <option value="call_agent">Call Agent</option>
               <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </select>
@@ -181,6 +213,55 @@ function AddAgentModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
           <button onClick={onClose} className="flex-1 py-3 border border-gray-200/80 rounded-full text-sm font-semibold text-[#86868b] hover:text-[#1d1d1f] hover:bg-gray-50 transition-all">Cancel</button>
           <button onClick={submit} disabled={saving} className="flex-1 py-3 bg-[#1d1d1f] text-white rounded-full text-sm font-semibold hover:bg-black transition-all shadow-sm disabled:opacity-50">
             {saving ? 'Adding...' : 'Add Member'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RoleAssignModal({
+  agent,
+  onClose,
+  onSave,
+}: {
+  agent: Agent
+  onClose: () => void
+  onSave: (role: Role) => Promise<void>
+}) {
+  const [role, setRole] = useState<Role>((agent.role as Role) || 'agent')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    setSaving(true)
+    try {
+      await onSave(role)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h3 className="font-semibold tracking-tight text-[18px] text-[#1d1d1f] mb-2">Assign Role</h3>
+        <p className="text-sm text-[#6b7280] mb-5">{agent.name} ({agent.email})</p>
+
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value as Role)}
+          className="w-full px-4 py-3 border border-gray-200/80 rounded-xl text-sm outline-none bg-[#fbfbfd]"
+        >
+          <option value="agent">Agent</option>
+          <option value="call_agent">Call Agent</option>
+          <option value="manager">Manager</option>
+          <option value="admin">Admin</option>
+        </select>
+
+        <div className="flex gap-3 mt-8">
+          <button onClick={onClose} className="flex-1 py-3 border border-gray-200/80 rounded-full text-sm font-semibold text-[#86868b] hover:text-[#1d1d1f] hover:bg-gray-50 transition-all">Cancel</button>
+          <button onClick={submit} disabled={saving} className="flex-1 py-3 bg-[#1d1d1f] text-white rounded-full text-sm font-semibold hover:bg-black transition-all shadow-sm disabled:opacity-50">
+            {saving ? 'Saving...' : 'Save Role'}
           </button>
         </div>
       </div>

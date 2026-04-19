@@ -5,6 +5,23 @@ import { campaignsApi, leadsApi, projectsApi, tasksApi, analyticsApi, notificati
 export const useLeads = (params?: Record<string, string>) =>
   useQuery({ queryKey: ['leads', params], queryFn: () => leadsApi.list(params), staleTime: 30000, refetchInterval: 10000 })
 
+export const useLeadsPaginated = (params?: {
+  stage?: string
+  source?: string
+  lead_score?: string
+  assigned_to?: string
+  campaign_id?: string
+  search?: string
+  page?: number
+  page_size?: number
+}) =>
+  useQuery({
+    queryKey: ['leads-paginated', params],
+    queryFn: () => leadsApi.listPaginated(params),
+    staleTime: 30000,
+    refetchInterval: 10000,
+  })
+
 export const useKanbanBoard = () =>
   useQuery({ queryKey: ['kanban'], queryFn: leadsApi.board, staleTime: 30000, refetchInterval: 10000 })
 
@@ -99,6 +116,27 @@ export const useCampaigns = (skip = 0, limit = 50) =>
 
 export const useCampaign = (id: string) =>
   useQuery({ queryKey: ['campaign', id], queryFn: () => campaignsApi.getCampaign(id), enabled: !!id })
+
+export const useCampaignAnalytics = (id: string) =>
+  useQuery({
+    queryKey: ['campaign-analytics', id],
+    queryFn: () => campaignsApi.getCampaignAnalytics(id),
+    enabled: !!id,
+  })
+
+export const useCampaignLeadsDetail = (id: string, params?: { tier?: string; search?: string }) =>
+  useQuery({
+    queryKey: ['campaign-leads-detail', id, params?.tier ?? '', params?.search ?? ''],
+    queryFn: () => campaignsApi.getCampaignLeadsDetail(id, params),
+    enabled: !!id,
+  })
+
+export const useAgentAssignments = (id: string, selectedAgentIds?: string[]) =>
+  useQuery({
+    queryKey: ['campaign-agent-assignments', id, selectedAgentIds || []],
+    queryFn: () => campaignsApi.getAgentAssignments(id, selectedAgentIds),
+    enabled: !!id,
+  })
 
 export const useProjects = () =>
   useQuery({ queryKey: ['projects'], queryFn: campaignsApi.listProjects })

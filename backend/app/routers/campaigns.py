@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -11,14 +12,19 @@ from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
 from app.models.agent import Agent
 from app.models.campaign import Campaign, Project
+from app.models.lead import Lead
+from app.models.models import Activity
 from app.schemas.schemas import (
+    CampaignAnalyticsResponse,
     CampaignDetailResponse,
     CampaignIngestRequest,
     CampaignIngestResult,
+    CampaignLeadDetailResponse,
     CampaignLeadSummary,
     CampaignResponse,
     CampaignRow,
     CampaignUploadPreview,
+    AgentAssignment,
     LeadResponse,
     ProjectResponse,
 )
@@ -31,6 +37,10 @@ from app.services.campaign_service import (
 )
 
 router = APIRouter()
+
+
+class AgentAssignmentRequest(BaseModel):
+    selected_agent_ids: list[str] = Field(default_factory=list)
 
 
 @router.post("/upload", response_model=CampaignUploadPreview)
@@ -79,6 +89,7 @@ async def ingest_campaign(
 
     seen_phones: set[str] = set()
     hot = warm = cold = created = updated = failed_rows = skipped_duplicates = 0
+    tier_dist: dict[str, int] = {}
     processed: list[CampaignLeadSummary] = []
 
     for row in payload.rows:
@@ -108,6 +119,10 @@ async def ingest_campaign(
                 created += 1
             else:
                 updated += 1
+
+            # Track tier distribution
+            tier = outcome.get("priority_tier", "P7")
+            tier_dist[tier] = tier_dist.get(tier, 0) + 1
 
             processed.append(CampaignLeadSummary(**outcome))
         except Exception:
@@ -142,6 +157,7 @@ async def ingest_campaign(
         updated=updated,
         skipped_duplicates=skipped_duplicates,
         failed_rows=failed_rows,
+        tier_distribution=tier_dist,
         leads=processed,
     )
 
@@ -268,6 +284,130 @@ async def assign_campaign_project(
     return {"status": "ok", "campaign_id": campaign_id, "project_id": project_id}
 
 
+@router.delete("/{campaign_id}/project")
+async def remove_campaign_project(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    if current_user.role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only admin/manager can remove projects")
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if not campaign.project_id:
+        return {"status": "ok", "campaign_id": campaign_id, "project_id": None}
+
+    removed_project_id = campaign.project_id
+    campaign.project_id = None
+
+    leads = await list_campaign_leads(campaign_id, db)
+    for lead in leads:
+        ids = list(lead.project_ids or [])
+        if removed_project_id in ids:
+            ids = [pid for pid in ids if pid != removed_project_id]
+            lead.project_ids = ids or None
+
+    await db.commit()
+    return {"status": "ok", "campaign_id": campaign_id, "project_id": None}
+
+
+# ─── CAMPAIGN ANALYTICS DASHBOARD ENDPOINTS ─────────────────────────────────
+
+@router.get("/{campaign_id}/analytics", response_model=CampaignAnalyticsResponse)
+async def get_campaign_analytics(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Get full analytics data for the campaign dashboard."""
+    del current_user
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import compute_campaign_analytics
+    analytics = await compute_campaign_analytics(campaign_id, db)
+    return CampaignAnalyticsResponse(**analytics)
+
+
+@router.get("/{campaign_id}/leads-detail", response_model=list[CampaignLeadDetailResponse])
+async def get_campaign_leads_detail(
+    campaign_id: str,
+    tier: Optional[str] = Query(None, description="Filter by priority tier (P1-P7)"),
+    search: Optional[str] = Query(None, description="Search by name or phone"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Get detailed lead list for campaign dashboard with filters."""
+    del current_user
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import get_campaign_leads_detail
+    details = await get_campaign_leads_detail(campaign_id, db, tier_filter=tier, search=search)
+    return [CampaignLeadDetailResponse(**d) for d in details]
+
+
+@router.get("/{campaign_id}/agent-assignments", response_model=list[AgentAssignment])
+async def get_agent_assignments(
+    campaign_id: str,
+    selected_agent_ids: list[str] = Query(default_factory=list),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Get auto-computed agent assignments for campaign leads."""
+    del current_user
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import compute_agent_assignments
+    assignments = await compute_agent_assignments(campaign_id, db, selected_agent_ids=selected_agent_ids)
+    return [AgentAssignment(**a) for a in assignments]
+
+
+@router.post("/{campaign_id}/assign-agents")
+async def execute_agent_assignment(
+    campaign_id: str,
+    payload: Optional[AgentAssignmentRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Execute auto-assignment — actually assigns leads to agents in DB."""
+    if current_user.role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only admin/manager can assign agents")
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_analytics_service import execute_agent_assignments
+    selected_ids = payload.selected_agent_ids if payload else None
+    result = await execute_agent_assignments(campaign_id, db, selected_agent_ids=selected_ids)
+    await db.commit()
+    return result
+
+
+@router.post("/{campaign_id}/analyze-ai")
+async def trigger_ai_analysis(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Trigger AI analysis on all connected calls in the campaign."""
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from app.services.campaign_ai_analyzer import batch_analyze_campaign
+    result = await batch_analyze_campaign(campaign_id, db)
+    return result
+
+
 @router.get("/{campaign_id}", response_model=CampaignDetailResponse)
 async def get_campaign_detail(
     campaign_id: str,
@@ -291,3 +431,44 @@ async def get_campaign_detail(
         project_name=campaign.project.name if campaign.project else None,
         leads=[LeadResponse.model_validate(lead) for lead in leads],
     )
+
+
+@router.delete("/{campaign_id}")
+async def delete_campaign(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    if current_user.role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only admin/manager can remove campaigns")
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    campaign_name = campaign.name
+
+    lead_result = await db.execute(select(Lead).where(Lead.campaign_id == campaign_id))
+    linked_leads = lead_result.scalars().all()
+    for lead in linked_leads:
+        lead.campaign_id = None
+
+    activity_result = await db.execute(
+        select(Activity)
+        .where(Activity.campaign_id == campaign_id)
+        .where(Activity.type == "campaign_call")
+    )
+    campaign_activities = activity_result.scalars().all()
+    for activity in campaign_activities:
+        await db.delete(activity)
+
+    await db.delete(campaign)
+    await db.commit()
+
+    return {
+        "status": "ok",
+        "campaign_id": campaign_id,
+        "campaign_name": campaign_name,
+        "leads_detached": len(linked_leads),
+        "activities_deleted": len(campaign_activities),
+    }

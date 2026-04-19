@@ -77,7 +77,7 @@ export default function LeadDetailPage() {
         lead_id: lead.id,
         title: followupTitle,
         task_type: followupType,
-        due_at: followupDueAt ? new Date(followupDueAt).toISOString() : null,
+        due_at: followupDueAt ? `${followupDueAt}:00` : null,
         assigned_to: lead.assigned_to,
         priority: 'normal',
       })
