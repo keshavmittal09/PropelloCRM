@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
+
+logger = logging.getLogger(__name__)
+from datetime import datetime
+
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -39,6 +44,11 @@ from app.services.campaign_service import (
 router = APIRouter()
 
 
+def _ensure_campaign_access(current_user: Agent) -> None:
+    if current_user.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admin/manager can access campaign management")
+
+
 class AgentAssignmentRequest(BaseModel):
     selected_agent_ids: list[str] = Field(default_factory=list)
 
@@ -51,16 +61,53 @@ async def upload_campaign_preview(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    del agent_name, db, current_user
+    logger.info("=" * 50)
+    logger.info(f"UPLOAD REQUEST RECEIVED")
+    logger.info(f"  - User: {current_user.id} ({current_user.role})")
+    logger.info(f"  - File: {file.filename} (content-type: {file.content_type})")
+    logger.info(f"  - Campaign name: {campaign_name}")
+    logger.info(f"  - Agent name: {agent_name}")
+    logger.info("=" * 50)
+
+    try:
+        _ensure_campaign_access(current_user)
+        logger.info("Auth check passed")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Auth check failed")
+        raise HTTPException(status_code=500, detail=f"Authentication failed: {str(e)}")
 
     if not campaign_name.strip():
+        logger.error("campaign_name is empty")
         raise HTTPException(status_code=400, detail="campaign_name is required")
 
     try:
-        rows, fmt = parse_campaign_file(await file.read(), file.filename or "")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        content = await file.read()
+        logger.info(f"File content read: {len(content)} bytes")
+    except Exception as e:
+        logger.exception("Failed to read file content")
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {str(e)}")
 
+    if not content or len(content) == 0:
+        logger.error("File content is empty")
+        raise HTTPException(status_code=400, detail="File is empty")
+
+    try:
+        logger.info(f"Parsing file: {file.filename}")
+        rows, fmt = parse_campaign_file(content, file.filename or "")
+        logger.info(f"SUCCESS: Parsed {len(rows)} rows, format: {fmt}")
+    except ValueError as e:
+        logger.exception("ValueError during parsing")
+        raise HTTPException(status_code=400, detail=str(e))
+    except ImportError as e:
+        logger.exception("ImportError during parsing")
+        raise HTTPException(status_code=501, detail=f"Missing dependency: {str(e)}. Please install openpyxl for Excel support.")
+    except Exception as e:
+        logger.exception("Upload parsing failed - this is the error")
+        raise HTTPException(status_code=500, detail=f"Failed to parse file: {str(e)}")
+
+    logger.info(f"Returning preview with {len(rows)} rows")
     return CampaignUploadPreview(rows=[CampaignRow(**r) for r in rows], total=len(rows), format_detected=fmt)
 
 
@@ -70,6 +117,8 @@ async def ingest_campaign(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
+    _ensure_campaign_access(current_user)
+
     if not payload.campaign_name.strip():
         raise HTTPException(status_code=400, detail="campaign_name is required")
 
@@ -212,7 +261,7 @@ async def get_campaigns(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    del current_user
+    _ensure_campaign_access(current_user)
     result = await db.execute(
         select(Campaign).order_by(Campaign.created_at.desc()).offset(skip).limit(limit)
     )
@@ -224,7 +273,7 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    del current_user
+    _ensure_campaign_access(current_user)
     result = await db.execute(select(Project).order_by(Project.name.asc()))
     projects = []
     for project in result.scalars().all():
@@ -323,7 +372,7 @@ async def get_campaign_analytics(
     current_user: Agent = Depends(get_current_user),
 ):
     """Get full analytics data for the campaign dashboard."""
-    del current_user
+    _ensure_campaign_access(current_user)
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -342,7 +391,7 @@ async def get_campaign_leads_detail(
     current_user: Agent = Depends(get_current_user),
 ):
     """Get detailed lead list for campaign dashboard with filters."""
-    del current_user
+    _ensure_campaign_access(current_user)
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -360,7 +409,7 @@ async def get_agent_assignments(
     current_user: Agent = Depends(get_current_user),
 ):
     """Get auto-computed agent assignments for campaign leads."""
-    del current_user
+    _ensure_campaign_access(current_user)
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -392,6 +441,96 @@ async def execute_agent_assignment(
     return result
 
 
+@router.post("/{campaign_id}/auto-assign")
+async def auto_assign_campaign_leads(
+    campaign_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Auto-assign all unassigned leads in a campaign to available agents."""
+    if current_user.role not in ["admin", "manager"]:
+        raise HTTPException(status_code=403, detail="Only admin/manager can auto-assign leads")
+
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    from sqlalchemy import func
+    from app.models.lead import Lead
+    from app.services.assignment_service import get_available_agents
+
+    # Get all unassigned leads in this campaign
+    result = await db.execute(
+        select(Lead).where(
+            Lead.campaign_id == campaign_id,
+            or_(
+                Lead.assigned_to.is_(None),
+                Lead.assigned_to == ""
+            )
+        )
+    )
+    unassigned_leads = result.scalars().all()
+
+    if not unassigned_leads:
+        return {"status": "ok", "assigned": 0, "message": "No unassigned leads found"}
+
+    agents = await get_available_agents(db)
+    if not agents:
+        raise HTTPException(status_code=400, detail="No available agents to assign leads to")
+
+    # Seed load-balancing counts from live CRM leads per agent
+    active_counts: dict[str, int] = {}
+    for agent in agents:
+        count_result = await db.execute(
+            select(func.count(Lead.id)).where(
+                Lead.assigned_to == agent.id,
+                Lead.stage.notin_(["won", "lost", "nurture"]),
+            )
+        )
+        active_counts[agent.id] = count_result.scalar() or 0
+
+    assigned_count = 0
+    by_tier = {}
+    assignments_by_agent = {}
+
+    for lead in unassigned_leads:
+        # Load balance across agents
+        assignee = min(agents, key=lambda a: active_counts.get(a.id, 0))
+        lead.assigned_to = assignee.id
+        lead.updated_at = datetime.utcnow()
+        active_counts[assignee.id] = active_counts.get(assignee.id, 0) + 1
+        assigned_count += 1
+        tier = lead.lead_score or "cold"
+        by_tier[tier] = by_tier.get(tier, 0) + 1
+        assignments_by_agent[assignee.id] = assignments_by_agent.get(assignee.id, 0) + 1
+
+    await db.commit()
+
+    # Send notifications
+    for agent_id, count in assignments_by_agent.items():
+        agent = await db.get(Agent, agent_id)
+        if agent:
+            from app.services.lead_service import create_notification
+            await create_notification(
+                db,
+                agent.id,
+                title=f"{count} leads auto-assigned — {campaign.name}",
+                body=f"{count} lead(s) auto-assigned to you in campaign {campaign.name}.",
+                notif_type="new_lead",
+                link="/campaigns",
+            )
+
+    await db.commit()
+
+    return {
+        "status": "ok",
+        "assigned": assigned_count,
+        "by_tier": by_tier,
+        "campaign_id": campaign_id,
+        "campaign_name": campaign.name,
+    }
+
+
 @router.post("/{campaign_id}/analyze-ai")
 async def trigger_ai_analysis(
     campaign_id: str,
@@ -399,6 +538,7 @@ async def trigger_ai_analysis(
     current_user: Agent = Depends(get_current_user),
 ):
     """Trigger AI analysis on all connected calls in the campaign."""
+    _ensure_campaign_access(current_user)
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -414,7 +554,7 @@ async def get_campaign_detail(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    del current_user
+    _ensure_campaign_access(current_user)
     result = await db.execute(
         select(Campaign)
         .options(selectinload(Campaign.project))
@@ -448,11 +588,13 @@ async def delete_campaign(
 
     campaign_name = campaign.name
 
+    # Delete all leads associated with this campaign
     lead_result = await db.execute(select(Lead).where(Lead.campaign_id == campaign_id))
     linked_leads = lead_result.scalars().all()
     for lead in linked_leads:
-        lead.campaign_id = None
+        await db.delete(lead)
 
+    # Delete campaign activities
     activity_result = await db.execute(
         select(Activity)
         .where(Activity.campaign_id == campaign_id)
@@ -469,6 +611,6 @@ async def delete_campaign(
         "status": "ok",
         "campaign_id": campaign_id,
         "campaign_name": campaign_name,
-        "leads_detached": len(linked_leads),
+        "leads_deleted": len(linked_leads),
         "activities_deleted": len(campaign_activities),
     }

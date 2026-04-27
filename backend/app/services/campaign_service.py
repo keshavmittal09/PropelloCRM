@@ -66,6 +66,13 @@ def _safe_int(v: Any, default: int = 0) -> int:
         return default
 
 
+def _normalize_campaign_row(source: dict[str, Any]) -> dict[str, Any]:
+    row = {field: _safe_str(source.get(field, "")) for field in EXPECTED_FIELDS}
+    row["attempt_number"] = _safe_int(source.get("attempt_number"), 1)
+    row["num_of_retries"] = _safe_int(source.get("num_of_retries"), 0)
+    return row
+
+
 def parse_campaign_file(file_content: bytes, filename: str) -> tuple[list[dict], str]:
     """Parse CSV, JSON, or XLSX campaign files into normalised row dicts."""
     ext = (filename.rsplit(".", 1)[-1].lower() if "." in filename else "")
@@ -76,7 +83,7 @@ def parse_campaign_file(file_content: bytes, filename: str) -> tuple[list[dict],
         reader = csv.DictReader(io.StringIO(text))
         for row in reader:
             lowered = {(_safe_str(k).lower()): v for k, v in (row or {}).items()}
-            rows.append({field: _safe_str(lowered.get(field, "")) for field in EXPECTED_FIELDS})
+            rows.append(_normalize_campaign_row(lowered))
         return rows, "csv"
 
     if ext == "json":
@@ -86,7 +93,7 @@ def parse_campaign_file(file_content: bytes, filename: str) -> tuple[list[dict],
         for item in payload:
             if not isinstance(item, dict):
                 continue
-            rows.append({field: _safe_str(item.get(field, "")) for field in EXPECTED_FIELDS})
+            rows.append(_normalize_campaign_row(item))
         return rows, "json"
 
     if ext in ("xlsx", "xls"):
@@ -147,7 +154,7 @@ def parse_campaign_file(file_content: bytes, filename: str) -> tuple[list[dict],
 
             # Only add non-empty rows
             if row_dict.get("name") or row_dict.get("phone_number"):
-                rows.append({field: row_dict.get(field, "") for field in EXPECTED_FIELDS})
+                rows.append(_normalize_campaign_row(row_dict))
 
         wb.close()
         return rows, "xlsx"

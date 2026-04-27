@@ -140,6 +140,31 @@ async def create_auto_task(
     )
     db.add(task)
     await db.flush()
+
+    if task.assigned_to:
+        await create_notification(
+            db,
+            task.assigned_to,
+            title="New task assigned",
+            body=task.title,
+            notif_type="task_due",
+            link="/tasks",
+        )
+        try:
+            from app.services.notification_dispatcher import notify_task_assignment_multichannel
+
+            await notify_task_assignment_multichannel(
+                db,
+                task,
+                actor_name="System",
+                actor_id=None,
+                event_type="task_created",
+                source="auto",
+                changed_fields=["assigned_to", "due_at", "priority", "title"],
+            )
+        except Exception:
+            pass
+
     return task
 
 

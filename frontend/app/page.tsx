@@ -1,11 +1,14 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/useAuthStore'
-import { useAnalyticsSummary, useTodayTasks, useNotifications, useCompleteTask, useSourceStats } from '@/hooks/useQueries'
+import { useAnalyticsSummary, useTodayTasks, useNotifications, useSourceStats } from '@/hooks/useQueries'
 import { formatCurrency, formatDateTime, timeAgo } from '@/lib/utils'
 import Sidebar from '@/components/shared/Sidebar'
 import LeadSourceChart from '@/components/shared/LeadSourceChart'
-import { notificationsApi } from '@/lib/api'
+import { TaskCompletionModal } from '@/components/leads/TaskCompletionModal'
+import { authApi, notificationsApi } from '@/lib/api'
+import type { Agent, Task } from '@/lib/types'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 
@@ -26,9 +29,16 @@ export default function Dashboard() {
   const { data: summary } = useAnalyticsSummary()
   const { data: tasks } = useTodayTasks()
   const { data: notifications } = useNotifications()
-  const { mutateAsync: complete } = useCompleteTask()
   const { data: sourceStats } = useSourceStats()
   const dashboardTasks = (tasks ?? []).slice(0, 12)
+  const [showBroadcast, setShowBroadcast] = useState(false)
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [completingTask, setCompletingTask] = useState<Task | null>(null)
+
+  useEffect(() => {
+    if (agent?.role !== 'admin') return
+    authApi.listAgents().then(setAgents).catch(() => setAgents([]))
+  }, [agent?.role])
 
   const markAllRead = async () => {
     await notificationsApi.readAll()
@@ -80,7 +90,7 @@ export default function Dashboard() {
                 <div className="space-y-2 max-h-[34rem] overflow-y-auto pr-1">
                   {dashboardTasks.map(t => (
                   <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${t.status === 'overdue' ? 'border-red-200 bg-red-50/50' : 'border-[#eadfce] bg-[#fffdf9] hover:border-[#dcc9b3]'}`}>
-                    <button onClick={() => complete(t.id).then(() => toast.success('Task done!'))}
+                    <button onClick={() => setCompletingTask(t)}
                       className="w-5 h-5 rounded border-2 border-[#c6b9aa] hover:border-emerald-500 flex-shrink-0 mt-0.5 transition-colors" />
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm font-medium ${t.status === 'overdue' ? 'text-red-700' : 'text-[#2d261f]'}`}>{t.title}</p>
@@ -148,8 +158,180 @@ export default function Dashboard() {
           <button onClick={() => router.push('/analytics')} className="px-6 py-3 bg-[#fffaf5] text-[#2d261f] border border-[#e7d5c0] rounded-full text-sm font-semibold hover:border-[#d7bea4] transition-all shadow-sm">
             Analytics
           </button>
+          {agent?.role === 'admin' && (
+            <button onClick={() => setShowBroadcast(true)} className="px-6 py-3 bg-[#fff4ea] text-[#8f4d2a] border border-[#efcfb3] rounded-full text-sm font-semibold hover:border-[#e2b78f] transition-all shadow-sm">
+              Send agent notification
+            </button>
+          )}
         </div>
+
+        {showBroadcast && agent?.role === 'admin' && (
+          <AdminBroadcastModal
+            agents={agents}
+            onClose={() => setShowBroadcast(false)}
+            onDone={() => {
+              setShowBroadcast(false)
+              qc.invalidateQueries({ queryKey: ['notifications'] })
+            }}
+          />
+        )}
+
+        {/* Task Completion Modal */}
+        {completingTask && (
+          <TaskCompletionModal
+            task={completingTask}
+            lead={null}
+            onClose={() => setCompletingTask(null)}
+            onComplete={() => {
+              setCompletingTask(null)
+              qc.invalidateQueries({ queryKey: ['tasks'] })
+            }}
+          />
+        )}
       </main>
+    </div>
+  )
+}
+
+
+function AdminBroadcastModal({
+  agents,
+  onClose,
+  onDone,
+}: {
+  agents: Agent[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const eligibleAgents = agents.filter((a) => a.role !== 'admin')
+  const [allAgents, setAllAgents] = useState(true)
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
+  const [subject, setSubject] = useState('')
+  const [message, setMessage] = useState('')
+  const [channelInApp, setChannelInApp] = useState(true)
+  const [channelWhatsApp, setChannelWhatsApp] = useState(true)
+  const [channelEmail, setChannelEmail] = useState(true)
+  const [sending, setSending] = useState(false)
+
+  const toggleAgent = (id: string) => {
+    setSelectedAgentIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+  }
+
+  const submit = async () => {
+    const channels = [
+      ...(channelInApp ? ['in_app'] : []),
+      ...(channelWhatsApp ? ['whatsapp'] : []),
+      ...(channelEmail ? ['email'] : []),
+    ] as Array<'in_app' | 'whatsapp' | 'email'>
+
+    if (!channels.length) {
+      toast.error('Select at least one channel')
+      return
+    }
+    if (!message.trim()) {
+      toast.error('Message is required')
+      return
+    }
+    if (!allAgents && selectedAgentIds.length === 0) {
+      toast.error('Select at least one agent')
+      return
+    }
+
+    setSending(true)
+    try {
+      await notificationsApi.broadcast({
+        channels,
+        message: message.trim(),
+        subject: subject.trim() || null,
+        target_agent_ids: allAgents ? [] : selectedAgentIds,
+        all_agents: allAgents,
+      })
+      toast.success('Notification sent to agents')
+      onDone()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to send agent notification')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/45 flex items-center justify-center p-4">
+      <div className="bg-white border border-[#eadfce] rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-auto shadow-xl">
+        <h3 className="text-xl font-semibold text-[#2a231d]">Admin Agent Broadcast</h3>
+        <p className="text-sm text-[#7b7166] mt-1">Send a custom in-app/WhatsApp/email message to all or selected agents.</p>
+
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
+              <input type="radio" checked={allAgents} onChange={() => setAllAgents(true)} />
+              All agents
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
+              <input type="radio" checked={!allAgents} onChange={() => setAllAgents(false)} />
+              Selected agents
+            </label>
+          </div>
+
+          {!allAgents && (
+            <div className="border border-[#eadfce] rounded-xl p-3 max-h-44 overflow-y-auto space-y-2">
+              {eligibleAgents.map((agent) => (
+                <label key={agent.id} className="flex items-center gap-2 text-sm text-[#4f453b]">
+                  <input
+                    type="checkbox"
+                    checked={selectedAgentIds.includes(agent.id)}
+                    onChange={() => toggleAgent(agent.id)}
+                  />
+                  {agent.name} ({agent.role})
+                </label>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-3">
+            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
+              <input type="checkbox" checked={channelInApp} onChange={(e) => setChannelInApp(e.target.checked)} />
+              In-app
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
+              <input type="checkbox" checked={channelWhatsApp} onChange={(e) => setChannelWhatsApp(e.target.checked)} />
+              WhatsApp
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
+              <input type="checkbox" checked={channelEmail} onChange={(e) => setChannelEmail(e.target.checked)} />
+              Email
+            </label>
+          </div>
+
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Subject (optional)"
+            className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm"
+          />
+
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={6}
+            placeholder="Write custom notification text..."
+            className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm"
+          />
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-full border border-[#e5d7c5] text-[#6e6357]">
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={sending}
+            className="flex-1 px-4 py-2 rounded-full bg-[#2f2317] text-white font-semibold disabled:opacity-50"
+          >
+            {sending ? 'Sending...' : 'Send notification'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

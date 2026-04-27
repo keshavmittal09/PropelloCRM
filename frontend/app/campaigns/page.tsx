@@ -1,14 +1,17 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import { campaignsApi } from '@/lib/api'
 import type { CampaignPreview, CampaignResult } from '@/lib/types'
+import { useAuthStore } from '@/store/useAuthStore'
+import { canAccessFeature } from '@/hooks/useRoleGuard'
 import toast from 'react-hot-toast'
 
 export default function CampaignsPage() {
   const router = useRouter()
+  const { agent } = useAuthStore()
   const [campaignName, setCampaignName] = useState('')
   const [agentName, setAgentName] = useState('Niharika')
   const [file, setFile] = useState<File | null>(null)
@@ -18,6 +21,12 @@ export default function CampaignsPage() {
   const [result, setResult] = useState<CampaignResult | null>(null)
 
   const canUpload = !!campaignName.trim() && !!file
+
+  useEffect(() => {
+    if (agent && !canAccessFeature(agent.role as any, 'campaign_management')) {
+      router.push('/unauthorized')
+    }
+  }, [agent, router])
 
   const sortedLeads = useMemo(() => {
     if (!result?.leads) return []
@@ -39,7 +48,28 @@ export default function CampaignsPage() {
       setPreview(data)
       setResult(null)
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? 'Failed to parse file')
+      const status = e?.response?.status
+      const data = e?.response?.data
+      const detail = typeof data?.detail === 'string' ? data.detail : null
+
+      let errorMessage: string
+      if (status === 401) {
+        errorMessage = 'Please log in again. Your session may have expired.'
+      } else if (status === 403) {
+        errorMessage = 'Access denied. Only admin or manager can upload campaigns.'
+      } else if (status === 422 && Array.isArray(data?.detail)) {
+        // FastAPI validation errors
+        const errors = data.detail.map((d: any) => d.msg || d.message || JSON.stringify(d)).join('; ')
+        errorMessage = `Validation error: ${errors}`
+      } else if (status === 422) {
+        errorMessage = typeof data?.detail === 'string' ? data.detail : 'Invalid form data. Please check your file and campaign name.'
+      } else {
+        const msg = typeof e?.message === 'string' ? e.message : 'Unknown error'
+        errorMessage = detail || `Failed to parse file: ${msg}`
+      }
+
+      toast.error(errorMessage)
+      console.error('Upload error:', e?.response?.data || e)
     } finally {
       setLoading(false)
     }
@@ -75,8 +105,8 @@ export default function CampaignsPage() {
   return (
     <div className="flex min-h-screen bg-[#f7f5f2]">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-8">
-        <h1 className="text-3xl font-semibold text-[#2a231d] tracking-tight mb-2">Campaign Ingestion</h1>
+      <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+        <h1 className="text-2xl sm:text-3xl font-semibold text-[#2a231d] tracking-tight mb-2">Campaign Ingestion</h1>
         <div className="flex flex-wrap items-center gap-3 mb-8">
           <p className="text-sm text-[#7f7266]">Upload Niharika campaign output and auto-classify leads.</p>
           <button
@@ -88,7 +118,7 @@ export default function CampaignsPage() {
         </div>
 
         {!preview && !result && (
-          <section className="max-w-3xl bg-white border border-[#eadfce] rounded-3xl p-6 shadow-sm space-y-4">
+          <section className="max-w-3xl bg-white border border-[#eadfce] rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
             <div>
               <label className="text-sm font-medium text-[#2a231d]">Campaign name</label>
               <input
@@ -109,7 +139,7 @@ export default function CampaignsPage() {
               />
             </div>
 
-            <label className="block border-2 border-dashed border-[#d8c4ad] rounded-2xl p-6 text-center bg-[#fffaf5] hover:bg-[#fff7ef] transition-colors cursor-pointer">
+            <label className="block border-2 border-dashed border-[#d8c4ad] rounded-2xl p-4 sm:p-6 text-center bg-[#fffaf5] hover:bg-[#fff7ef] transition-colors cursor-pointer">
               <input
                 type="file"
                 accept=",csv,.json,.xlsx,.xls"

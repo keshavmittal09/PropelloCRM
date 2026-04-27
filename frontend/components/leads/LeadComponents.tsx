@@ -259,20 +259,54 @@ export function PropertyMatchPanel({ leadId }: { leadId: string }) {
 
 
 // ─── TASK LIST ────────────────────────────────────────────────────────────────
-export function TaskList({ tasks }: { tasks: Task[] }) {
+export function TaskList({ tasks, onCompleteTask }: { tasks: Task[]; onCompleteTask?: (task: Task) => void }) {
   const { mutateAsync: complete } = useCompleteTask()
+
+  const handleComplete = (task: Task) => {
+    if (onCompleteTask) {
+      onCompleteTask(task)
+    } else {
+      complete(task.id)
+    }
+  }
 
   if (!tasks.length) return <p className="text-sm text-gray-400 py-4 text-center">No tasks</p>
 
   return (
     <div className="space-y-2 max-h-[62vh] overflow-y-auto pr-1">
       {tasks.map(t => (
-        <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border ${t.status === 'overdue' ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'}`}>
-          <button onClick={() => complete(t.id)}
-            className="w-5 h-5 rounded border-2 border-gray-300 hover:border-indigo-500 flex-shrink-0 mt-0.5 transition-colors" />
+        <div key={t.id} className={`flex items-start gap-3 p-3 rounded-xl border ${t.status === 'done' ? 'border-green-200 bg-green-50/30' : t.status === 'overdue' ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'}`}>
+          {t.status === 'done' ? (
+            <div className="w-5 h-5 rounded border-2 border-green-500 bg-green-500 flex-shrink-0 mt-0.5 flex items-center justify-center">
+              <span className="text-white text-xs">✓</span>
+            </div>
+          ) : (
+            <button onClick={() => handleComplete(t)}
+              className="w-5 h-5 rounded border-2 border-gray-300 hover:border-[#c86f43] hover:bg-[#fef8f4] flex-shrink-0 mt-0.5 transition-colors" />
+          )}
           <div className="flex-1 min-w-0">
-            <p className={`text-sm ${t.status === 'overdue' ? 'text-red-700 font-medium' : 'text-gray-800'}`}>{t.title}</p>
+            <p className={`text-sm ${t.status === 'done' ? 'text-green-700 line-through' : t.status === 'overdue' ? 'text-red-700 font-medium' : 'text-gray-800'}`}>{t.title}</p>
             {t.due_at && <p className="text-xs text-gray-400 mt-0.5">{formatDateTime(t.due_at)}</p>}
+            {t.completion_remark && (
+              <p className="text-xs text-gray-500 mt-1 italic border-l-2 border-green-300 pl-2">{t.completion_remark.slice(0, 120)}{t.completion_remark.length > 120 ? '...' : ''}</p>
+            )}
+            {t.completion_tags && t.completion_tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {t.completion_tags.map(tag => (
+                  <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-md">{tag}</span>
+                ))}
+              </div>
+            )}
+            {typeof t.remark_quality_score === 'number' && (
+              <div className="mt-1.5 space-y-1">
+                <p className="text-[11px] text-[#5f5348]">
+                  Remark Quality: <span className="font-semibold">{t.remark_quality_score.toFixed(1)}/10</span>
+                </p>
+                {t.remark_quality_feedback ? (
+                  <p className="text-[11px] text-[#7f7266]">{t.remark_quality_feedback}</p>
+                ) : null}
+              </div>
+            )}
           </div>
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${t.priority === 'high' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
             {t.priority}
@@ -282,3 +316,4 @@ export function TaskList({ tasks }: { tasks: Task[] }) {
     </div>
   )
 }
+

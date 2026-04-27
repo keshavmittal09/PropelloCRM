@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import { useCampaignAnalytics, useCampaigns } from '@/hooks/useQueries'
+import { useAuthStore } from '@/store/useAuthStore'
+import { canAccessFeature } from '@/hooks/useRoleGuard'
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
@@ -17,6 +19,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 
 export default function CampaignDashboardHubPage() {
   const router = useRouter()
+  const { agent } = useAuthStore()
   const { data: campaigns = [], isLoading } = useCampaigns(0, 100)
   const [selectedCampaignId, setSelectedCampaignId] = useState('')
 
@@ -25,6 +28,12 @@ export default function CampaignDashboardHubPage() {
       setSelectedCampaignId(campaigns[0].id)
     }
   }, [campaigns, selectedCampaignId])
+
+  useEffect(() => {
+    if (agent && !canAccessFeature(agent.role as any, 'campaign_management')) {
+      router.push('/unauthorized')
+    }
+  }, [agent, router])
 
   const selectedCampaign = useMemo(
     () => campaigns.find((c) => c.id === selectedCampaignId) || campaigns[0],
@@ -37,10 +46,10 @@ export default function CampaignDashboardHubPage() {
   return (
     <div className="flex min-h-screen bg-[#f7f5f2]">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-8">
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+      <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-semibold text-[#2a231d] tracking-tight">Campaign Dashboard Hub</h1>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-[#2a231d] tracking-tight">Campaign Dashboard Hub</h1>
             <p className="text-sm text-[#7f7266] mt-1">
               Always-available dashboard access for all imported campaigns.
             </p>
@@ -73,7 +82,7 @@ export default function CampaignDashboardHubPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] gap-6">
-            <section className="bg-white border border-[#eadfce] rounded-3xl p-4 max-h-[78vh] overflow-auto">
+            <section className="bg-white border border-[#eadfce] rounded-3xl p-4 max-h-[60vh] sm:max-h-[78vh] overflow-auto">
               <h3 className="text-sm font-semibold text-[#2a231d] mb-3">Campaigns</h3>
               <div className="space-y-2">
                 {campaigns.map((c) => {
@@ -82,20 +91,20 @@ export default function CampaignDashboardHubPage() {
                     <button
                       key={c.id}
                       onClick={() => setSelectedCampaignId(c.id)}
-                      className={`w-full text-left rounded-2xl border px-4 py-3 transition-colors ${
+                      className={`w-full text-left rounded-2xl border px-3 py-2.5 transition-colors ${
                         isActive
                           ? 'bg-[#fdf5eb] border-[#d9bca4]'
                           : 'bg-white border-[#eadfce] hover:bg-[#fcf7f0]'
                       }`}
                     >
-                      <p className="font-semibold text-[#2a231d] truncate">{c.name}</p>
+                      <p className="font-semibold text-[#2a231d] truncate text-sm">{c.name}</p>
                       <p className="text-xs text-[#8c7f73] mt-1">
-                        {new Date(c.created_at).toLocaleString()} · Total: {c.total_calls}
+                        {new Date(c.created_at).toLocaleDateString()} · Total: {c.total_calls}
                       </p>
-                      <div className="flex gap-2 mt-2 text-[10px] font-semibold">
-                        <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700">Hot {c.hot_count}</span>
-                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Warm {c.warm_count}</span>
-                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Cold {c.cold_count}</span>
+                      <div className="flex gap-1.5 mt-2 text-[9px] sm:text-[10px] font-semibold flex-wrap">
+                        <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 whitespace-nowrap">Hot {c.hot_count}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">Warm {c.warm_count}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 whitespace-nowrap">Cold {c.cold_count}</span>
                       </div>
                     </button>
                   )
@@ -104,8 +113,8 @@ export default function CampaignDashboardHubPage() {
             </section>
 
             <section className="space-y-4">
-              <div className="bg-white border border-[#eadfce] rounded-3xl p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+              <div className="bg-white border border-[#eadfce] rounded-3xl p-4 sm:p-5">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
                   <div>
                     <h2 className="text-xl font-semibold text-[#2a231d] tracking-tight">
                       {selectedCampaign?.name || 'Campaign'}
@@ -129,14 +138,14 @@ export default function CampaignDashboardHubPage() {
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
                       <StatCard label="Total Dialed" value={analytics.total_dialed} />
                       <StatCard label="Connected" value={analytics.total_connected} sub={`${analytics.connection_rate}% rate`} />
                       <StatCard label="Eval Yes" value={analytics.eval_yes} />
                       <StatCard label="Avg Quality" value={`${analytics.avg_overall_quality}/10`} />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3 mt-3">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-3">
                       <StatCard label="Hot" value={analytics.hot_count} />
                       <StatCard label="Warm" value={analytics.warm_count} />
                       <StatCard label="Cold" value={analytics.cold_count} />

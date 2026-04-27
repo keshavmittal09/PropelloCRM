@@ -56,4 +56,52 @@ async def init_db():
 
             await conn.execute(text("ALTER TYPE lead_source ADD VALUE IF NOT EXISTS 'campaign'"))
             await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'campaign_call'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'task_completion_remark'"))
             await conn.execute(text("ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'call_agent'"))
+
+            # Feature 1-3: new columns on tasks and leads
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_remark TEXT"))
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_tags JSONB"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS dnd BOOLEAN DEFAULT FALSE"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_remark VARCHAR(200)"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS master_profile JSONB"))
+
+            # Features 4-8: Performance tracking, rating, assignment schema
+            # Priority enum values P1-P5
+            await conn.execute(text("ALTER TYPE lead_priority ADD VALUE IF NOT EXISTS 'P1'"))
+            await conn.execute(text("ALTER TYPE lead_priority ADD VALUE IF NOT EXISTS 'P2'"))
+            await conn.execute(text("ALTER TYPE lead_priority ADD VALUE IF NOT EXISTS 'P3'"))
+            await conn.execute(text("ALTER TYPE lead_priority ADD VALUE IF NOT EXISTS 'P4'"))
+            await conn.execute(text("ALTER TYPE lead_priority ADD VALUE IF NOT EXISTS 'P5'"))
+
+            # Agent performance & rating fields
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS star_rating INTEGER"))
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS performance_score NUMERIC(5,2) DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS completion_rate NUMERIC(5,2) DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS conversion_rate NUMERIC(5,2) DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS avg_remark_quality NUMERIC(4,2) DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS rating_set_by VARCHAR"))
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS rating_set_at TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE agents ADD COLUMN IF NOT EXISTS last_score_computed_at TIMESTAMP"))
+
+            # Task remark quality fields
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remark_quality_score NUMERIC(4,2)"))
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remark_quality_feedback TEXT"))
+
+            # Create performance_snapshots table if not exists
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS performance_snapshots (
+                    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+                    agent_id VARCHAR NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                    snapshot_date TIMESTAMP DEFAULT NOW(),
+                    performance_score NUMERIC(5,2) NOT NULL DEFAULT 0,
+                    completion_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+                    conversion_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+                    avg_remark_quality NUMERIC(4,2) NOT NULL DEFAULT 0,
+                    tasks_completed INTEGER NOT NULL DEFAULT 0,
+                    leads_converted INTEGER NOT NULL DEFAULT 0
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_agent_id ON performance_snapshots (agent_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_snapshot_date ON performance_snapshots (snapshot_date)"))

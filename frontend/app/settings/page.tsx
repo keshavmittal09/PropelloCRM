@@ -1,15 +1,25 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import { useAuthStore } from '@/store/useAuthStore'
+import { canAccessFeature } from '@/hooks/useRoleGuard'
 import { authApi } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { Agent, Role } from '@/lib/types'
 
 export default function SettingsPage() {
   const { agent } = useAuthStore()
+  const router = useRouter()
   const canViewTeam = ['admin', 'manager'].includes(agent?.role || '')
   const canManageTeam = agent?.role === 'admin'
+
+  // Role guard - only admin/manager can access settings
+  useEffect(() => {
+    if (agent && !canAccessFeature(agent.role as Role, 'settings_full')) {
+      router.push('/unauthorized')
+    }
+  }, [agent, router])
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)

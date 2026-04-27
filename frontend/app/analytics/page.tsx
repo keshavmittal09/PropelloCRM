@@ -1,4 +1,8 @@
 'use client'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuthStore } from '@/store/useAuthStore'
+import { canAccessFeature } from '@/hooks/useRoleGuard'
 import { useAnalyticsSummary, useFunnel, useSourceStats, useAgentStats } from '@/hooks/useQueries'
 import Sidebar from '@/components/shared/Sidebar'
 import { formatCurrency, stageConfig, sourceLabels } from '@/lib/utils'
@@ -30,6 +34,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function AnalyticsPage() {
+  const { agent } = useAuthStore()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (agent && !canAccessFeature(agent.role as any, 'analytics')) {
+      router.push('/unauthorized')
+    }
+  }, [agent, router])
+
   const { data: summary } = useAnalyticsSummary()
   const { data: funnel } = useFunnel()
   const { data: sources } = useSourceStats()

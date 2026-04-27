@@ -4,6 +4,7 @@ from app.models.contact import Contact
 from app.models.lead import Lead
 from app.models.models import Property, Activity, Task, SiteVisit, Notification
 from app.models.followup import FollowUp
+from app.models.notification_dispatch import NotificationDispatchLog, NotificationLog
 
 __all__ = [
 	"Agent",
@@ -17,4 +18,6 @@ __all__ = [
 	"SiteVisit",
 	"Notification",
 	"FollowUp",
+	"NotificationDispatchLog",
+	"NotificationLog",
 ]

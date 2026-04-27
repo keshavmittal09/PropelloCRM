@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, DateTime, Enum as SAEnum, Text, Numeric, Integer, ForeignKey, Date, JSON
+from sqlalchemy import String, DateTime, Enum as SAEnum, Text, Numeric, Integer, ForeignKey, Date, JSON, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -37,8 +37,8 @@ class Lead(Base):
     lost_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     days_in_stage: Mapped[int] = mapped_column(Integer, default=0)
     priority: Mapped[str] = mapped_column(
-        SAEnum("high", "normal", "low", name="lead_priority"),
-        default="normal"
+        SAEnum("P1", "P2", "P3", "P4", "P5", "high", "normal", "low", name="lead_priority"),
+        default="P3"
     )
     expected_close_date: Mapped[datetime | None] = mapped_column(Date, nullable=True)
     last_contacted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -46,6 +46,10 @@ class Lead(Base):
     call_count: Mapped[int] = mapped_column(Integer, default=0)
     ai_analysis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ai_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dnd: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    last_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    master_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     stage_changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

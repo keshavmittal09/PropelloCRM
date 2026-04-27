@@ -141,3 +141,44 @@ async def send_email(
     )
 
     return {"sent": sent, "subject": subject, "error": error}
+
+
+async def send_internal_email(
+    to_email: str,
+    subject: str,
+    body_html: str,
+    body_text: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
+    """Send an internal operational email (agent/admin notification) via SendGrid."""
+    if not to_email:
+        return False, "No recipient email"
+
+    if not settings.SENDGRID_API_KEY:
+        logger.info("[Internal Email Mock] To: %s | Subject: %s", to_email, subject)
+        return False, "SendGrid not configured"
+
+    try:
+        content = [{"type": "text/html", "value": body_html}]
+        if body_text:
+            content.insert(0, {"type": "text/plain", "value": body_text})
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers={
+                    "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "personalizations": [{"to": [{"email": to_email}]}],
+                    "from": {"email": "29925keshav@gmail.com", "name": "Propello CRM"},
+                    "subject": subject,
+                    "content": content,
+                },
+            )
+
+        if response.status_code in (200, 201, 202):
+            return True, None
+        return False, f"SendGrid {response.status_code}: {response.text[:200]}"
+    except Exception as e:
+        return False, str(e)

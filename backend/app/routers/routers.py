@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import case, or_, select
 from sqlalchemy.orm import selectinload
@@ -14,7 +15,9 @@ from app.schemas.schemas import (
     PropertyCreate, PropertyUpdate, PropertyResponse,
     TaskCreate, TaskUpdate, TaskResponse,
     SiteVisitCreate, SiteVisitUpdate, SiteVisitResponse,
-    NotificationResponse, MemoryResponse, LeadResponse
+    NotificationResponse, MemoryResponse, LeadResponse, AdminBroadcastRequest,
+    TaskCompleteWithRemarkRequest, MasterProfileUpdate, MasterProfileResponse,
+    DNCFlagRequest,
 )
 from app.services.services import (
     get_summary, get_funnel, get_source_stats, get_agent_stats,
@@ -22,11 +25,18 @@ from app.services.services import (
 )
 from app.services.memory_service import build_memory_brief
 from app.services.lead_service import create_notification
+from app.services.notification_dispatcher import notify_task_assignment_multichannel
+from app.services.notification_dispatcher import send_admin_broadcast
 import io
 
 # ─── CONTACTS ────────────────────────────────────────────────────────────────
 
 contacts_router = APIRouter()
+
+
+def _require_non_call_agent(current_user: Agent) -> None:
+    if current_user.role == "call_agent":
+        raise HTTPException(status_code=403, detail="call_agent cannot access this endpoint")
 
 @contacts_router.get("/lookup/{phone}", response_model=MemoryResponse)
 async def lookup_by_phone(phone: str, db: AsyncSession = Depends(get_db)):
@@ -60,6 +70,8 @@ async def list_contacts(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
+    _require_non_call_agent(current_user)
+
     query = select(Contact).order_by(Contact.created_at.desc())
     if search:
         query = query.where(or_(Contact.name.ilike(f"%{search}%"), Contact.phone.ilike(f"%{search}%")))
@@ -69,6 +81,8 @@ async def list_contacts(
 
 @contacts_router.post("", response_model=ContactResponse)
 async def create_contact(data: ContactCreate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     existing = await db.execute(select(Contact).where(Contact.phone == data.phone))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Contact with this phone already exists")
@@ -80,6 +94,8 @@ async def create_contact(data: ContactCreate, db: AsyncSession = Depends(get_db)
 
 @contacts_router.get("/{contact_id}", response_model=ContactResponse)
 async def get_contact(contact_id: str, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     contact = await db.get(Contact, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -87,6 +103,8 @@ async def get_contact(contact_id: str, db: AsyncSession = Depends(get_db), curre
 
 @contacts_router.patch("/{contact_id}", response_model=ContactResponse)
 async def update_contact(contact_id: str, data: ContactUpdate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     contact = await db.get(Contact, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -113,6 +131,8 @@ async def list_properties(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
+    _require_non_call_agent(current_user)
+
     query = select(Property).order_by(Property.created_at.desc())
     if status:
         query = query.where(Property.status == status)
@@ -129,6 +149,8 @@ async def list_properties(
 
 @properties_router.post("", response_model=PropertyResponse)
 async def create_property(data: PropertyCreate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     import json
     prop = Property(
         **data.model_dump(exclude={"amenities", "media_urls"}),
@@ -143,6 +165,8 @@ async def create_property(data: PropertyCreate, db: AsyncSession = Depends(get_d
 
 @properties_router.get("/{property_id}", response_model=PropertyResponse)
 async def get_property(property_id: str, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     prop = await db.get(Property, property_id)
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
@@ -150,6 +174,8 @@ async def get_property(property_id: str, db: AsyncSession = Depends(get_db), cur
 
 @properties_router.patch("/{property_id}", response_model=PropertyResponse)
 async def update_property(property_id: str, data: PropertyUpdate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     prop = await db.get(Property, property_id)
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
@@ -201,6 +227,9 @@ async def list_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
+    if current_user.role == "call_agent":
+        raise HTTPException(status_code=403, detail="call_agent must use /api/me/tasks")
+
     now = datetime.utcnow()
     priority_order = case(
         (Task.priority == "high", 0),
@@ -213,7 +242,7 @@ async def list_tasks(
         .options(*_task_query_options())
         .order_by(priority_order.asc(), Task.due_at.asc(), Task.created_at.desc())
     )
-    if current_user.role != "admin":
+    if current_user.role in {"agent", "call_agent"}:
         query = query.where(Task.assigned_to == current_user.id)
     if status == "overdue":
         query = query.where(
@@ -249,6 +278,9 @@ async def list_tasks(
 
 @tasks_router.get("/today", response_model=list[TaskResponse])
 async def todays_tasks(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    if current_user.role == "call_agent":
+        raise HTTPException(status_code=403, detail="call_agent must use /api/me/tasks")
+
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=999999)
     priority_order = case(
@@ -265,7 +297,7 @@ async def todays_tasks(db: AsyncSession = Depends(get_db), current_user: Agent =
         .where(Task.due_at <= today_end)
         .order_by(priority_order.asc(), Task.due_at.asc())
     )
-    if current_user.role != "admin":
+    if current_user.role in {"agent", "call_agent"}:
         query = query.where(Task.assigned_to == current_user.id)
 
     result = await db.execute(query)
@@ -273,6 +305,9 @@ async def todays_tasks(db: AsyncSession = Depends(get_db), current_user: Agent =
 
 @tasks_router.get("/overdue", response_model=list[TaskResponse])
 async def overdue_tasks(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    if current_user.role == "call_agent":
+        raise HTTPException(status_code=403, detail="call_agent must use /api/me/tasks")
+
     now = datetime.utcnow()
     priority_order = case(
         (Task.priority == "high", 0),
@@ -290,7 +325,7 @@ async def overdue_tasks(db: AsyncSession = Depends(get_db), current_user: Agent 
         )
         .order_by(priority_order.asc(), Task.due_at.asc())
     )
-    if current_user.role != "admin":
+    if current_user.role in {"agent", "call_agent"}:
         query = query.where(Task.assigned_to == current_user.id)
 
     result = await db.execute(query)
@@ -309,9 +344,11 @@ async def overdue_tasks(db: AsyncSession = Depends(get_db), current_user: Agent 
 async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
     payload = data.model_dump()
     payload["due_at"] = _normalize_naive_datetime(payload.get("due_at"))
-    if current_user.role != "admin":
+    if current_user.role == "call_agent":
+        raise HTTPException(status_code=403, detail="call_agent cannot create tasks")
+    if current_user.role == "agent":
         if payload.get("assigned_to") and payload.get("assigned_to") != current_user.id:
-            raise HTTPException(status_code=403, detail="Only admin can assign tasks to other users")
+            raise HTTPException(status_code=403, detail="Only admin/manager can assign tasks to other users")
         payload["assigned_to"] = current_user.id
 
     task = Task(**payload, created_by=current_user.id)
@@ -327,6 +364,18 @@ async def create_task(data: TaskCreate, db: AsyncSession = Depends(get_db), curr
             notif_type="task_due",
             link=f"/tasks",
         )
+        try:
+            await notify_task_assignment_multichannel(
+                db,
+                task,
+                actor_name=current_user.name,
+                actor_id=current_user.id,
+                event_type="task_created",
+                source="manual",
+                changed_fields=list(payload.keys()),
+            )
+        except Exception:
+            pass
 
     await db.commit()
     response_task = await _load_task_for_response(db, task.id)
@@ -337,7 +386,7 @@ async def complete_task(task_id: str, db: AsyncSession = Depends(get_db), curren
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if current_user.role != "admin" and task.assigned_to != current_user.id:
+    if current_user.role in {"agent", "call_agent"} and task.assigned_to != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to complete this task")
 
     task.status = "done"
@@ -358,10 +407,147 @@ async def complete_task(task_id: str, db: AsyncSession = Depends(get_db), curren
             notif_type="reminder",
             link="/tasks",
         )
+        try:
+            await notify_task_assignment_multichannel(
+                db,
+                task,
+                actor_name=current_user.name,
+                actor_id=current_user.id,
+                event_type="task_completed",
+                source="manual",
+                changed_fields=["status", "completed_at"],
+            )
+        except Exception:
+            pass
 
     await db.commit()
     response_task = await _load_task_for_response(db, task.id)
     return TaskResponse.model_validate(response_task)
+
+
+@tasks_router.patch("/{task_id}/complete-with-remark", response_model=TaskResponse)
+async def complete_task_with_remark(
+    task_id: str,
+    data: TaskCompleteWithRemarkRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Feature 1+2: Complete a task with mandatory remark gate + AI quality scoring."""
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if current_user.role in {"agent", "call_agent"} and task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to complete this task")
+
+    # Mark task done
+    task.status = "done"
+    task.completed_at = datetime.utcnow()
+    task.completion_remark = data.remark_text
+    task.completion_tags = data.preset_tags
+
+    # Feature 5: AI remark quality scoring
+    from app.services.remark_quality_service import evaluate_and_update_task
+    await evaluate_and_update_task(db, task, data.remark_text)
+
+    # Update lead
+    lead = await db.get(Lead, task.lead_id)
+    if lead:
+        lead.last_remark = data.remark_text[:120]
+        lead.last_interaction_at = datetime.utcnow()
+        lead.last_contacted_at = datetime.utcnow()
+
+        # Log remark as activity
+        from app.services.lead_service import log_activity
+        tag_str = ", ".join(data.preset_tags) if data.preset_tags else ""
+        description = data.remark_text
+        if tag_str:
+            description = f"[Tags: {tag_str}] {description}"
+        activity = Activity(
+            lead_id=task.lead_id,
+            contact_id=lead.contact_id,
+            type="task_completion_remark",
+            title=f"Task completed: {task.title}",
+            description=description,
+            performed_by=current_user.id,
+            meta={
+                "task_id": task.id,
+                "preset_tags": data.preset_tags,
+                "remark_text": data.remark_text,
+            },
+        )
+        db.add(activity)
+
+    if task.assigned_to:
+        await create_notification(
+            db,
+            task.assigned_to,
+            title="Task completed with remark",
+            body=f"{current_user.name} completed: {task.title}",
+            notif_type="reminder",
+            link="/tasks",
+        )
+
+    # Keep performance metrics fresh on every task completion event.
+    if task.assigned_to:
+        try:
+            from app.services.performance_service import update_agent_performance_live
+            await update_agent_performance_live(db, task.assigned_to, days=30)
+        except Exception:
+            pass
+
+    await db.commit()
+    response_task = await _load_task_for_response(db, task.id)
+    return TaskResponse.model_validate(response_task)
+
+
+@tasks_router.post("/flag-dnc")
+async def flag_dnc(
+    data: DNCFlagRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Feature 2: Flag lead as DNC from task completion."""
+    lead = await db.get(Lead, data.lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    if current_user.role in {"agent", "call_agent"} and lead.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to flag this lead")
+        
+    lead.dnd = data.mark_dnd
+    if data.mark_dnd:
+        lead.priority = "P5"
+        lead.stage = "lost"
+        lead.lost_reason = "Do Not Call / Not Interested"
+        
+        # Also flag in CampaignLead if it exists
+        from app.models.campaign_dashboard import CampaignLead
+        from sqlalchemy import select
+        campaign_lead = await db.scalar(select(CampaignLead).where(CampaignLead.lead_id == data.lead_id))
+        if campaign_lead:
+            campaign_lead.dnd_flag = True
+            campaign_lead.priority_tier = "P5"
+            campaign_lead.action_taken = "Marked DNC"
+            
+        # Log activity
+        from app.services.lead_service import log_activity
+        activity = Activity(
+            lead_id=lead.id,
+            contact_id=lead.contact_id,
+            type="system",
+            title="Lead Marked as DNC",
+            description=f"Agent {current_user.name} marked lead as Do Not Call.",
+            performed_by=current_user.id,
+        )
+        db.add(activity)
+
+    await db.commit()
+    return {"status": "ok", "lead_id": data.lead_id, "dnd": data.mark_dnd}
+
+
+
+
+
 
 @tasks_router.patch("/{task_id}", response_model=TaskResponse)
 async def update_task(task_id: str, data: TaskUpdate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
@@ -369,18 +555,36 @@ async def update_task(task_id: str, data: TaskUpdate, db: AsyncSession = Depends
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    is_admin_scope = current_user.role == "admin"
-    if not is_admin_scope and task.assigned_to != current_user.id:
+    if current_user.role == "call_agent":
+        raise HTTPException(status_code=403, detail="call_agent cannot edit tasks")
+
+    is_manager_scope = current_user.role in {"admin", "manager"}
+    if not is_manager_scope and task.assigned_to != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to edit this task")
+
+    previous_values = {
+        "assigned_to": task.assigned_to,
+        "due_at": task.due_at,
+        "priority": task.priority,
+        "status": task.status,
+        "title": task.title,
+        "description": task.description,
+    }
 
     update_payload = data.model_dump(exclude_unset=True)
     if "due_at" in update_payload:
         update_payload["due_at"] = _normalize_naive_datetime(update_payload.get("due_at"))
-    if not is_admin_scope and "assigned_to" in update_payload and update_payload.get("assigned_to") != current_user.id:
-        raise HTTPException(status_code=403, detail="Only admin can assign tasks to other users")
+    if not is_manager_scope and "assigned_to" in update_payload and update_payload.get("assigned_to") != current_user.id:
+        raise HTTPException(status_code=403, detail="Only admin/manager can assign tasks to other users")
 
     for k, v in update_payload.items():
         setattr(task, k, v)
+
+    changed_fields = [
+        field
+        for field, old_value in previous_values.items()
+        if old_value != getattr(task, field)
+    ]
 
     if task.assigned_to:
         await create_notification(
@@ -391,6 +595,20 @@ async def update_task(task_id: str, data: TaskUpdate, db: AsyncSession = Depends
             notif_type="reminder",
             link="/tasks",
         )
+        meaningful_fields = {"assigned_to", "due_at", "priority", "status", "title", "description"}
+        if any(field in meaningful_fields for field in changed_fields):
+            try:
+                await notify_task_assignment_multichannel(
+                    db,
+                    task,
+                    actor_name=current_user.name,
+                    actor_id=current_user.id,
+                    event_type="task_updated",
+                    source="manual",
+                    changed_fields=changed_fields,
+                )
+            except Exception:
+                pass
 
     await db.commit()
     response_task = await _load_task_for_response(db, task.id)
@@ -407,6 +625,8 @@ async def list_visits(
     db: AsyncSession = Depends(get_db), 
     current_user: Agent = Depends(get_current_user)
 ):
+    _require_non_call_agent(current_user)
+
     query = (
         select(SiteVisit)
         .options(
@@ -445,6 +665,8 @@ async def list_visits(
 
 @visits_router.post("", response_model=SiteVisitResponse)
 async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     visit = SiteVisit(**data.model_dump(exclude={"agent_id"}), agent_id=data.agent_id or current_user.id)
     db.add(visit)
 
@@ -482,6 +704,8 @@ async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_d
 
 @visits_router.patch("/{visit_id}", response_model=SiteVisitResponse)
 async def update_visit(visit_id: str, data: SiteVisitUpdate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    _require_non_call_agent(current_user)
+
     result = await db.execute(
         select(SiteVisit)
         .options(
@@ -538,14 +762,20 @@ analytics_router = APIRouter()
 
 @analytics_router.get("/summary")
 async def summary(days: int = 30, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Manager/Admin only")
     return await get_summary(db, days)
 
 @analytics_router.get("/funnel")
 async def funnel(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Manager/Admin only")
     return await get_funnel(db)
 
 @analytics_router.get("/by-source")
 async def by_source(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Manager/Admin only")
     return await get_source_stats(db)
 
 @analytics_router.get("/agent-performance")
@@ -578,3 +808,81 @@ async def read_all(db: AsyncSession = Depends(get_db), current_user: Agent = Dep
         n.is_read = True
     await db.commit()
     return {"status": "ok"}
+
+
+@notifications_router.post("/broadcast")
+async def broadcast_notification(
+    data: AdminBroadcastRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    channels = [channel.lower() for channel in data.channels if channel]
+    if not channels:
+        raise HTTPException(status_code=400, detail="At least one channel is required")
+
+    allowed_channels = {"in_app", "whatsapp", "email"}
+    if any(channel not in allowed_channels for channel in channels):
+        raise HTTPException(status_code=400, detail="Invalid channel. Use in_app, whatsapp, or email")
+
+    query = select(Agent).where(Agent.is_active == True, Agent.role.in_(["agent", "call_agent", "manager"]))
+
+    if data.target_agent_ids:
+        query = query.where(Agent.id.in_(data.target_agent_ids))
+    elif not data.all_agents:
+        raise HTTPException(status_code=400, detail="Provide target_agent_ids or set all_agents=true")
+
+    result = await db.execute(query)
+    recipients = result.scalars().all()
+    if not recipients:
+        raise HTTPException(status_code=404, detail="No recipients found")
+
+    dispatch = await send_admin_broadcast(
+        db,
+        sender=current_user,
+        recipients=recipients,
+        message=data.message,
+        subject=data.subject,
+        channels=channels,
+    )
+
+    await db.commit()
+    return {
+        "status": "sent",
+        "result": dispatch,
+    }
+
+
+class NotificationDispatchRequest(BaseModel):
+    agent_id: str
+    lead_count: int = Field(ge=1)
+    campaign_id: str
+    campaign_name: Optional[str] = None
+    top_lead_name: Optional[str] = None
+    top_lead_priority: Optional[str] = None
+
+
+@notifications_router.post("/dispatch")
+async def dispatch_assignment_notification(
+    data: NotificationDispatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin/Manager only")
+
+    from app.services.notification_dispatcher import notify_campaign_assignment_summary
+
+    result = await notify_campaign_assignment_summary(
+        db,
+        agent_id=data.agent_id,
+        lead_count=data.lead_count,
+        campaign_id=data.campaign_id,
+        campaign_name=data.campaign_name,
+        top_lead_name=data.top_lead_name,
+        top_lead_priority=data.top_lead_priority,
+    )
+    await db.commit()
+    return {"status": "ok", "result": result}
