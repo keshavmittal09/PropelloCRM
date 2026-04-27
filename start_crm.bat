@@ -13,7 +13,22 @@ for %%P in (3000 8000 8001) do (
 echo.
 
 echo [1/3] Starting CRM Backend Server (FastAPI)...
-start "Propello CRM Backend" cmd /k "cd /d backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+set "VENV_PY=%~dp0.venv\Scripts\python.exe"
+if exist "%VENV_PY%" (
+	"%VENV_PY%" -c "import uvicorn" >nul 2>&1
+)
+if exist "%VENV_PY%" if not errorlevel 1 (
+	start "Propello CRM Backend" cmd /k "cd /d backend && \"%VENV_PY%\" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+) else (
+	if exist "%VENV_PY%" (
+		echo [WARN] .venv exists but is missing backend runtime deps ^(uvicorn not importable^).
+		echo        Falling back to global uvicorn command.
+	) else (
+		echo [WARN] Python venv not found at .venv\Scripts\python.exe
+		echo        Falling back to global uvicorn command.
+	)
+	start "Propello CRM Backend" cmd /k "cd /d backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+)
 
 echo [2/3] Starting CRM Frontend Server (Next.js)...
 start "Propello CRM Frontend" cmd /k "cd /d frontend && npx next dev -p 3000"

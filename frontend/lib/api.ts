@@ -12,6 +12,15 @@ import type {
   CampaignDashboardLeadDetails,
   CampaignDashboardProgress,
   CampaignDashboardResults,
+  LeadNotifyPayload,
+  AdminBroadcastPayload,
+  TaskCompleteWithRemarkPayload,
+  DNCFlagPayload,
+  MasterProfile,
+  AssignmentTableResponse,
+  BulkAssignPayload,
+  LeaderboardEntry,
+  AgentPerformanceResponse,
 } from './types'
 
 const api = axios.create({
@@ -52,6 +61,20 @@ export const authApi = {
   updateAgentRole: (id: string, role: string) =>
     api.patch<Agent>(`/api/auth/agents/${id}/role`, { role }).then(r => r.data),
   deleteAgent: (id: string) => api.delete(`/api/auth/agents/${id}`).then(r => r.data),
+  // Agent rating & performance (Feature 5 & 6)
+  setAgentRating: (id: string, starRating: number) =>
+    api.post<Agent>(`/api/auth/agents/${id}/rating`, { star_rating: starRating }).then(r => r.data),
+  getLeaderboard: () => api.get<LeaderboardEntry[]>('/api/auth/agents/leaderboard').then(r => r.data),
+  getAgentPerformance: (id: string) =>
+    api.get<AgentPerformanceResponse>(`/api/auth/agents/${id}/performance`).then(r => r.data),
+}
+
+// ─── MY DATA (Scoped for call_agent) ────────────────────────────────────────
+export const meApi = {
+  getTasks: (status?: string) => api.get<Task[]>('/api/me/tasks', { params: { status } }).then(r => r.data),
+  getLeads: (params?: { stage?: string; search?: string; skip?: number; limit?: number }) =>
+    api.get<Lead[]>('/api/me/leads', { params }).then(r => r.data),
+  getPerformance: () => api.get<AgentPerformanceResponse>('/api/me/performance').then(r => r.data),
 }
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
@@ -74,7 +97,20 @@ export const leadsApi = {
     api.post<Activity>(`/api/leads/${id}/call-log`, data).then(r => r.data),
   sendWhatsApp: (id: string, template: string, custom_message?: string) =>
     api.post(`/api/leads/${id}/whatsapp`, { template, lead_id: id, custom_message }).then(r => r.data),
+  notify: (id: string, payload: LeadNotifyPayload) =>
+    api.post(`/api/leads/${id}/notify`, payload).then(r => r.data),
   propertyMatches: (id: string) => api.get<Property[]>(`/api/leads/${id}/property-matches`).then(r => r.data),
+  getMasterProfile: (id: string) => api.get<MasterProfile>(`/api/leads/${id}/master-profile`).then(r => r.data),
+  updateMasterProfile: (id: string, data: Partial<MasterProfile>) => api.patch(`/api/leads/${id}/master-profile`, data).then(r => r.data),
+  getCampaignAssignmentTable: (campaignId: string, params?: { page?: number; limit?: number; priority_tier?: string; assigned?: string; agent_name?: string; search?: string; sort_by?: string; sort_dir?: string }) =>
+    api.get(`/api/leads/campaign/${campaignId}/assignment-table`, { params }).then(r => r.data),
+  bulkAssignCampaignLeads: (campaignId: string, payload: BulkAssignPayload) =>
+    api.post<{ status: string; assigned: number; reassigned: number; agent_name: string; agent_id: string; campaign_id: string }>(
+      `/api/leads/campaign/${campaignId}/bulk-assign`,
+      payload,
+    ).then(r => r.data),
+  updateLeadPriority: (id: string, priority: string) =>
+    api.patch<Lead>(`/api/leads/${id}/priority`, { priority }).then(r => r.data),
 }
 
 // ─── CONTACTS ────────────────────────────────────────────────────────────────
@@ -101,6 +137,9 @@ export const tasksApi = {
   overdue: () => api.get<Task[]>('/api/tasks/overdue').then(r => r.data),
   create: (data: Record<string, unknown>) => api.post<Task>('/api/tasks', data).then(r => r.data),
   complete: (id: string) => api.patch<Task>(`/api/tasks/${id}/complete`).then(r => r.data),
+  completeWithRemark: (id: string, data: TaskCompleteWithRemarkPayload) =>
+    api.patch<Task>(`/api/tasks/${id}/complete-with-remark`, data).then(r => r.data),
+  flagDnc: (data: DNCFlagPayload) => api.post(`/api/tasks/flag-dnc`, data).then(r => r.data),
   update: (id: string, data: Record<string, unknown>) => api.patch<Task>(`/api/tasks/${id}`, data).then(r => r.data),
 }
 
@@ -117,24 +156,42 @@ export const analyticsApi = {
   funnel: () => api.get<FunnelStage[]>('/api/analytics/funnel').then(r => r.data),
   bySource: () => api.get<SourceStat[]>('/api/analytics/by-source').then(r => r.data),
   agentPerformance: () => api.get<AgentStat[]>('/api/analytics/agent-performance').then(r => r.data),
+  // Leaderboard is in authApi
+  agentLeaderboard: () => authApi.getLeaderboard(),
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 export const notificationsApi = {
   list: () => api.get<Notification[]>('/api/notifications').then(r => r.data),
   readAll: () => api.patch('/api/notifications/read-all').then(r => r.data),
+  broadcast: (payload: AdminBroadcastPayload) =>
+    api.post('/api/notifications/broadcast', payload).then(r => r.data),
 }
 
 // ─── CAMPAIGNS ─────────────────────────────────────────────────────────────
 export const campaignsApi = {
-  uploadCampaignPreview: (file: File, campaignName: string, agentName = 'Niharika') => {
+  uploadCampaignPreview: async (file: File, campaignName: string, agentName = 'Niharika') => {
     const form = new FormData()
     form.append('file', file)
     form.append('campaign_name', campaignName)
     form.append('agent_name', agentName)
-    return api.post<CampaignPreview>('/api/campaigns/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).then(r => r.data)
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('propello_token') : null
+
+    const response = await fetch(`${api.defaults.baseURL}/api/campaigns/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+      body: form,
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+      throw new Error(error.detail || 'Upload failed')
+    }
+
+    return response.json()
   },
   ingestCampaign: (payload: CampaignIngestPayload) =>
     api.post<CampaignResult>('/api/campaigns/ingest', payload).then(r => r.data),
@@ -157,6 +214,10 @@ export const campaignsApi = {
   executeAgentAssignment: (id: string, selectedAgentIds?: string[]) =>
     api.post<{ assigned: number; agents: number }>(`/api/campaigns/${id}/assign-agents`, {
       selected_agent_ids: selectedAgentIds || [],
+    }).then(r => r.data),
+  autoAssignCampaign: (id: string) =>
+    api.post<{ assigned: number; agents: number }>(`/api/campaigns/${id}/assign-agents`, {
+      selected_agent_ids: [],
     }).then(r => r.data),
   listProjects: () =>
     api.get<Project[]>('/api/campaigns/projects').then(r => r.data),
@@ -207,6 +268,12 @@ export const campaignDashboardApi = {
       batch_id: batchId,
       webhook_url: webhookUrl,
     }).then(r => r.data),
+  assignmentTable: (batchId: string, params?: { page?: number; limit?: number; priority_tier?: string; assigned?: string; agent_name?: string; search?: string; sort_by?: string; sort_dir?: string }) =>
+    api.get<AssignmentTableResponse>(`/api/campaign/batch/${batchId}/assignment-table`, { params }).then(r => r.data),
+  bulkAssign: (batchId: string, payload: BulkAssignPayload) =>
+    api.post(`/api/campaign/batch/${batchId}/bulk-assign`, payload).then(r => r.data),
+  autoAssign: (batchId: string) =>
+    api.post(`/api/campaign/batch/${batchId}/auto-assign`).then(r => r.data),
 }
 
 export const projectsApi = {

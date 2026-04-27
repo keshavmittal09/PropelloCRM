@@ -23,6 +23,7 @@ from app.models.lead import Lead
 from app.models.models import Activity, Task
 from app.services.campaign_service import _safe_str, _load_entities, _load_quality, _is_connected
 from app.services.lead_service import create_notification
+from app.services.notification_dispatcher import notify_campaign_assignment_summary
 
 logger = logging.getLogger(__name__)
 
@@ -665,6 +666,16 @@ async def execute_agent_assignments(
             notif_type="task_due",
             link="/tasks",
         )
+
+        try:
+            await notify_campaign_assignment_summary(
+                db,
+                agent_id=agent_id,
+                task_count=task_count,
+                campaign_id=campaign_id,
+            )
+        except Exception:
+            pass
 
     await db.flush()
     return {

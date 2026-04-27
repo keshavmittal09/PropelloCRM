@@ -12,8 +12,11 @@ import { formatBudget, formatDate, stageConfig } from '@/lib/utils'
 import { leadsApi, tasksApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { MasterProfileTab } from '@/components/leads/MasterProfileTab'
+import { TaskCompletionModal } from '@/components/leads/TaskCompletionModal'
+import type { Task } from '@/lib/types'
 
-type Panel = 'timeline' | 'tasks' | 'properties' | 'memory'
+type Panel = 'timeline' | 'tasks' | 'properties' | 'memory' | 'profile'
 const STAGE_OPTIONS = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture'] as const
 
 export default function LeadDetailPage() {
@@ -28,6 +31,7 @@ export default function LeadDetailPage() {
   const [showWhatsApp, setShowWhatsApp] = useState(false)
   const [showVisitModal, setShowVisitModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showLeadNotifyModal, setShowLeadNotifyModal] = useState(false)
   const [nextStage, setNextStage] = useState(lead?.stage ?? 'new')
   const [lostReason, setLostReason] = useState('')
   const [savingStage, setSavingStage] = useState(false)
@@ -36,6 +40,8 @@ export default function LeadDetailPage() {
   const [followupTitle, setFollowupTitle] = useState('')
   const [creatingFollowup, setCreatingFollowup] = useState(false)
   const [deletingLead, setDeletingLead] = useState(false)
+  const [completingTask, setCompletingTask] = useState<Task | null>(null)
+  const [updatingPriority, setUpdatingPriority] = useState(false)
 
   useEffect(() => {
     if (lead) {
@@ -109,6 +115,20 @@ export default function LeadDetailPage() {
     }
   }
 
+  const handlePriorityChange = async (newPriority: string) => {
+    if (!lead) return
+    setUpdatingPriority(true)
+    try {
+      await leadsApi.updateLeadPriority(lead.id, newPriority)
+      toast.success(`Priority updated to ${newPriority}`)
+      qc.invalidateQueries({ queryKey: ['lead', lead.id] })
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to update priority')
+    } finally {
+      setUpdatingPriority(false)
+    }
+  }
+
   if (isLoading) return (
     <div className="flex min-h-screen">
       <Sidebar />
@@ -141,12 +161,27 @@ export default function LeadDetailPage() {
           </button>
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <div className="flex items-center gap-3 mb-1">
+              <div className="flex items-center gap-3 mb-1 flex-wrap">
                 <h2 className="text-5xl font-semibold text-[#1f1914] crm-density-title">{lead.contact?.name}</h2>
                 <ScoreBadge score={lead.lead_score} />
+                <select
+                  value={lead.priority}
+                  onChange={(e) => handlePriorityChange(e.target.value)}
+                  disabled={updatingPriority}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-[#e1d3c2] bg-white text-[#52473d] focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 disabled:opacity-50"
+                >
+                  <option value="P1">🔥 P1 (Critical)</option>
+                  <option value="P2">🟠 P2 (High)</option>
+                  <option value="P3">🟡 P3 (Normal)</option>
+                  <option value="P4">🔵 P4 (Low)</option>
+                  <option value="P5">⚪ P5 (Minimal)</option>
+                  <option value="high">High</option>
+                  <option value="normal">Normal</option>
+                  <option value="low">Low</option>
+                </select>
               </div>
               <p className="text-[#7b7166]">{lead.contact?.phone} {lead.contact?.email && `· ${lead.contact.email}`}</p>
-              <div className="flex items-center gap-3 mt-2">
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
                 <span className="flex items-center gap-1.5 text-sm">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: stageCfg.color }} />
                   <span className="font-medium text-[#4f453b]">{stageCfg.label}</span>
@@ -173,6 +208,10 @@ export default function LeadDetailPage() {
                 className="px-4 py-2 border border-[#e1d3c2] bg-[#fffdfa] rounded-xl text-sm font-medium hover:bg-[#f8eee3] transition-colors text-[#52473d]">
                 🏠 Schedule visit
               </button>
+              <button onClick={() => setShowLeadNotifyModal(true)}
+                className="px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors">
+                🔔 Notify lead
+              </button>
               <button
                 onClick={handleDeleteLead}
                 disabled={deletingLead}
@@ -194,6 +233,17 @@ export default function LeadDetailPage() {
             {showWhatsApp && <WhatsAppSender leadId={id} onClose={() => setShowWhatsApp(false)} />}
             {showVisitModal && <ScheduleVisitModal leadId={id} onClose={() => setShowVisitModal(false)} />}
             {showEditModal && <EditLeadModal lead={lead} onClose={() => setShowEditModal(false)} />}
+            {showLeadNotifyModal && (
+              <LeadNotifyModal
+                leadId={id}
+                leadName={lead.contact?.name ?? 'Lead'}
+                onClose={() => setShowLeadNotifyModal(false)}
+                onDone={() => {
+                  setShowLeadNotifyModal(false)
+                  qc.invalidateQueries({ queryKey: ['timeline', id] })
+                }}
+              />
+            )}
 
             {/* Lead details card */}
             <div className="crm-surface rounded-2xl p-5 space-y-3 crm-density-tight">
@@ -296,18 +346,19 @@ export default function LeadDetailPage() {
           <div className="xl:col-span-2">
             {/* Tabs */}
             <div className="flex gap-1 mb-4 bg-[#f3e9dd] p-1 rounded-xl w-fit border border-[#e7dac9]">
-              {(['timeline', 'tasks', 'properties', 'memory'] as Panel[]).map(p => (
+              {(['timeline', 'tasks', 'properties', 'profile', 'memory'] as Panel[]).map(p => (
                 <button key={p} onClick={() => setPanel(p)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${panel === p ? 'bg-white text-[#2b241e] shadow-sm' : 'text-[#7b7166] hover:text-[#4f453b]'}`}>
-                  {p === 'timeline' ? 'Timeline' : p === 'tasks' ? 'Tasks' : p === 'properties' ? 'Matching listings' : 'Priya memory'}
+                  {p === 'timeline' ? 'Timeline' : p === 'tasks' ? 'Tasks' : p === 'properties' ? 'Matching listings' : p === 'profile' ? 'Master Profile' : 'Priya memory'}
                 </button>
               ))}
             </div>
 
             <div className="crm-surface rounded-2xl p-5 min-h-[400px] crm-density-tight">
               {panel === 'timeline' && <LeadTimeline activities={activities ?? []} />}
-              {panel === 'tasks' && <TaskList tasks={tasks ?? []} />}
+              {panel === 'tasks' && <TaskList tasks={tasks ?? []} onCompleteTask={(task) => setCompletingTask(task)} />}
               {panel === 'properties' && <PropertyMatchPanel leadId={id} />}
+              {panel === 'profile' && <MasterProfileTab leadId={id} />}
               {panel === 'memory' && (
                 <div>
                   <p className="text-xs font-semibold text-purple-700 mb-3">Priya AI memory brief</p>
@@ -323,6 +374,21 @@ export default function LeadDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Task Completion Modal */}
+        {completingTask && (
+          <TaskCompletionModal
+            task={completingTask}
+            lead={lead}
+            onClose={() => setCompletingTask(null)}
+            onComplete={() => {
+              setCompletingTask(null)
+              qc.invalidateQueries({ queryKey: ['tasks'] })
+              qc.invalidateQueries({ queryKey: ['timeline', id] })
+              qc.invalidateQueries({ queryKey: ['lead', id] })
+            }}
+          />
+        )}
       </main>
     </div>
   )
@@ -333,6 +399,131 @@ function DetailRow({ label, value, className = '' }: { label: string; value: str
     <div className="flex justify-between items-start gap-4">
       <span className="text-sm text-[#887c6f] flex-shrink-0">{label}</span>
       <span className={`text-sm font-medium text-right ${className || 'text-[#2b241e]'}`}>{value}</span>
+    </div>
+  )
+}
+
+
+function LeadNotifyModal({
+  leadId,
+  leadName,
+  onClose,
+  onDone,
+}: {
+  leadId: string
+  leadName: string
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [message, setMessage] = useState('')
+  const [subject, setSubject] = useState('')
+  const [scheduleMode, setScheduleMode] = useState<'send_now' | 'schedule'>('send_now')
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [sendWhatsApp, setSendWhatsApp] = useState(true)
+  const [sendEmail, setSendEmail] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async () => {
+    const channels = [
+      ...(sendWhatsApp ? ['whatsapp'] : []),
+      ...(sendEmail ? ['email'] : []),
+    ] as Array<'whatsapp' | 'email'>
+
+    if (!channels.length) {
+      toast.error('Select at least one channel')
+      return
+    }
+    if (!message.trim()) {
+      toast.error('Message is required')
+      return
+    }
+    if (scheduleMode === 'schedule' && !scheduledAt) {
+      toast.error('Select schedule date and time')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await leadsApi.notify(leadId, {
+        channels,
+        message: message.trim(),
+        subject: subject.trim() || null,
+        scheduled_at: scheduleMode === 'schedule' ? `${scheduledAt}:00` : null,
+      })
+      toast.success(scheduleMode === 'schedule' ? 'Lead notification scheduled' : 'Lead notification sent')
+      onDone()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to notify lead')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-xl rounded-2xl shadow-xl border border-[#eadfce] p-6 max-h-[90vh] overflow-auto">
+        <h3 className="text-xl font-semibold text-[#2b241e]">Notify {leadName}</h3>
+        <p className="text-sm text-[#7b7166] mt-1">Send now or schedule WhatsApp/email notification.</p>
+
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
+              <input type="checkbox" checked={sendWhatsApp} onChange={(e) => setSendWhatsApp(e.target.checked)} />
+              WhatsApp
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
+              <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} />
+              Email
+            </label>
+          </div>
+
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Subject (optional)"
+            className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm"
+          />
+
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={5}
+            placeholder="Write your custom notification text..."
+            className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm"
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <select
+              value={scheduleMode}
+              onChange={(e) => setScheduleMode(e.target.value as 'send_now' | 'schedule')}
+              className="px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm bg-white"
+            >
+              <option value="send_now">Send now</option>
+              <option value="schedule">Schedule</option>
+            </select>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              disabled={scheduleMode !== 'schedule'}
+              className="px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm disabled:opacity-50"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-full border border-[#e5d7c5] text-[#6e6357]">
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="flex-1 px-4 py-2 rounded-full bg-[#2f2317] text-white font-semibold disabled:opacity-50"
+          >
+            {submitting ? 'Processing...' : scheduleMode === 'schedule' ? 'Schedule notification' : 'Send notification'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

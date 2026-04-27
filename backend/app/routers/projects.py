@@ -17,6 +17,11 @@ from app.schemas.schemas import LeadResponse, ProjectResponse
 router = APIRouter()
 
 
+def _ensure_project_access(current_user: Agent) -> None:
+    if current_user.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admin/manager can access projects")
+
+
 def _parse_bhk(value: Optional[str]) -> list[str]:
     if not value:
         return []
@@ -51,7 +56,7 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    del current_user
+    _ensure_project_access(current_user)
     result = await db.execute(select(Project).order_by(Project.created_at.desc()).offset(skip).limit(limit))
     items = []
     for p in result.scalars().all():
@@ -127,7 +132,7 @@ async def get_project_detail(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    del current_user
+    _ensure_project_access(current_user)
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -210,8 +215,7 @@ async def add_project_tag(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager", "agent"]:
-        raise HTTPException(status_code=403, detail="Not allowed")
+    _ensure_project_access(current_user)
 
     project = await db.get(Project, project_id)
     if not project:
@@ -237,8 +241,7 @@ async def remove_project_tag(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager", "agent"]:
-        raise HTTPException(status_code=403, detail="Not allowed")
+    _ensure_project_access(current_user)
 
     lead = await db.get(Lead, lead_id)
     if not lead:

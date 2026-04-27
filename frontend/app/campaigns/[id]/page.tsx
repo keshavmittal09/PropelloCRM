@@ -1,12 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import { campaignsApi } from '@/lib/api'
 import { useCampaign, useProjects } from '@/hooks/useQueries'
 import { ScoreBadge } from '@/components/shared/Badges'
 import { useAuthStore } from '@/store/useAuthStore'
+import { canAccessFeature } from '@/hooks/useRoleGuard'
 import toast from 'react-hot-toast'
 
 export default function CampaignDetailPage() {
@@ -23,6 +24,12 @@ export default function CampaignDetailPage() {
   const [selectedProject, setSelectedProject] = useState('')
   const canManageProject = ['admin', 'manager'].includes(agent?.role || '')
   const canRemoveCampaign = ['admin', 'manager'].includes(agent?.role || '')
+
+  useEffect(() => {
+    if (agent && !canAccessFeature(agent.role as any, 'campaign_management')) {
+      router.push('/unauthorized')
+    }
+  }, [agent, router])
 
   const sortedLeads = useMemo(() => {
     if (!campaign?.leads) return []
@@ -80,7 +87,7 @@ export default function CampaignDetailPage() {
   return (
     <div className="flex min-h-screen bg-[#f7f5f2]">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-8">
+      <main className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
         {isLoading || !campaign ? (
           <p className="text-[#7f7266]">Loading campaign...</p>
         ) : (

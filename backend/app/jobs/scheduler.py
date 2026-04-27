@@ -4,6 +4,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
+from app.core.config import settings
 from app.db.base import AsyncSessionLocal
 from app.models.lead import Lead
 from app.models.models import Task, Notification
@@ -165,6 +166,34 @@ async def send_morning_digest():
             logger.error(f"Error in send_morning_digest: {e}")
 
 
+async def send_end_of_day_summary():
+    """Runs daily at configured IST end-of-day and sends admin summary."""
+    async with AsyncSessionLocal() as db:
+        try:
+            from app.services.agent_notifier import send_end_of_day_admin_summary
+            await send_end_of_day_admin_summary(db)
+        except Exception as e:
+            logger.error(f"Error in send_end_of_day_summary: {e}")
+
+
+async def compute_agent_performance_scores():
+    """
+    Runs nightly at 1 AM IST.
+    Recomputes performance scores for all active agents.
+    Stores snapshots and updates Agent records.
+    """
+    async with AsyncSessionLocal() as db:
+        try:
+            from app.services.performance_service import compute_all_agents_performance
+            result = await compute_all_agents_performance(db, days=30)
+            logger.info(
+                f"Performance score computation: {result['updated']}/{result['total']} agents updated, "
+                f"{result['errors']} errors"
+            )
+        except Exception as e:
+            logger.error(f"Error in compute_agent_performance_scores: {e}")
+
+
 async def detect_dormant_leads():
     """
     Runs daily at noon.
@@ -222,8 +251,24 @@ def start_scheduler():
     # Daily at noon UTC — dormant lead detection
     scheduler.add_job(detect_dormant_leads, CronTrigger(hour=12, minute=0))
 
+    # End-of-day admin summary at configured local timezone.
+    scheduler.add_job(
+        send_end_of_day_summary,
+        CronTrigger(
+            hour=settings.END_OF_DAY_SUMMARY_HOUR,
+            minute=settings.END_OF_DAY_SUMMARY_MINUTE,
+            timezone=settings.NOTIFICATION_TIMEZONE,
+        ),
+    )
+
+    # Nightly at 1 AM IST (19:30 UTC) — agent performance scores
+    scheduler.add_job(
+        compute_agent_performance_scores,
+        CronTrigger(hour=19, minute=30),  # 1 AM IST
+    )
+
     scheduler.start()
     logger.info(
         "APScheduler started — jobs: stale leads, overdue tasks, "
-        "follow-up engine (1min), AI rescore (6h), daily digest, dormant detection"
+        "follow-up engine (1min), AI rescore (6h), daily digest, dormant detection, EOD summary"
     )

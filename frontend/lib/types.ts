@@ -3,7 +3,7 @@ export type LeadStage = 'new' | 'contacted' | 'site_visit_scheduled' | 'site_vis
 export type LeadScore = 'hot' | 'warm' | 'cold'
 export type LeadSource = 'priya_ai' | 'website' | 'facebook_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'walk_in' | 'referral' | 'email_campaign' | 'manual' | 'campaign'
 export type TaskStatus = 'pending' | 'done' | 'overdue' | 'cancelled'
-export type ActivityType = 'call' | 'whatsapp' | 'email' | 'site_visit' | 'note' | 'stage_change' | 'priya_call' | 'property_shown' | 'task_completed' | 'lead_created' | 'campaign_call'
+export type ActivityType = 'call' | 'whatsapp' | 'email' | 'site_visit' | 'note' | 'stage_change' | 'priya_call' | 'property_shown' | 'task_completed' | 'lead_created' | 'campaign_call' | 'task_completion_remark'
 
 export interface Agent {
   id: string
@@ -50,6 +50,10 @@ export interface Lead {
   priya_memory_brief: string | null
   created_at: string
   updated_at: string
+  dnd?: boolean
+  last_remark?: string | null
+  last_interaction_at?: string | null
+  master_profile?: Record<string, unknown> | null
   contact?: Contact
   assigned_agent?: Agent
 }
@@ -91,6 +95,10 @@ export interface Task {
   priority: string
   status: TaskStatus
   completed_at: string | null
+  completion_remark?: string | null
+  completion_tags?: string[] | null
+  remark_quality_score?: number | null
+  remark_quality_feedback?: string | null
   created_at: string
   assigned_agent?: Agent
   lead?: Lead
@@ -138,6 +146,21 @@ export interface Notification {
   is_read: boolean
   link: string | null
   created_at: string
+}
+
+export interface LeadNotifyPayload {
+  channels: Array<'whatsapp' | 'email'>
+  message: string
+  subject?: string | null
+  scheduled_at?: string | null
+}
+
+export interface AdminBroadcastPayload {
+  channels: Array<'in_app' | 'whatsapp' | 'email'>
+  message: string
+  subject?: string | null
+  target_agent_ids?: string[]
+  all_agents?: boolean
 }
 
 export interface AnalyticsSummary {
@@ -507,4 +530,111 @@ export interface CampaignDashboardAnalytics {
     by_drop_reason: Record<string, number>
   }
   insights: Record<string, unknown> | null
+}
+
+// ─── TASK COMPLETION REMARK (Feature 1+2) ──────────────────────────────────
+export interface TaskCompleteWithRemarkPayload {
+  remark_text: string
+  preset_tags: string[]
+}
+
+export interface DNCFlagPayload {
+  lead_id: string
+  mark_dnd: boolean
+}
+
+// ─── MASTER PROFILE (Feature 3) ────────────────────────────────────────────
+export interface MasterProfile {
+  // AI-populated
+  config_preference?: string | null
+  budget_range?: string | null
+  site_visit_intent?: string | null
+  primary_language?: string | null
+  objection_type?: string | null
+  intent_level?: string | null
+  ai_summary?: string | null
+  key_quote?: string | null
+  // Manual
+  full_name?: string | null
+  email?: string | null
+  alternate_phone?: string | null
+  city?: string | null
+  locality?: string | null
+  occupation?: string | null
+  family_size?: number | null
+  current_living_situation?: string | null
+  investment_purpose?: string | null
+  source?: string | null
+  agent_notes?: string | null
+  priority_override?: string | null
+  priority_override_reason?: string | null
+  // Computed
+  total_calls?: number
+  first_contact_date?: string | null
+  last_contact_date?: string | null
+  days_in_pipeline?: number
+  completion_rate?: number
+}
+
+// ─── ASSIGNMENT TABLE (Feature 4) ──────────────────────────────────────────
+export interface AssignmentTableLead {
+  id: string
+  name: string | null
+  phone_number: number | null
+  priority_tier: string | null
+  lead_score: number | null
+  assigned_agent: string | null
+  intent_level: string | null
+  dnd_flag: boolean | null
+  action_taken: string | null
+  updated_at: string | null
+}
+
+export interface AssignmentTableResponse {
+  total: number
+  page: number
+  limit: number
+  total_pages: number
+  leads: AssignmentTableLead[]
+}
+
+export interface BulkAssignPayload {
+  lead_ids: string[]
+  agent_id: string
+  reason?: string
+}
+
+// ─── AGENT PERFORMANCE & LEADERBOARD (Feature 5 & 6) ───────────────────────
+export interface LeaderboardEntry {
+  agent_id: string
+  agent_name: string
+  role: Role
+  star_rating: number | null
+  performance_score: number
+  completion_rate: number
+  conversion_rate: number
+  active_lead_count: number
+  is_active: boolean
+}
+
+export interface AgentPerformanceResponse {
+  agent_id: string
+  agent_name: string
+  role: Role
+  star_rating: number | null
+  performance_score: number
+  completion_rate: number
+  conversion_rate: number
+  avg_remark_quality: number
+  tasks_completed_30d: number
+  leads_converted_30d: number
+  rating_set_by: string | null
+  rating_set_by_name: string | null
+  rating_set_at: string | null
+  trend_data: Array<{
+    date: string
+    performance_score: number
+    completion_rate: number
+    conversion_rate: number
+  }>
 }

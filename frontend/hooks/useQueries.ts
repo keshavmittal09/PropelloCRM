@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { campaignsApi, leadsApi, projectsApi, tasksApi, analyticsApi, notificationsApi, propertiesApi, contactsApi, visitsApi } from '@/lib/api'
+import { campaignsApi, leadsApi, meApi, projectsApi, tasksApi, analyticsApi, notificationsApi, propertiesApi, contactsApi, visitsApi, campaignDashboardApi } from '@/lib/api'
+import { useAuthStore } from '@/store/useAuthStore'
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
 export const useLeads = (params?: Record<string, string>) =>
@@ -65,10 +66,25 @@ export const useLogCall = (leadId: string) => {
 
 // ─── TASKS ───────────────────────────────────────────────────────────────────
 export const useTodayTasks = () =>
-  useQuery({ queryKey: ['tasks', 'today'], queryFn: tasksApi.today, staleTime: 60000, refetchInterval: 10000 })
+  {
+    const role = useAuthStore((s) => s.agent?.role)
+    return useQuery({
+      queryKey: ['tasks', 'today', role],
+      queryFn: () => (role === 'call_agent' ? meApi.getTasks('pending') : tasksApi.today()),
+      staleTime: 60000,
+      refetchInterval: 10000,
+    })
+  }
 
 export const useAllTasks = (params?: Record<string, string>) =>
-  useQuery({ queryKey: ['tasks', params], queryFn: () => tasksApi.list(params), refetchInterval: 10000 })
+  {
+    const role = useAuthStore((s) => s.agent?.role)
+    return useQuery({
+      queryKey: ['tasks', params, role],
+      queryFn: () => (role === 'call_agent' ? meApi.getTasks(params?.status) : tasksApi.list(params)),
+      refetchInterval: 10000,
+    })
+  }
 
 export const useCompleteTask = () => {
   const qc = useQueryClient()
@@ -146,3 +162,32 @@ export const useProjectsModule = () =>
 
 export const useProjectDetail = (id: string) =>
   useQuery({ queryKey: ['project-detail', id], queryFn: () => projectsApi.detail(id), enabled: !!id })
+
+// ─── MASTER PROFILE ─────────────────────────────────────────────────────────
+export const useMasterProfile = (leadId: string) =>
+  useQuery({
+    queryKey: ['master-profile', leadId],
+    queryFn: () => leadsApi.getMasterProfile(leadId),
+    enabled: !!leadId,
+  })
+
+// ─── COMPLETE WITH REMARK ────────────────────────────────────────────────────
+export const useCompleteTaskWithRemark = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { remark_text: string; preset_tags: string[] } }) =>
+      tasksApi.completeWithRemark(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['timeline'] })
+    },
+  })
+}
+
+// ─── ASSIGNMENT TABLE ────────────────────────────────────────────────────────
+export const useAssignmentTable = (batchId: string, params?: Record<string, unknown>) =>
+  useQuery({
+    queryKey: ['assignment-table', batchId, params],
+    queryFn: () => campaignDashboardApi.assignmentTable(batchId, params as Record<string, string>),
+    enabled: !!batchId,
+  })

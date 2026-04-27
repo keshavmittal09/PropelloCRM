@@ -201,6 +201,10 @@ class LeadResponse(BaseModel):
     priya_memory_brief: Optional[str]
     ai_analysis: Optional[Any] = None
     ai_analyzed_at: Optional[datetime] = None
+    dnd: bool = False
+    last_remark: Optional[str] = None
+    last_interaction_at: Optional[datetime] = None
+    master_profile: Optional[Any] = None
     created_at: datetime
     updated_at: datetime
     contact: Optional[ContactResponse] = None
@@ -270,6 +274,10 @@ class TaskResponse(BaseModel):
     priority: str
     status: str
     completed_at: Optional[datetime]
+    completion_remark: Optional[str] = None
+    completion_tags: Optional[List[str]] = None
+    remark_quality_score: Optional[float] = None
+    remark_quality_feedback: Optional[str] = None
     created_at: datetime
     assigned_agent: Optional[AgentResponse] = None
     lead: Optional["LeadResponse"] = None
@@ -359,6 +367,21 @@ class WhatsAppSend(BaseModel):
     template: str  # template key name
     lead_id: str
     custom_message: Optional[str] = None
+
+
+class LeadNotifyRequest(BaseModel):
+    channels: list[str] = Field(default_factory=lambda: ["whatsapp"])
+    message: str = Field(min_length=1, max_length=2000)
+    subject: Optional[str] = None
+    scheduled_at: Optional[datetime] = None
+
+
+class AdminBroadcastRequest(BaseModel):
+    channels: list[str] = Field(default_factory=lambda: ["in_app"])
+    message: str = Field(min_length=1, max_length=2000)
+    subject: Optional[str] = None
+    target_agent_ids: list[str] = Field(default_factory=list)
+    all_agents: bool = True
 
 class MemoryResponse(BaseModel):
     phone: str
@@ -543,3 +566,139 @@ class AgentAssignment(BaseModel):
     lead_count: int
     tier_breakdown: dict[str, int] = Field(default_factory=dict)
     leads: list[CampaignLeadDetailResponse] = Field(default_factory=list)
+
+
+# ─── TASK COMPLETION WITH REMARK (Feature 1 & 2) ────────────────────────────
+
+class TaskCompleteWithRemarkRequest(BaseModel):
+    remark_text: str = Field(min_length=80, max_length=5000)
+    preset_tags: list[str] = Field(default_factory=list)
+
+
+class DNCFlagRequest(BaseModel):
+    lead_id: str
+    mark_dnd: bool = True
+
+
+# ─── MASTER PROFILE (Feature 3) ─────────────────────────────────────────────
+
+class MasterProfileUpdate(BaseModel):
+    """Manual fields that an agent can edit on the master profile."""
+    # AI fields can be overridden manually when needed.
+    config_preference: Optional[str] = None
+    budget_range: Optional[str] = None
+    site_visit_intent: Optional[str] = None
+    primary_language: Optional[str] = None
+    objection_type: Optional[str] = None
+    intent_level: Optional[str] = None
+    ai_summary: Optional[str] = None
+    key_quote: Optional[str] = None
+
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    alternate_phone: Optional[str] = None
+    city: Optional[str] = None
+    locality: Optional[str] = None
+    occupation: Optional[str] = None
+    family_size: Optional[int] = None
+    current_living_situation: Optional[str] = None
+    investment_purpose: Optional[str] = None
+    source: Optional[str] = None
+    agent_notes: Optional[str] = None
+    priority_override: Optional[str] = None
+    priority_override_reason: Optional[str] = None
+
+
+class MasterProfileResponse(BaseModel):
+    # Auto-populated from AI
+    config_preference: Optional[str] = None
+    budget_range: Optional[str] = None
+    site_visit_intent: Optional[str] = None
+    primary_language: Optional[str] = None
+    objection_type: Optional[str] = None
+    intent_level: Optional[str] = None
+    ai_summary: Optional[str] = None
+    key_quote: Optional[str] = None
+    # Manual
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    alternate_phone: Optional[str] = None
+    city: Optional[str] = None
+    locality: Optional[str] = None
+    occupation: Optional[str] = None
+    family_size: Optional[int] = None
+    current_living_situation: Optional[str] = None
+    investment_purpose: Optional[str] = None
+    source: Optional[str] = None
+    agent_notes: Optional[str] = None
+    priority_override: Optional[str] = None
+    priority_override_reason: Optional[str] = None
+    # Computed
+    total_calls: int = 0
+    first_contact_date: Optional[str] = None
+    last_contact_date: Optional[str] = None
+    days_in_pipeline: int = 0
+    completion_rate: float = 0.0
+
+
+# ─── BULK ASSIGNMENT (Feature 4) ────────────────────────────────────────────
+
+class BulkAssignPayload(BaseModel):
+    lead_ids: list[str] = Field(min_length=1)
+    agent_id: str
+    reason: Optional[str] = None  # Required for reassignments (min 20 chars)
+
+
+class BulkAssignRequest(BaseModel):
+    lead_ids: list[str] = Field(min_length=1)
+    agent_id: str
+    reason: Optional[str] = None
+
+
+class AssignmentTableLead(BaseModel):
+    id: str
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    priority_tier: Optional[str] = None
+    assigned_agent_id: Optional[str] = None
+    assigned_agent_name: Optional[str] = None
+    status: Optional[str] = None
+    last_contact: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ─── AGENT PERFORMANCE (Features 5 & 6) ─────────────────────────────────────
+
+class AgentPerformanceResponse(BaseModel):
+    agent_id: str
+    agent_name: str
+    role: str
+    star_rating: Optional[int]
+    performance_score: float
+    completion_rate: float
+    conversion_rate: float
+    avg_remark_quality: float
+    tasks_completed_30d: int
+    leads_converted_30d: int
+    rating_set_by: Optional[str]
+    rating_set_by_name: Optional[str]
+    rating_set_at: Optional[str]
+    trend_data: List[dict]
+
+
+class LeaderboardEntry(BaseModel):
+    agent_id: str
+    agent_name: str
+    role: str
+    star_rating: Optional[int]
+    performance_score: float
+    completion_rate: float
+    conversion_rate: float
+    active_lead_count: int
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+

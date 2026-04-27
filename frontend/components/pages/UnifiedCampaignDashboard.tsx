@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import {
   Bar,
@@ -16,6 +17,7 @@ import {
 
 import Sidebar from '@/components/shared/Sidebar'
 import { authApi, campaignDashboardApi } from '@/lib/api'
+import { LeadAssignmentTab } from '@/components/leads/LeadAssignmentTab'
 import { cn } from '@/lib/cn'
 import type {
   Agent,
@@ -142,6 +144,14 @@ function MetricCard({
 
 export default function UnifiedCampaignDashboard() {
   const currentAgent = useAuthStore((s) => s.agent)
+  const router = useRouter()
+
+  // Role guard - only admin/manager can access campaign dashboard
+  useEffect(() => {
+    if (currentAgent && !['admin', 'manager'].includes(currentAgent.role)) {
+      router.push('/unauthorized')
+    }
+  }, [currentAgent, router])
 
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
   const [batches, setBatches] = useState<CampaignDashboardBatch[]>([])
@@ -631,8 +641,11 @@ export default function UnifiedCampaignDashboard() {
       await loadBatches()
       await loadBatchData(res.batch_id)
     } catch (e: unknown) {
-      const message = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Upload failed'
+      const errorObj = e as { response?: { data?: { detail?: string } } }
+      const message = errorObj?.response?.data?.detail || 'Upload failed'
       setError(message)
+      toast.error(`Upload failed: ${message}`)
+      console.error('Campaign upload error:', e)
     } finally {
       setUploading(false)
     }
@@ -1420,120 +1433,7 @@ export default function UnifiedCampaignDashboard() {
                 ) : null}
 
                 {activeTab === 'assignment' ? (
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-base font-semibold text-[#2f2317]">Agent Assignment Board</h3>
-                        <p className="text-sm text-[#7f6b56]">
-                          Assignment is priority-based: top half of leads go to the first agent half, lower half to the second.
-                          Only selected agents are used; if none selected, assignment defaults to active call_agent users.
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={applyAutoAssignment}
-                        disabled={assigning || suggestedAssignments.length === 0}
-                        className="rounded-xl bg-[#2f2317] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                      >
-                        {assigning ? 'Assigning...' : `Auto-Assign ${suggestedAssignments.length} Leads`}
-                      </button>
-                    </div>
-
-                    <div className="rounded-2xl border border-[#eadfcf] bg-[#fefbf6] p-4">
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-[#2f2317]">Selected Assignment Agents</p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={useDefaultCallAgentPool}
-                            className="rounded-full border border-[#d8c4ad] bg-white px-3 py-1 text-xs font-semibold text-[#6a4b32]"
-                          >
-                            Use default call_agent
-                          </button>
-                          <button
-                            onClick={clearAssignmentSelection}
-                            className="rounded-full border border-[#e3d7c8] bg-white px-3 py-1 text-xs font-semibold text-[#7f6b56]"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {activeAgents.map((agent) => {
-                          const selected = selectedAssignmentAgentIds.includes(agent.id)
-                          return (
-                            <button
-                              key={agent.id}
-                              onClick={() => toggleAssignmentAgent(agent.id)}
-                              className={cn(
-                                'rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
-                                selected
-                                  ? 'border-[#2f2317] bg-[#2f2317] text-white'
-                                  : 'border-[#e2d2bd] bg-white text-[#5f5348] hover:bg-[#fcf7f0]',
-                              )}
-                            >
-                              {agent.name} ({agent.role})
-                            </button>
-                          )
-                        })}
-                      </div>
-
-                      <p className="mt-3 text-[11px] text-[#8f7b66]">
-                        {selectedAssignmentAgentIds.length === 0
-                          ? `No explicit selection active. Using call_agent role pool (${activeAgents.filter((agent) => agent.role === 'call_agent').length} agent(s)).`
-                          : `Using ${selectedAssignmentAgentIds.length} selected agent(s) for auto-assignment.`}
-                      </p>
-                    </div>
-
-                    {assignableAgents.length === 0 ? (
-                      <div className="rounded-2xl border border-[#eadfcf] bg-[#fefbf6] p-4 text-sm text-[#8f7b66]">
-                        No assignment candidates found. Select agents, or create active users with role call_agent.
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                        {assignableAgents.map((agent) => {
-                          const items = assignmentBoard[agent.name] || []
-                          const p1p2 = items.filter((i) => ['P1', 'P2'].includes(i.tier)).length
-                          const p3 = items.filter((i) => i.tier === 'P3').length
-                          const p4p5 = items.filter((i) => ['P4', 'P5'].includes(i.tier)).length
-
-                          return (
-                            <div key={agent.id} className="rounded-2xl border border-[#eadfcf] bg-white p-4">
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="text-sm font-semibold text-[#2f2317]">{agent.name}</p>
-                                  <p className="text-xs text-[#8f7b66]">{items.length} suggested tasks</p>
-                                </div>
-                                <span className="rounded-full border border-[#e6dacb] bg-[#faf4e8] px-2 py-0.5 text-[10px] font-semibold text-[#7f6b56]">
-                                  {agent.role}
-                                </span>
-                              </div>
-
-                              <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-semibold">
-                                <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-red-700">P1+P2 {p1p2}</span>
-                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">P3 {p3}</span>
-                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-700">P4+P5 {p4p5}</span>
-                              </div>
-
-                              <div className="mt-3 max-h-[220px] space-y-2 overflow-auto pr-1">
-                                {items.slice(0, 10).map((item) => (
-                                  <button
-                                    key={item.leadId}
-                                    onClick={() => openLead(item.leadId)}
-                                    className="flex w-full items-center justify-between rounded-lg border border-[#efe5d8] bg-[#fffaf3] px-2 py-1.5 text-left hover:bg-[#fcf3e8]"
-                                  >
-                                    <span className="truncate text-xs font-medium text-[#2f2317]">{item.leadName}</span>
-                                    <Badge tier={item.tier} />
-                                  </button>
-                                ))}
-                                {items.length === 0 ? <p className="text-xs text-[#8f7b66]">No assigned leads.</p> : null}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <LeadAssignmentTab batchId={selectedBatchId} />
                 ) : null}
 
                 {activeTab === 'copilot' ? (

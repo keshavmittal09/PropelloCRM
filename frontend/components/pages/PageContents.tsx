@@ -3,21 +3,22 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
-import { useAllTasks, useCompleteTask } from '@/hooks/useQueries'
+import { useAllTasks } from '@/hooks/useQueries'
 import { useContacts, useProperties, useVisits } from '@/hooks/useQueries'
 import { formatDateTime, formatDate, formatCurrency } from '@/lib/utils'
 import { authApi, contactsApi, propertiesApi, tasksApi, visitsApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/useAuthStore'
 import type { Agent, Task } from '@/lib/types'
+import { TaskCompletionModal } from '@/components/leads/TaskCompletionModal'
 import toast from 'react-hot-toast'
 
 export function TasksPageContent() {
   const router = useRouter()
   const qc = useQueryClient()
   const { agent } = useAuthStore()
-  const canViewAll = agent?.role === 'admin'
-  const canEditAll = agent?.role === 'admin'
+  const canViewAll = agent?.role === 'admin' || agent?.role === 'manager'
+  const canEditAll = agent?.role === 'admin' || agent?.role === 'manager'
 
   const [filter, setFilter] = useState<'pending' | 'overdue' | 'done'>('pending')
   const [assigneeFilter, setAssigneeFilter] = useState('all')
@@ -43,7 +44,7 @@ export function TasksPageContent() {
   }
 
   const { data: tasks, isLoading } = useAllTasks(params)
-  const { mutateAsync: complete } = useCompleteTask()
+  const [completingTask, setCompletingTask] = useState<Task | null>(null)
 
   const priorityColor: Record<string, string> = {
     high: 'text-red-700 bg-red-50 border-red-200',
@@ -133,15 +134,7 @@ export function TasksPageContent() {
                       <div className="flex justify-end gap-2">
                         {task.status !== 'done' ? (
                           <button
-                            onClick={async () => {
-                              try {
-                                await complete(task.id)
-                                toast.success('Task marked done')
-                                qc.invalidateQueries({ queryKey: ['tasks'] })
-                              } catch (e: any) {
-                                toast.error(e?.response?.data?.detail ?? 'Unable to mark task done')
-                              }
-                            }}
+                            onClick={() => setCompletingTask(task)}
                             className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"
                           >
                             Done
@@ -177,6 +170,19 @@ export function TasksPageContent() {
             }}
           />
         ) : null}
+
+        {/* Task Completion Modal */}
+        {completingTask && (
+          <TaskCompletionModal
+            task={completingTask}
+            lead={completingTask.lead ?? null}
+            onClose={() => setCompletingTask(null)}
+            onComplete={() => {
+              setCompletingTask(null)
+              qc.invalidateQueries({ queryKey: ['tasks'] })
+            }}
+          />
+        )}
       </main>
     </div>
   )

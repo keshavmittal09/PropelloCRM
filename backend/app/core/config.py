@@ -51,6 +51,17 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     CAMPAIGN_AI_ENABLED: bool = True
 
+    # Notification controls
+    TASK_ASSIGN_NOTIFY_WHATSAPP_ENABLED: bool = True
+    TASK_ASSIGN_NOTIFY_EMAIL_ENABLED: bool = True
+    TASK_NOTIFY_DEDUPE_MINUTES: int = 10
+    TASK_NOTIFY_SKIP_SELF_UPDATES: bool = True
+    CAMPAIGN_ASSIGNMENT_NOTIFY_MODE: str = "bulk_summary"
+    ADMIN_ALERT_ON_NOTIFY_FAILURE: bool = True
+    NOTIFICATION_TIMEZONE: str = "Asia/Kolkata"
+    END_OF_DAY_SUMMARY_HOUR: int = 22
+    END_OF_DAY_SUMMARY_MINUTE: int = 0
+
     # Supabase
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""

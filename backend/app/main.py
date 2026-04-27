@@ -1,8 +1,10 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import asyncio
 from app.core.config import settings
+from app.core.dependencies import get_current_user, get_db
 from app.db.base import init_db
 from app.jobs.scheduler import start_scheduler
 from app.routers.auth import router as auth_router
@@ -13,6 +15,7 @@ from app.routers.campaign_dashboard import router as campaign_dashboard_router
 from app.routers.campaigns import router as campaigns_router
 from app.routers.projects import router as projects_router
 from app.routers.priya_bridge import router as priya_router
+from app.routers.me import router as me_router
 from app.routers.routers import (
     contacts_router,
     properties_router,
@@ -29,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     logger.info("Starting Propello CRM API...")
     last_error = None
     for attempt in range(1, settings.DB_CONNECT_RETRIES + 1):
@@ -55,10 +57,10 @@ async def lifespan(app: FastAPI):
     start_scheduler()
     logger.info("Database initialized. Scheduler started.")
     yield
-    # Shutdown
     logger.info("Shutting down Propello CRM API...")
 
 
+# Create app with lifespan
 app = FastAPI(
     title="Propello CRM API",
     description="Real Estate CRM powering Priya AI and the Propello sales team",
@@ -66,17 +68,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow Next.js frontend
+# CORS Middleware - explicit origin (no regex)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
-    allow_origin_regex=settings.FRONTEND_URL_REGEX,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register all routers
+
+# Global exception handler to ensure CORS headers are always returned
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception) -> Response:
+    logger.exception(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+    )
+
+
+# Register all routers (AFTER CORS middleware)
 app.include_router(auth_router,          prefix="/api/auth",          tags=["Auth"])
 app.include_router(leads_router,         prefix="/api/leads",         tags=["Leads"])
 app.include_router(webhooks_router,      prefix="/api/webhooks",      tags=["Webhooks"])
@@ -91,6 +103,21 @@ app.include_router(tasks_router,         prefix="/api/tasks",         tags=["Tas
 app.include_router(visits_router,        prefix="/api/visits",        tags=["Site Visits"])
 app.include_router(analytics_router,     prefix="/api/analytics",     tags=["Analytics"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(me_router,            prefix="/api/me",            tags=["My Data"])
+
+
+@app.post("/api/performance/recompute")
+async def recompute_performance(
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Admin/Manager only")
+
+    from app.services.performance_service import compute_all_agents_performance
+
+    result = await compute_all_agents_performance(db, days=30)
+    return {"status": "ok", **result}
 
 
 @app.get("/")

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import CampaignLeadDrawer from '@/components/leads/CampaignLeadDrawer'
-import { useCampaign, useCampaignAnalytics, useCampaignLeadsDetail, useAgentAssignments } from '@/hooks/useQueries'
+import { useCampaign, useCampaignAnalytics, useCampaignLeadsDetail } from '@/hooks/useQueries'
 import { authApi, campaignsApi } from '@/lib/api'
 import type { Agent, CampaignLeadDetail, CampaignInsight } from '@/lib/types'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -13,6 +13,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
 } from 'recharts'
+import { LeadAssignmentTab } from '@/components/leads/LeadAssignmentTab'
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 
@@ -75,6 +76,13 @@ export default function CampaignDashboardPage() {
   const { agent: currentAgent } = useAuthStore()
   const campaignId = params?.id ?? ''
 
+  // Role guard - only admin/manager can access campaign dashboard
+  useEffect(() => {
+    if (currentAgent && !['admin', 'manager'].includes(currentAgent.role)) {
+      router.push('/unauthorized')
+    }
+  }, [currentAgent, router])
+
   const [activeTab, setActiveTab] = useState<Tab>('Overview')
   const [tierFilter, setTierFilter] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -96,19 +104,20 @@ export default function CampaignDashboardPage() {
   const { data: leads, isLoading: leadsLoading, refetch: refetchLeads } = useCampaignLeadsDetail(
     campaignId, { tier: tierFilter || undefined, search: searchQuery || undefined }
   )
-  const { data: assignments, refetch: refetchAssignments } = useAgentAssignments(campaignId, selectedAgentIds)
   const canManageProject = ['admin', 'manager'].includes(currentAgent?.role || '')
   const canRemoveCampaign = ['admin', 'manager'].includes(currentAgent?.role || '')
 
   useEffect(() => {
     authApi.listAgents()
       .then((data) => {
+        console.log('Loaded agents:', data)
         const active = (data || []).filter((a) => a.is_active)
         setAvailableAgents(active)
         const defaults = active.filter((a) => a.role === 'call_agent').map((a) => a.id)
         setSelectedAgentIds(defaults)
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Failed to load agents:', err)
         setAvailableAgents([])
         setSelectedAgentIds([])
       })
@@ -165,14 +174,7 @@ export default function CampaignDashboardPage() {
   }
 
   const handleAssignAgents = async () => {
-    try {
-      const result = await campaignsApi.executeAgentAssignment(campaignId, selectedAgentIds)
-      toast.success(`Assigned ${result.assigned} leads to ${result.agents} agents`)
-      refetchAssignments()
-      refetchLeads()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'Assignment failed')
-    }
+    // Legacy assign logic removed
   }
 
   const handleRemoveProject = async () => {
@@ -213,11 +215,11 @@ export default function CampaignDashboardPage() {
       <Sidebar />
       <main className="flex-1 overflow-auto">
         {/* Page Header */}
-        <div className="px-8 pt-8 pb-4">
+        <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-4">
           <button onClick={() => router.push(`/campaigns/${campaignId}`)} className="text-xs text-[#8c7f73] hover:text-[#c86f43] mb-2 inline-flex items-center gap-1 transition-colors">
             ← Back to campaign
           </button>
-          <h1 className="text-3xl font-semibold text-[#2a231d] tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-semibold text-[#2a231d] tracking-tight">
             {analytics?.campaign_name || 'Campaign Dashboard'}
           </h1>
           <p className="text-sm text-[#7f7266] mt-1">Call Campaign Analytics & Priority Queue</p>
@@ -249,13 +251,13 @@ export default function CampaignDashboardPage() {
         </div>
 
         {/* Tabs */}
-        <div className="px-8 mb-6">
-          <div className="flex gap-1 bg-[#eee8e0] p-1 rounded-full w-fit">
+        <div className="px-4 sm:px-6 lg:px-8 mb-6">
+          <div className="flex gap-1 bg-[#eee8e0] p-1 rounded-full w-fit flex-wrap">
             {TABS.map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
+                className={`px-3 sm:px-5 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === tab ? 'bg-[#2a231d] text-white shadow-md' : 'text-[#7f7266] hover:text-[#2a231d]'
                 }`}
               >{tab}</button>
@@ -263,7 +265,7 @@ export default function CampaignDashboardPage() {
           </div>
         </div>
 
-        <div className="px-8 pb-10">
+        <div className="px-4 sm:px-6 lg:px-8 pb-10">
           {analyticsLoading ? <Skeleton /> : analyticsError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
               Unable to load campaign analytics. {String((analyticsErrorObj as any)?.message || 'Please check backend logs and retry.')}
@@ -284,14 +286,7 @@ export default function CampaignDashboardPage() {
               )}
               {activeTab === 'Insights' && analytics && <InsightsTab insights={analytics.insights} />}
               {activeTab === 'Agent Assignment' && (
-                <AgentAssignmentTab
-                  assignments={assignments || []}
-                  availableAgents={availableAgents}
-                  selectedAgentIds={selectedAgentIds}
-                  onSelectedAgentIdsChange={setSelectedAgentIds}
-                  onAssign={handleAssignAgents}
-                  onSelectLead={setSelectedLead}
-                />
+                  <LeadAssignmentTab campaignId={campaignId} />
               )}
               {activeTab === 'AI Analysis' && (
                 <AiAnalysisTab
@@ -328,9 +323,9 @@ function OverviewTab({ analytics, tierData, qualityRadar }: {
   ]
 
   return (
-    <div className="space-y-6 crm-page-enter">
+    <div className="space-y-4 sm:space-y-6 crm-page-enter">
       {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3 crm-stagger">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2 sm:gap-3 crm-stagger">
         <KpiCard label="Total Dialed" value={analytics.total_dialed} />
         <KpiCard label="Connected" value={analytics.total_connected} sub={`${analytics.connection_rate}%`} accent />
         <KpiCard label="Eval Yes" value={analytics.eval_yes} />
@@ -341,10 +336,10 @@ function OverviewTab({ analytics, tierData, qualityRadar }: {
         <KpiCard label="Avg Quality" value={`${analytics.avg_overall_quality}/10`} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
         {/* Tier Distribution */}
-        <div className="bg-white border border-[#eadfce] rounded-3xl p-6">
-          <h3 className="font-semibold text-[#2a231d] mb-4">Priority Tier Distribution</h3>
+        <div className="bg-white border border-[#eadfce] rounded-3xl p-4 sm:p-6">
+          <h3 className="font-semibold text-[#2a231d] mb-4 text-sm sm:text-base">Priority Tier Distribution</h3>
           {tierData.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={tierData} barCategoryGap="20%">
@@ -362,8 +357,8 @@ function OverviewTab({ analytics, tierData, qualityRadar }: {
         </div>
 
         {/* Outcome Pie */}
-        <div className="bg-white border border-[#eadfce] rounded-3xl p-6">
-          <h3 className="font-semibold text-[#2a231d] mb-4">Connection Outcome</h3>
+        <div className="bg-white border border-[#eadfce] rounded-3xl p-4 sm:p-6">
+          <h3 className="font-semibold text-[#2a231d] mb-4 text-sm sm:text-base">Connection Outcome</h3>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={outcomeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4}>
@@ -380,10 +375,10 @@ function OverviewTab({ analytics, tierData, qualityRadar }: {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
         {/* Quality Radar */}
-        <div className="bg-white border border-[#eadfce] rounded-3xl p-6">
-          <h3 className="font-semibold text-[#2a231d] mb-4">Quality Dimensions</h3>
+        <div className="bg-white border border-[#eadfce] rounded-3xl p-4 sm:p-6">
+          <h3 className="font-semibold text-[#2a231d] mb-4 text-sm sm:text-base">Quality Dimensions</h3>
           <ResponsiveContainer width="100%" height={260}>
             <RadarChart data={qualityRadar} outerRadius={80}>
               <PolarGrid stroke="#e9dfce" />
@@ -395,8 +390,8 @@ function OverviewTab({ analytics, tierData, qualityRadar }: {
         </div>
 
         {/* Attempt Connection Rates */}
-        <div className="bg-white border border-[#eadfce] rounded-3xl p-6">
-          <h3 className="font-semibold text-[#2a231d] mb-4">Connection Rate by Attempt</h3>
+        <div className="bg-white border border-[#eadfce] rounded-3xl p-4 sm:p-6">
+          <h3 className="font-semibold text-[#2a231d] mb-4 text-sm sm:text-base">Connection Rate by Attempt</h3>
           {analytics.attempt_stats.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={analytics.attempt_stats} barCategoryGap="30%">
@@ -551,140 +546,6 @@ function InsightsTab({ insights }: { insights: CampaignInsight[] }) {
 }
 
 
-// ─── TAB: AGENT ASSIGNMENT ──────────────────────────────────────────────────
-
-function AgentAssignmentTab({
-  assignments,
-  availableAgents,
-  selectedAgentIds,
-  onSelectedAgentIdsChange,
-  onAssign,
-  onSelectLead,
-}: {
-  assignments: ReturnType<typeof useAgentAssignments>['data'] extends (infer U)[] ? U[] : never[]
-  availableAgents: Agent[]
-  selectedAgentIds: string[]
-  onSelectedAgentIdsChange: (ids: string[]) => void
-  onAssign: () => void
-  onSelectLead: (l: CampaignLeadDetail) => void
-}) {
-  const callAgents = availableAgents.filter((a) => a.role === 'call_agent')
-  const defaultMode = selectedAgentIds.length === 0
-
-  const toggleAgent = (agentId: string) => {
-    if (selectedAgentIds.includes(agentId)) {
-      onSelectedAgentIdsChange(selectedAgentIds.filter((id) => id !== agentId))
-      return
-    }
-    onSelectedAgentIdsChange([...selectedAgentIds, agentId])
-  }
-
-  const useDefaultCallAgents = () => {
-    onSelectedAgentIdsChange(callAgents.map((a) => a.id))
-  }
-
-  const clearSelection = () => {
-    onSelectedAgentIdsChange([])
-  }
-
-  return (
-    <div className="space-y-6 crm-page-enter">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-[#2a231d]">Agent Assignment</h3>
-          <p className="text-sm text-[#7f7266]">
-            Assignment is priority-based: top half of leads (higher priority) and bottom half are split across agent halves.
-            Only selected agents are used. If none are selected, default pool is role: call_agent.
-          </p>
-        </div>
-        <button
-          onClick={onAssign}
-          className="px-6 py-2.5 rounded-full bg-[#2a231d] text-white text-sm font-semibold hover:bg-[#3e342a] transition-colors shadow-md"
-        >
-          ⚡ Execute Auto-Assignment
-        </button>
-      </div>
-
-      <div className="bg-white border border-[#eadfce] rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-[#2a231d]">Selected Agents</p>
-          <div className="flex gap-2">
-            <button onClick={useDefaultCallAgents} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#d8c4ad] text-[#6a4b32] hover:bg-[#fcf7f0]">Use default call_agent</button>
-            <button onClick={clearSelection} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#e3d7c8] text-[#7f7266] hover:bg-[#faf5ef]">Clear</button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {availableAgents.map((agent) => {
-            const selected = selectedAgentIds.includes(agent.id)
-            return (
-              <button
-                key={agent.id}
-                onClick={() => toggleAgent(agent.id)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${selected ? 'border-[#2a231d] bg-[#2a231d] text-white' : 'border-[#e2d2bd] bg-white text-[#5f5348] hover:bg-[#fcf7f0]'}`}
-              >
-                {agent.name} ({agent.role})
-              </button>
-            )
-          })}
-        </div>
-
-        <p className="text-[11px] text-[#8c7f73] mt-3">
-          {defaultMode
-            ? `No explicit selection active. Using default role call_agent (${callAgents.length} agent(s)).`
-            : `Using ${selectedAgentIds.length} selected agent(s) for this assignment run.`}
-        </p>
-      </div>
-
-      {assignments.length === 0 ? (
-        <div className="bg-white border border-[#eadfce] rounded-3xl p-8 text-center">
-          <p className="text-[#8c7f73]">No assignment candidates found. Select agents, or create active users with role call_agent.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {assignments.map((agent: any, idx: number) => (
-            <div key={agent.agent_id} className="bg-white border border-[#eadfce] rounded-3xl overflow-hidden">
-              <div className={`px-5 py-4 ${idx === 0 ? 'bg-gradient-to-r from-red-50 to-orange-50' : idx === 1 ? 'bg-gradient-to-r from-amber-50 to-yellow-50' : 'bg-gradient-to-r from-blue-50 to-gray-50'}`}>
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-amber-500' : 'bg-blue-500'}`}>
-                    {(agent.agent_name || '?').charAt(0)}
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-[#2a231d]">{agent.agent_name}</h4>
-                    <p className="text-xs text-[#7f7266]">{agent.lead_count} leads assigned</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {Object.entries(agent.tier_breakdown || {}).map(([tier, count]) => (
-                    <span key={tier} className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${(TIER_CONFIG[tier] || TIER_CONFIG.P7).bg} ${(TIER_CONFIG[tier] || TIER_CONFIG.P7).text} ${(TIER_CONFIG[tier] || TIER_CONFIG.P7).border}`}>
-                      {tier}: {count as number}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="max-h-64 overflow-y-auto">
-                {(agent.leads || []).slice(0, 10).map((lead: CampaignLeadDetail) => (
-                  <div
-                    key={`${lead.lead_id}-${lead.attempt_number}`}
-                    onClick={() => onSelectLead(lead)}
-                    className="flex items-center gap-3 px-5 py-2.5 border-b border-[#f3ece2] cursor-pointer hover:bg-[#faf3ea] transition-colors"
-                  >
-                    <TierBadge tier={lead.priority_tier} />
-                    <span className="text-sm font-medium text-[#2a231d] flex-1 truncate">{lead.name || '—'}</span>
-                    <span className="text-xs text-[#8c7f73] font-mono">{lead.phone?.slice(-4)}</span>
-                  </div>
-                ))}
-                {(agent.leads || []).length > 10 && (
-                  <p className="px-5 py-2 text-xs text-[#8c7f73]">+{(agent.leads as any[]).length - 10} more leads</p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 
 // ─── TAB: AI ANALYSIS ───────────────────────────────────────────────────────

@@ -57,6 +57,21 @@ WHATSAPP_TEMPLATES = {
     "agent_new_lead": "🔔 New {score} lead: {name} | Budget: {budget} | Location: {location} | Source: {source}. Contact within 24h.",
     "agent_task_reminder": "⚡ Task due: {task_title}. Lead: {name}. Priority: {priority}.",
     "agent_stage_update": "📊 Lead update: {name} moved to {stage}. Score: {score}.",
+    # Lead assignment notifications (Feature 8)
+    "lead_assignment": """Hi {agent_name},
+
+You have {lead_count} new lead(s) assigned in {campaign_name}.
+
+Top lead: {top_lead_name} | Priority: {top_lead_priority}
+SLA: P1=2hr | P2=24hr | P3=48hr | P4=72hr
+
+Login: {crm_url}""",
+    "lead_reassignment": """Hi {agent_name},
+
+You have been reassigned {lead_count} lead(s) in {campaign_name}.
+
+Reason: {reason}
+Login: {crm_url}""",
 }
 
 

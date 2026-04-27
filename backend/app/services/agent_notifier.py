@@ -7,11 +7,15 @@ task assignments, stage changes, escalations, and daily digests.
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from app.core.config import settings
 from app.models.agent import Agent
 from app.models.lead import Lead
 from app.models.contact import Contact
 from app.models.models import Task
+from app.models.notification_dispatch import NotificationDispatchLog
+from app.services.email_service import send_internal_email
 from app.services.services import send_whatsapp_text
 import logging
 
@@ -32,6 +36,21 @@ async def _send_agent_whatsapp(phone: str, message: str) -> bool:
     except Exception as e:
         logger.error(f"Agent WhatsApp send error: {e}")
         return False
+
+
+async def _send_agent_email(email: str, subject: str, body: str) -> bool:
+    if not email:
+        logger.info("[AgentEmail Mock] To: %s | Subject: %s", email, subject)
+        return False
+    sent, error = await send_internal_email(
+        to_email=email,
+        subject=subject,
+        body_html=f"<p>{'<br>'.join(body.splitlines())}</p>",
+        body_text=body,
+    )
+    if not sent and error:
+        logger.error("Agent email failed: %s", error)
+    return sent
 
 
 async def notify_agent_new_lead(db: AsyncSession, agent: Agent, lead: Lead, contact: Contact):
@@ -172,3 +191,86 @@ async def send_daily_digest(db: AsyncSession):
         await _send_agent_whatsapp(agent.phone, message)
 
     logger.info(f"Daily digest sent to {len(agents)} agents")
+
+
+async def send_end_of_day_admin_summary(db: AsyncSession):
+    """Send end-of-day summary to all active admins on WhatsApp and email."""
+    tz = ZoneInfo(settings.NOTIFICATION_TIMEZONE)
+    now_local = datetime.now(tz)
+    start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    day_start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    now_utc = now_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+    total_new_leads = (
+        await db.execute(select(func.count(Lead.id)).where(Lead.created_at >= day_start_utc, Lead.created_at <= now_utc))
+    ).scalar() or 0
+    hot_new_leads = (
+        await db.execute(
+            select(func.count(Lead.id)).where(
+                Lead.created_at >= day_start_utc,
+                Lead.created_at <= now_utc,
+                Lead.lead_score == "hot",
+            )
+        )
+    ).scalar() or 0
+    tasks_assigned = (
+        await db.execute(
+            select(func.count(Task.id)).where(
+                Task.created_at >= day_start_utc,
+                Task.created_at <= now_utc,
+                Task.assigned_to.is_not(None),
+            )
+        )
+    ).scalar() or 0
+    tasks_completed = (
+        await db.execute(
+            select(func.count(Task.id)).where(
+                Task.completed_at.is_not(None),
+                Task.completed_at >= day_start_utc,
+                Task.completed_at <= now_utc,
+            )
+        )
+    ).scalar() or 0
+    overdue_now = (
+        await db.execute(select(func.count(Task.id)).where(Task.status == "overdue"))
+    ).scalar() or 0
+    failed_dispatches = (
+        await db.execute(
+            select(func.count(NotificationDispatchLog.id)).where(
+                NotificationDispatchLog.created_at >= day_start_utc,
+                NotificationDispatchLog.created_at <= now_utc,
+                NotificationDispatchLog.status == "failed",
+            )
+        )
+    ).scalar() or 0
+
+    en = (
+        f"End-of-day summary ({now_local.strftime('%d %b %Y')})\n"
+        f"New leads: {total_new_leads}\n"
+        f"Hot leads: {hot_new_leads}\n"
+        f"Tasks assigned: {tasks_assigned}\n"
+        f"Tasks completed: {tasks_completed}\n"
+        f"Overdue open tasks: {overdue_now}\n"
+        f"Notification failures: {failed_dispatches}"
+    )
+    hi = (
+        f"Din ka summary ({now_local.strftime('%d %b %Y')})\n"
+        f"Naye leads: {total_new_leads}\n"
+        f"Hot leads: {hot_new_leads}\n"
+        f"Assign tasks: {tasks_assigned}\n"
+        f"Complete tasks: {tasks_completed}\n"
+        f"Overdue tasks: {overdue_now}\n"
+        f"Notification failures: {failed_dispatches}"
+    )
+    combined = f"{en}\n\n---\nहिंदी:\n{hi}"
+
+    result = await db.execute(select(Agent).where(Agent.role == "admin", Agent.is_active == True))
+    admins = result.scalars().all()
+    for admin in admins:
+        if admin.phone:
+            await _send_agent_whatsapp(admin.phone, combined)
+        if admin.email:
+            await _send_agent_email(admin.email, "EOD Summary | Propello CRM", combined)
+
+    logger.info("End-of-day admin summary sent to %s admins", len(admins))

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(alembic upgrade:*)",
+      "Bash(python:*)",
+      "Bash(pip:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(tasklist:*)",
+      "Bash(start Propello Backend:*)",
+      "Bash(curl:*)",
+      "Bash(start:*)",
+      "Bash(uvicorn app.main:app:*)",
+      "Bash(npm run:*)",
+      "Bash(powershell:*)"
+    ]
+  }
+}

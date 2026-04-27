@@ -131,13 +131,16 @@ async def execute_pending_followups(db: AsyncSession) -> int:
                 "name": contact.name,
                 "agent_name": agent_name,
                 "phone": contact.phone,
+                "custom_message": followup.message_body or "",
+                "subject": followup.subject or f"Update from {agent_name}",
+                "body": followup.message_body or "",
             }
 
             if followup.channel == "whatsapp":
                 from app.services.services import send_whatsapp
                 await send_whatsapp(
                     to_phone=contact.phone,
-                    template=followup.template or "general_followup",
+                    template=followup.template or ("custom" if followup.message_body else "general_followup"),
                     variables=variables,
                     db=db,
                     lead_id=followup.lead_id,

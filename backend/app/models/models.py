@@ -48,7 +48,8 @@ class Activity(Base):
     type: Mapped[str] = mapped_column(
         SAEnum("call", "whatsapp", "email", "site_visit", "note",
                "stage_change", "priya_call", "property_shown",
-               "task_completed", "lead_created", "campaign_call", name="activity_type")
+               "task_completed", "lead_created", "campaign_call",
+               "task_completion_remark", name="activity_type")
     )
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -90,11 +91,32 @@ class Task(Base):
         default="pending", index=True
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completion_remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completion_tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Remark quality scoring (Feature 5)
+    remark_quality_score: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
+    remark_quality_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     lead = relationship("Lead", back_populates="tasks")
     assigned_agent = relationship("Agent", back_populates="tasks", foreign_keys=[assigned_to])
+
+
+class PerformanceSnapshot(Base):
+    __tablename__ = "performance_snapshots"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    agent_id: Mapped[str] = mapped_column(String, ForeignKey("agents.id"), index=True)
+    snapshot_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    performance_score: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    completion_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    conversion_rate: Mapped[float] = mapped_column(Numeric(5, 2), default=0)
+    avg_remark_quality: Mapped[float] = mapped_column(Numeric(4, 2), default=0)
+    tasks_completed: Mapped[int] = mapped_column(Integer, default=0)
+    leads_converted: Mapped[int] = mapped_column(Integer, default=0)
+
+    agent = relationship("Agent", back_populates="performance_snapshots")
 
 
 class SiteVisit(Base):

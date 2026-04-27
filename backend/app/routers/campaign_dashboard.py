@@ -11,7 +11,7 @@ from sqlalchemy import String, asc, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import get_current_user, get_db, require_role
 from app.models.agent import Agent
 from app.models.campaign_dashboard import CampaignBatch, CampaignFlag, CampaignLead
 from app.services.campaign_dashboard_ai import callback_script_with_groq, campaign_chat_with_groq
@@ -25,7 +25,7 @@ from app.services.campaign_dashboard_service import (
     start_analysis_task,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_role("admin", "manager"))])
 
 
 class LeadActionUpdate(BaseModel):
@@ -663,4 +663,295 @@ async def delete_batch(
         "batch_id": batch_id,
         "batch_name": batch_name,
         "deleted": True,
+    }
+
+
+# ─── BULK LEAD ASSIGNMENT (Feature 4) ───────────────────────────────────────
+
+class BulkAssignPayload(BaseModel):
+    lead_ids: list[str] = Field(min_length=1)
+    agent_id: str
+    reason: Optional[str] = None  # Required for reassignments (min 20 chars)
+
+
+@router.get("/batch/{batch_id}/assignment-table")
+async def assignment_table(
+    batch_id: str,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=500),
+    priority_tier: Optional[str] = Query(None),
+    assigned: Optional[str] = Query(None),  # "assigned" | "unassigned"
+    agent_name: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_dir: Optional[str] = Query("asc"),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Feature 4: Get leads for the assignment table view (admin/manager only)."""
+    if current_user.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admin or manager can access assignment table")
+    filters = [CampaignLead.batch_id == batch_id]
+
+    if priority_tier:
+        filters.append(CampaignLead.priority_tier == priority_tier)
+    if assigned == "assigned":
+        filters.append(CampaignLead.assigned_agent.isnot(None))
+        filters.append(CampaignLead.assigned_agent != "")
+    elif assigned == "unassigned":
+        filters.append(
+            or_(CampaignLead.assigned_agent.is_(None), CampaignLead.assigned_agent == "")
+        )
+    if agent_name:
+        filters.append(CampaignLead.assigned_agent.ilike(f"%{agent_name}%"))
+    if search:
+        like = f"%{search.strip()}%"
+        filters.append(
+            or_(
+                CampaignLead.name.ilike(like),
+                cast(CampaignLead.phone_number, String).ilike(like),
+            )
+        )
+
+    total = await db.scalar(select(func.count(CampaignLead.id)).where(*filters))
+
+    # Sorting
+    order_col = CampaignLead.name
+    if sort_by == "priority_tier":
+        order_col = CampaignLead.priority_tier
+    elif sort_by == "phone":
+        order_col = CampaignLead.phone_number
+    elif sort_by == "assigned_agent":
+        order_col = CampaignLead.assigned_agent
+    elif sort_by == "lead_score":
+        order_col = CampaignLead.lead_score
+
+    direction = desc if sort_dir == "desc" else asc
+
+    rows = (
+        await db.scalars(
+            select(CampaignLead)
+            .where(*filters)
+            .order_by(direction(order_col))
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
+    ).all()
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total + limit - 1) // limit if total else 0,
+        "leads": [
+            {
+                "id": lead.id,
+                "name": lead.name,
+                "phone_number": lead.phone_number,
+                "priority_tier": lead.priority_tier,
+                "lead_score": lead.lead_score,
+                "assigned_agent": lead.assigned_agent,
+                "intent_level": lead.intent_level,
+                "dnd_flag": lead.dnd_flag,
+                "action_taken": lead.action_taken,
+                "updated_at": lead.updated_at.isoformat() if lead.updated_at else None,
+            }
+            for lead in rows
+        ],
+    }
+
+
+@router.post("/batch/{batch_id}/bulk-assign")
+async def bulk_assign_leads(
+    batch_id: str,
+    payload: BulkAssignPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Feature 4: Bulk assign campaign leads to an agent with reassignment support."""
+    if current_user.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admin or manager can assign leads")
+
+    agent = await db.get(Agent, payload.agent_id)
+    if not agent or not agent.is_active:
+        raise HTTPException(status_code=404, detail="Agent not found or inactive")
+
+    batch = await db.scalar(select(CampaignBatch).where(CampaignBatch.id == batch_id))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Count how many are already assigned to someone else
+    already_assigned = 0
+    updated = 0
+
+    for lead_id in payload.lead_ids:
+        lead = await db.scalar(select(CampaignLead).where(CampaignLead.id == lead_id))
+        if not lead:
+            continue
+
+        # Check if reassigning (different agent)
+        if lead.assigned_agent and lead.assigned_agent != agent.name:
+            already_assigned += 1
+            # Require reason for reassignment
+            if not payload.reason or len(payload.reason) < 20:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Reassignment requires reason (min 20 chars). Lead: {lead.name or lead.phone_number}"
+                )
+
+        lead.assigned_agent = agent.name
+        lead.updated_at = datetime.utcnow()
+        updated += 1
+
+    await db.commit()
+
+    # Send notification to agent
+    from app.services.notification_dispatcher import notify_campaign_assignment_summary
+    try:
+        await notify_campaign_assignment_summary(
+            db, agent.id, updated, batch.id,
+        )
+    except Exception:
+        pass
+
+    # In-app notification
+    from app.services.lead_service import create_notification
+    await create_notification(
+        db,
+        agent.id,
+        title=f"{updated} leads assigned — {batch.name}",
+        body=f"{current_user.name} assigned {updated} lead(s) to you in campaign {batch.name}." + (
+            f" Reason: {payload.reason}" if payload.reason else ""
+        ),
+        notif_type="new_lead",
+        link="/campaign-dashboard",
+    )
+    await db.commit()
+
+    return {
+        "status": "ok",
+        "assigned": updated,
+        "reassigned": already_assigned,
+        "already_assigned_to_others": already_assigned,
+        "agent_name": agent.name,
+        "agent_id": agent.id,
+        "batch_id": batch_id,
+    }
+
+
+@router.post("/batch/{batch_id}/auto-assign")
+async def auto_assign_leads_endpoint(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Feature 7: Auto-assign all unassigned leads in a batch."""
+    if current_user.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Only admin or manager can auto-assign leads")
+
+    batch = await db.scalar(select(CampaignBatch).where(CampaignBatch.id == batch_id))
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Get all unassigned leads in this batch
+    result = await db.execute(
+        select(CampaignLead).where(
+            CampaignLead.batch_id == batch_id,
+            or_(
+                CampaignLead.assigned_agent.is_(None),
+                CampaignLead.assigned_agent == ""
+            )
+        )
+    )
+    unassigned_leads = result.scalars().all()
+
+    if not unassigned_leads:
+        return {"status": "ok", "assigned": 0, "message": "No unassigned leads found"}
+
+    # Use auto-assignment service ordering (star desc -> performance desc -> active leads asc)
+    from sqlalchemy import func
+    from app.models.lead import Lead
+    from app.services.assignment_service import get_available_agents
+
+    agents = await get_available_agents(db)
+    if not agents:
+        raise HTTPException(status_code=400, detail="No available agents to assign leads to")
+
+    priority_rank = {"P1": 1, "P2": 2, "P3": 3, "P4": 4, "P5": 5}
+    unassigned_leads.sort(key=lambda l: priority_rank.get(l.priority_tier or "P5", 9))
+
+    # Seed load-balancing counts from live CRM leads per agent.
+    active_counts: dict[str, int] = {}
+    for agent in agents:
+        count_result = await db.execute(
+            select(func.count(Lead.id)).where(
+                Lead.assigned_to == agent.id,
+                Lead.stage.notin_(["won", "lost", "nurture"]),
+            )
+        )
+        active_counts[agent.id] = count_result.scalar() or 0
+
+    assigned_count = 0
+    by_tier = {}
+    assignments_by_agent = {}
+    top_lead_by_agent: dict[str, tuple[str, str]] = {}
+
+    for lead in unassigned_leads:
+        priority = lead.priority_tier or "P3"
+
+        # P1/P2 → top agent, others → load balance
+        if priority in ["P1", "P2"]:
+            assignee = agents[0]
+        else:
+            assignee = min(agents, key=lambda a: active_counts.get(a.id, 0))
+
+        lead.assigned_agent = assignee.name
+        lead.updated_at = datetime.utcnow()
+        active_counts[assignee.id] = active_counts.get(assignee.id, 0) + 1
+        assigned_count += 1
+        by_tier[priority] = by_tier.get(priority, 0) + 1
+        assignments_by_agent[assignee.id] = assignments_by_agent.get(assignee.id, 0) + 1
+        if assignee.id not in top_lead_by_agent:
+            top_lead_by_agent[assignee.id] = (lead.name or "Top Lead", priority)
+
+    await db.commit()
+
+    # Notify agents
+    from app.services.notification_dispatcher import notify_campaign_assignment_summary
+    for agent_id, count in assignments_by_agent.items():
+        try:
+            top_name, top_priority = top_lead_by_agent.get(agent_id, ("Top Lead", "P3"))
+            await notify_campaign_assignment_summary(
+                db,
+                agent_id,
+                count,
+                batch.id,
+                campaign_name=batch.name,
+                top_lead_name=top_name,
+                top_lead_priority=top_priority,
+            )
+        except Exception:
+            pass
+
+        # In-app notification
+        from app.services.lead_service import create_notification
+        agent = await db.get(Agent, agent_id)
+        if agent:
+            await create_notification(
+                db,
+                agent.id,
+                title=f"{count} leads auto-assigned — {batch.name}",
+                body=f"{count} lead(s) auto-assigned to you in campaign {batch.name}.",
+                notif_type="new_lead",
+                link="/campaign-dashboard",
+            )
+
+    await db.commit()
+
+    return {
+        "status": "ok",
+        "assigned": assigned_count,
+        "by_tier": by_tier,
+        "batch_id": batch_id,
+        "batch_name": batch.name,
     }
