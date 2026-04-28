@@ -12,7 +12,8 @@
       "Bash(start:*)",
       "Bash(uvicorn app.main:app:*)",
       "Bash(npm run:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(git:*)"
     ]
   }
 }

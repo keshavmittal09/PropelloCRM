@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # Frontend URL (for CORS)
     FRONTEND_URL: str = "http://localhost:3000"
     FRONTEND_URL_REGEX: str = r"https://.*\.vercel\.app"
+    
+    # CORS origins (comma-separated list of allowed domains)
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,https://propello-crm.vercel.app,https://propellocrm.onrender.com"
 
     class Config:
         env_file = ".env"
