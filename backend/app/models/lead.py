@@ -31,7 +31,7 @@ class Lead(Base):
     location_preference: Mapped[str | None] = mapped_column(String(200), nullable=True)
     timeline: Mapped[str | None] = mapped_column(String(50), nullable=True)
     assigned_to: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True, index=True)
-    campaign_id: Mapped[str | None] = mapped_column(String, ForeignKey("campaigns.id"), nullable=True, index=True)
+    campaign_id: Mapped[str | None] = mapped_column(String, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True, index=True)
     project_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     interested_properties: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array of property IDs
     lost_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -57,7 +57,13 @@ class Lead(Base):
     # Relationships
     contact = relationship("Contact", back_populates="leads")
     assigned_agent = relationship("Agent", back_populates="leads", foreign_keys=[assigned_to])
-    activities = relationship("Activity", back_populates="lead", order_by="Activity.performed_at.desc()")
-    tasks = relationship("Task", back_populates="lead")
-    site_visits = relationship("SiteVisit", back_populates="lead")
+    activities = relationship(
+        "Activity",
+        back_populates="lead",
+        order_by="Activity.performed_at.desc()",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    tasks = relationship("Task", back_populates="lead", cascade="all, delete-orphan", passive_deletes=True)
+    site_visits = relationship("SiteVisit", back_populates="lead", cascade="all, delete-orphan", passive_deletes=True)
     campaign = relationship("Campaign", back_populates="leads")

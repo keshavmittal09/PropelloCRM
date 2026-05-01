@@ -88,6 +88,7 @@ export const leadsApi = {
   create: (data: Record<string, unknown>) => api.post<Lead>('/api/leads', data).then(r => r.data),
   update: (id: string, data: Record<string, unknown>) => api.patch<Lead>(`/api/leads/${id}`, data).then(r => r.data),
   delete: (id: string) => api.delete(`/api/leads/${id}`).then(r => r.data),
+  bulkDelete: (lead_ids: string[]) => api.post<{ status: string; requested: number; deleted: number }>('/api/leads/bulk-delete', { lead_ids }).then(r => r.data),
   updateStage: (id: string, stage: string, lost_reason?: string) =>
     api.patch<Lead>(`/api/leads/${id}/stage`, { stage, lost_reason }).then(r => r.data),
   timeline: (id: string) => api.get<Activity[]>(`/api/leads/${id}/timeline`).then(r => r.data),

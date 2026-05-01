@@ -241,7 +241,8 @@ async def remove_project_tag(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    _ensure_project_access(current_user)
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove project lead tags")
 
     lead = await db.get(Lead, lead_id)
     if not lead:

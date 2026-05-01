@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 from datetime import datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select, or_
+from sqlalchemy import delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,8 +18,9 @@ from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
 from app.models.agent import Agent
 from app.models.campaign import Campaign, Project
+from app.models.followup import FollowUp
 from app.models.lead import Lead
-from app.models.models import Activity
+from app.models.models import Activity, SiteVisit, Task
 from app.schemas.schemas import (
     CampaignAnalyticsResponse,
     CampaignDetailResponse,
@@ -339,8 +341,8 @@ async def remove_campaign_project(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admin/manager can remove projects")
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove projects")
 
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
@@ -579,8 +581,8 @@ async def delete_campaign(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admin/manager can remove campaigns")
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove campaigns")
 
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
@@ -588,29 +590,42 @@ async def delete_campaign(
 
     campaign_name = campaign.name
 
-    # Delete all leads associated with this campaign
-    lead_result = await db.execute(select(Lead).where(Lead.campaign_id == campaign_id))
-    linked_leads = lead_result.scalars().all()
-    for lead in linked_leads:
-        await db.delete(lead)
-
-    # Delete campaign activities
-    activity_result = await db.execute(
-        select(Activity)
-        .where(Activity.campaign_id == campaign_id)
-        .where(Activity.type == "campaign_call")
+    lead_count_result = await db.execute(
+        select(func.count(Lead.id)).where(Lead.campaign_id == campaign_id)
     )
-    campaign_activities = activity_result.scalars().all()
-    for activity in campaign_activities:
-        await db.delete(activity)
+    leads_deleted = int(lead_count_result.scalar() or 0)
 
-    await db.delete(campaign)
-    await db.commit()
+    activity_count_result = await db.execute(
+        select(func.count(Activity.id)).where(Activity.campaign_id == campaign_id)
+    )
+    activities_deleted = int(activity_count_result.scalar() or 0)
+
+    try:
+        lead_ids_subquery = select(Lead.id).where(Lead.campaign_id == campaign_id)
+
+        # Remove lead-owned records before deleting leads when DB constraints are non-cascading.
+        await db.execute(delete(FollowUp).where(FollowUp.lead_id.in_(lead_ids_subquery)))
+        await db.execute(delete(SiteVisit).where(SiteVisit.lead_id.in_(lead_ids_subquery)))
+        await db.execute(delete(Task).where(Task.lead_id.in_(lead_ids_subquery)))
+        await db.execute(delete(Activity).where(Activity.lead_id.in_(lead_ids_subquery)))
+
+        # Remove campaign-level activities, then leads, then campaign.
+        await db.execute(delete(Activity).where(Activity.campaign_id == campaign_id))
+        await db.execute(delete(Lead).where(Lead.campaign_id == campaign_id))
+        await db.delete(campaign)
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        logger.exception("Campaign delete failed due to referential integrity")
+        raise HTTPException(
+            status_code=409,
+            detail="Campaign cannot be deleted because dependent records are still protected by database constraints. Apply latest migrations to enable cascade deletion.",
+        ) from exc
 
     return {
         "status": "ok",
         "campaign_id": campaign_id,
         "campaign_name": campaign_name,
-        "leads_deleted": len(linked_leads),
-        "activities_deleted": len(campaign_activities),
+        "leads_deleted": leads_deleted,
+        "activities_deleted": activities_deleted,
     }

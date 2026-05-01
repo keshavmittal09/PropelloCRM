@@ -18,7 +18,7 @@ if exist "%VENV_PY%" (
 	"%VENV_PY%" -c "import uvicorn" >nul 2>&1
 )
 if exist "%VENV_PY%" if not errorlevel 1 (
-	start "Propello CRM Backend" cmd /k "cd /d backend && \"%VENV_PY%\" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+	start "Propello CRM Backend" cmd /k "cd /d ""%~dp0backend"" && ""%VENV_PY%"" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 ) else (
 	if exist "%VENV_PY%" (
 		echo [WARN] .venv exists but is missing backend runtime deps ^(uvicorn not importable^).
@@ -27,11 +27,11 @@ if exist "%VENV_PY%" if not errorlevel 1 (
 		echo [WARN] Python venv not found at .venv\Scripts\python.exe
 		echo        Falling back to global uvicorn command.
 	)
-	start "Propello CRM Backend" cmd /k "cd /d backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+	start "Propello CRM Backend" cmd /k "cd /d ""%~dp0backend"" && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 )
 
 echo [2/3] Starting CRM Frontend Server (Next.js)...
-start "Propello CRM Frontend" cmd /k "cd /d frontend && npx next dev -p 3000"
+start "Propello CRM Frontend" cmd /k "cd /d ""%~dp0frontend"" && npx next dev -p 3000"
 
 @REM echo [3/3] Starting Priya Chatbot Server (FastAPI)...
 @REM start "Priya Chatbot" cmd /k "cd /d chatbot && uvicorn app:app --host 0.0.0.0 --port 8001 --reload"
