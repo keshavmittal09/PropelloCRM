@@ -133,7 +133,6 @@ async def ingest_campaign(
         name=payload.campaign_name.strip(),
         project_id=project_id,
         agent_name=payload.agent_name or "Niharika",
-        uploaded_by=current_user.id,
     )
     db.add(campaign)
     await db.flush()
@@ -142,6 +141,7 @@ async def ingest_campaign(
     hot = warm = cold = created = updated = failed_rows = skipped_duplicates = 0
     tier_dist: dict[str, int] = {}
     processed: list[CampaignLeadSummary] = []
+    first_row_error: str | None = None
 
     for row in payload.rows:
         row_data = row.model_dump()
@@ -157,7 +157,10 @@ async def ingest_campaign(
             seen_phones.add(phone)
 
         try:
-            outcome = await process_campaign_row(row_data, campaign, db)
+            # Keep each row isolated so a single bad row does not poison the whole batch.
+            async with db.begin_nested():
+                outcome = await process_campaign_row(row_data, campaign, db)
+
             score = outcome["score"]
             if score == "hot":
                 hot += 1
@@ -176,14 +179,20 @@ async def ingest_campaign(
             tier_dist[tier] = tier_dist.get(tier, 0) + 1
 
             processed.append(CampaignLeadSummary(**outcome))
-        except Exception:
+        except Exception as exc:
+            logger.exception("Campaign ingest row failed")
+            if first_row_error is None:
+                first_row_error = str(exc)
             failed_rows += 1
             continue
 
     total_valid = hot + warm + cold
     if total_valid == 0:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="No valid rows found in file. Check column headers match expected format.")
+        detail = "No valid rows found in file. Check column headers match expected format."
+        if first_row_error:
+            detail = f"{detail} First row error: {first_row_error}"
+        raise HTTPException(status_code=400, detail=detail)
 
     campaign.total_calls = total_valid
     campaign.hot_count = hot
