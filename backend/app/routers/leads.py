@@ -16,7 +16,7 @@ from pydantic import Field
 from app.schemas.schemas import (
     InboundLead, InboundLeadResponse, LeadCreate, LeadUpdate,
     LeadResponse, StageUpdate, NoteCreate, CallLogCreate, ActivityResponse,
-    MasterProfileUpdate,
+    MasterProfileUpdate, DemographicsInput, DemographicsResponse,
 )
 from app.services.lead_service import process_inbound_lead, change_lead_stage, log_activity, create_auto_task, create_notification
 from app.services.services import find_matching_properties, send_whatsapp
@@ -703,8 +703,19 @@ async def get_master_profile(
         .order_by(Activity.performed_at.asc())
     )
     all_activities = activities_result.scalars().all()
-    first_contact = all_activities[0].performed_at.isoformat() if all_activities else None
-    last_contact = all_activities[-1].performed_at.isoformat() if all_activities else None
+    # Prefer explicit lead timestamps when available (more authoritative for recent syncs).
+    first_contact = None
+    if lead.created_at:
+        first_contact = lead.created_at.isoformat()
+    elif all_activities:
+        first_contact = all_activities[0].performed_at.isoformat()
+
+    # Use lead.last_contacted_at when present (set by call completion flows); fall back to activities.
+    last_contact = None
+    if getattr(lead, 'last_contacted_at', None):
+        last_contact = lead.last_contacted_at.isoformat()
+    elif all_activities:
+        last_contact = all_activities[-1].performed_at.isoformat()
 
     days_in_pipeline = (datetime.utcnow() - lead.created_at).days if lead.created_at else 0
 
@@ -731,6 +742,18 @@ async def get_master_profile(
         "last_contact_date": last_contact,
         "days_in_pipeline": days_in_pipeline,
         "completion_rate": round(completion_rate, 1),
+        # Demographic fields — read from lead row columns first, fall back to master_profile JSON
+        "age_range": lead.age_range or profile.get("age_range"),
+        "occupation": lead.occupation or profile.get("occupation"),
+        "occupation_other": lead.occupation_other,
+        "family_size": lead.family_size or profile.get("family_size"),
+        "income_range": lead.income_range,
+        "property_budget": lead.property_budget,
+        "preferred_location": lead.preferred_location,
+        "purchase_timeline": lead.purchase_timeline,
+        "last_call_status": lead.last_call_status,
+        "last_call_interest": lead.last_call_interest,
+        "last_call_topics": lead.last_call_topics,
     }
 
 
@@ -1107,6 +1130,82 @@ async def update_lead_priority(
             link=f"/leads/{lead.id}",
         )
 
+    await db.commit()
+
+    result = await db.execute(
+        select(Lead).options(selectinload(Lead.contact), selectinload(Lead.assigned_agent)).where(Lead.id == lead_id)
+    )
+    return LeadResponse.model_validate(result.scalar_one())
+
+
+# ─── DEMOGRAPHIC PROFILE ─────────────────────────────────────────────────────
+
+@router.get("/{lead_id}/demographics", response_model=DemographicsResponse)
+async def get_lead_demographics(
+    lead_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Get demographic profile for a lead."""
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _ensure_lead_scope(current_user, lead)
+
+    return DemographicsResponse(
+        age_range=lead.age_range,
+        occupation=lead.occupation,
+        occupation_other=lead.occupation_other,
+        family_size=lead.family_size,
+        income_range=lead.income_range,
+        property_budget=lead.property_budget,
+        preferred_location=lead.preferred_location,
+        purchase_timeline=lead.purchase_timeline,
+        last_call_status=lead.last_call_status,
+        last_call_topics=lead.last_call_topics or [],
+        last_call_interest=lead.last_call_interest,
+    )
+
+
+class DemographicsUpdateRequest(BaseModel):
+    age_range: Optional[str] = None
+    occupation: Optional[str] = None
+    occupation_other: Optional[str] = None
+    family_size: Optional[str] = None
+    income_range: Optional[str] = None
+    property_budget: Optional[str] = None
+    preferred_location: Optional[str] = None
+    purchase_timeline: Optional[str] = None
+    last_call_status: Optional[str] = None
+    last_call_interest: Optional[str] = None
+
+
+@router.patch("/{lead_id}/demographics", response_model=LeadResponse)
+async def update_lead_demographics(
+    lead_id: str,
+    data: DemographicsUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """
+    Direct demographic edit. call_agent CANNOT use this endpoint —
+    they must use the task completion form instead.
+    """
+    if current_user.role == "call_agent":
+        raise HTTPException(status_code=403, detail="call_agent cannot directly edit demographics")
+
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalar_one_or_none()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _ensure_lead_scope(current_user, lead)
+
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(lead, field, value)
+
+    lead.updated_at = datetime.utcnow()
     await db.commit()
 
     result = await db.execute(

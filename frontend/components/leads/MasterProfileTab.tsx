@@ -26,10 +26,17 @@ const MANUAL_FIELDS: { key: keyof MasterProfile; label: string; type?: string; o
   { key: 'city', label: 'City' },
   { key: 'locality', label: 'Locality' },
   { key: 'occupation', label: 'Occupation', options: ['Salaried', 'Business', 'Retired', 'Other'] },
+  { key: 'occupation_other', label: 'Occupation (Other)' },
   { key: 'family_size', label: 'Family Size', type: 'number' },
   { key: 'current_living_situation', label: 'Current Living', options: ['Renting', 'Owned', 'Other'] },
   { key: 'investment_purpose', label: 'Investment Purpose', options: ['Self-use', 'Investment', 'Both'] },
   { key: 'source', label: 'Source', options: ['Expo', 'Online Ad', 'Referral', 'Cold Call', 'Other'] },
+  // Demographic fields
+  { key: 'age_range', label: 'Age Range' },
+  { key: 'income_range', label: 'Monthly Income' },
+  { key: 'property_budget', label: 'Property Budget' },
+  { key: 'preferred_location', label: 'Preferred Location' },
+  { key: 'purchase_timeline', label: 'Purchase Timeline' },
 ]
 
 const COMPUTED_FIELDS: { key: keyof MasterProfile; label: string; format?: (v: unknown) => string }[] = [
@@ -167,6 +174,29 @@ export function MasterProfileTab({ leadId }: Props) {
               isComputed
             />
           ))}
+        </div>
+
+        {/* Last Call Summary */}
+        <div className="crm-surface rounded-xl p-4 space-y-2">
+          <p className="text-xs font-semibold text-[#7b7166] uppercase">Last Call</p>
+          <div className="flex justify-between text-sm">
+            <span className="text-[#8f8378]">Status</span>
+            <span className="font-medium text-[#2b241e]">{profile.last_call_status ?? '—'}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-[#8f8378]">Interest</span>
+            <span className="font-medium text-[#2b241e]">{profile.last_call_interest ?? '—'}</span>
+          </div>
+          {(profile.last_call_topics ?? []).length > 0 && (
+            <div>
+              <p className="text-[#8f8378] text-xs mb-1">Topics Discussed</p>
+              <div className="flex flex-wrap gap-1">
+                {profile.last_call_topics.map((t: string) => (
+                  <span key={t} className="px-2 py-0.5 bg-[#f0e8de] text-[#6e6357] rounded-full text-xs">{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Agent Notes */}
@@ -314,16 +344,24 @@ function EditableField({
 
   return (
     <div
-      onClick={onStartEdit}
-      className="rounded-xl px-4 py-3 border border-[#e8ddcf] bg-white cursor-pointer hover:border-[#c86f43]/50 hover:bg-[#fefcfa] transition-all group"
+      onClick={fieldKey === 'last_call_topics' ? undefined : onStartEdit}
+      className={fieldKey === 'last_call_topics' ? 'rounded-xl px-4 py-3 border border-[#e8ddcf] bg-white' : 'rounded-xl px-4 py-3 border border-[#e8ddcf] bg-white cursor-pointer hover:border-[#c86f43]/50 hover:bg-[#fefcfa] transition-all group'}
     >
       <span className="text-xs text-[#96897c] flex items-center gap-2">
         {label}
-        <span className="text-[10px] text-[#c86f43] opacity-0 group-hover:opacity-100 transition-opacity">click to edit</span>
+        {fieldKey !== 'last_call_topics' && <span className="text-[10px] text-[#c86f43] opacity-0 group-hover:opacity-100 transition-opacity">click to edit</span>}
       </span>
-      <p className={`text-sm font-medium mt-0.5 ${value ? 'text-[#2b241e]' : 'text-gray-400 italic'}`}>
-        {value ?? 'Not set'}
-      </p>
+      {fieldKey === 'last_call_topics' && Array.isArray(value) && value.length > 0 ? (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {value.map((t: string) => (
+            <span key={t} className="px-2 py-0.5 bg-[#f0e8de] text-[#6e6357] rounded-full text-xs">{t}</span>
+          ))}
+        </div>
+      ) : (
+        <p className={`text-sm font-medium mt-0.5 ${value ? 'text-[#2b241e]' : 'text-gray-400 italic'}`}>
+          {value ?? 'Not set'}
+        </p>
+      )}
     </div>
   )
 }

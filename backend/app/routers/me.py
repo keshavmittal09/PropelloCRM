@@ -32,10 +32,7 @@ async def get_my_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    """Get tasks assigned to the current user only."""
-    if current_user.role != "call_agent":
-        raise HTTPException(status_code=403, detail="This endpoint is scoped to call_agent")
-
+    """Get tasks assigned to the current user only. Accessible by all roles."""
     from sqlalchemy import case
 
     now = datetime.utcnow()
@@ -92,9 +89,7 @@ async def get_my_leads(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    """Get leads assigned to the current user only."""
-    if current_user.role != "call_agent":
-        raise HTTPException(status_code=403, detail="This endpoint is scoped to call_agent")
+    """Get leads assigned to the current user only. Accessible by all roles."""
 
     query = (
         select(Lead)
@@ -121,9 +116,7 @@ async def get_my_performance(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    """Get performance stats for the current user."""
-    if current_user.role != "call_agent":
-        raise HTTPException(status_code=403, detail="This endpoint is scoped to call_agent")
+    """Get performance stats for the current user. Accessible by all roles."""
 
     from app.services.performance_service import get_agent_performance_trend
 

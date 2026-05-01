@@ -13,10 +13,14 @@ import { leadsApi, tasksApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { MasterProfileTab } from '@/components/leads/MasterProfileTab'
-import { TaskCompletionModal } from '@/components/leads/TaskCompletionModal'
+import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
+import { MobileLeadDetailView } from '@/components/mobile/MobileLeadDetailView'
+import { MobileHeader } from '@/components/mobile/MobileHeader'
+import { useAuthStore } from '@/store/useAuthStore'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import type { Task } from '@/lib/types'
 
-type Panel = 'timeline' | 'tasks' | 'properties' | 'memory' | 'profile'
+type Panel = 'profile' | 'timeline' | 'tasks' | 'properties' | 'memory'
 const STAGE_OPTIONS = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture'] as const
 
 export default function LeadDetailPage() {
@@ -26,7 +30,7 @@ export default function LeadDetailPage() {
   const { data: lead, isLoading } = useLead(id)
   const { data: activities } = useLeadTimeline(id)
   const { data: tasks } = useAllTasks({ lead_id: id })
-  const [panel, setPanel] = useState<Panel>('timeline')
+  const [panel, setPanel] = useState<Panel>('profile')
   const [showCallLog, setShowCallLog] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
   const [showVisitModal, setShowVisitModal] = useState(false)
@@ -42,6 +46,7 @@ export default function LeadDetailPage() {
   const [deletingLead, setDeletingLead] = useState(false)
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
   const [updatingPriority, setUpdatingPriority] = useState(false)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     if (lead) {
@@ -147,6 +152,17 @@ export default function LeadDetailPage() {
     </div>
   )
 
+  // All roles get the mobile lead detail shell on phones.
+  if (isMobile) {
+    return (
+      <MobileLeadDetailView
+        lead={lead}
+        activities={activities ?? []}
+        tasks={tasks ?? []}
+      />
+    )
+  }
+
   const stageCfg = stageConfig[lead.stage]
   const isDuplicate = activities?.some(a => a.meta?.duplicate === true) || lead.call_count > 1 && lead.source === 'priya_ai'
 
@@ -154,6 +170,12 @@ export default function LeadDetailPage() {
     <div className="flex min-h-screen">
       <Sidebar />
       <main className="flex-1 overflow-auto crm-page-enter">
+        <MobileHeader
+          title={lead.contact?.name ?? 'Lead'}
+          subtitle={`${lead.stage.replace('_', ' ')} · ${lead.lead_score}`}
+          showBack={true}
+          onBack={() => router.back()}
+        />
         {/* Top bar */}
         <div className="bg-[#fffaf4] border-b border-[#e8ddcf] px-8 py-5">
           <button onClick={() => router.back()} className="text-sm text-[#7b7166] hover:text-[#5f554b] mb-3 flex items-center gap-1 transition-colors">
@@ -377,7 +399,7 @@ export default function LeadDetailPage() {
 
         {/* Task Completion Modal */}
         {completingTask && (
-          <TaskCompletionModal
+          <UnifiedTaskCompletionSheet
             task={completingTask}
             lead={lead}
             onClose={() => setCompletingTask(null)}
@@ -386,6 +408,7 @@ export default function LeadDetailPage() {
               qc.invalidateQueries({ queryKey: ['tasks'] })
               qc.invalidateQueries({ queryKey: ['timeline', id] })
               qc.invalidateQueries({ queryKey: ['lead', id] })
+              qc.invalidateQueries({ queryKey: ['master-profile', id] })
             }}
           />
         )}

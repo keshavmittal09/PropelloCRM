@@ -53,6 +53,18 @@ export interface Lead {
   dnd?: boolean
   last_remark?: string | null
   last_interaction_at?: string | null
+  // Demographic fields
+  age_range?: string | null
+  occupation?: string | null
+  occupation_other?: string | null
+  family_size?: string | null
+  income_range?: string | null
+  property_budget?: string | null
+  preferred_location?: string | null
+  purchase_timeline?: string | null
+  last_call_status?: string | null
+  last_call_topics?: string[] | null
+  last_call_interest?: string | null
   master_profile?: Record<string, unknown> | null
   contact?: Contact
   assigned_agent?: Agent
@@ -536,6 +548,12 @@ export interface CampaignDashboardAnalytics {
 export interface TaskCompleteWithRemarkPayload {
   remark_text: string
   preset_tags: string[]
+  call_status?: string
+  interest_level?: string
+  topics_discussed?: string[]
+  demographics?: DemographicsInput | null
+  next_followup_at?: string | null
+  note?: string | null
 }
 
 export interface DNCFlagPayload {
@@ -561,6 +579,7 @@ export interface MasterProfile {
   city?: string | null
   locality?: string | null
   occupation?: string | null
+  occupation_other?: string | null
   family_size?: number | null
   current_living_situation?: string | null
   investment_purpose?: string | null
@@ -574,6 +593,16 @@ export interface MasterProfile {
   last_contact_date?: string | null
   days_in_pipeline?: number
   completion_rate?: number
+  // Demographic fields (synced from task completion)
+  age_range?: string | null
+  income_range?: string | null
+  property_budget?: string | null
+  preferred_location?: string | null
+  purchase_timeline?: string | null
+  // Call quality fields
+  last_call_status?: string | null
+  last_call_interest?: string | null
+  last_call_topics?: string[] | null
 }
 
 // ─── ASSIGNMENT TABLE (Feature 4) ──────────────────────────────────────────
@@ -637,4 +666,48 @@ export interface AgentPerformanceResponse {
     completion_rate: number
     conversion_rate: number
   }>
+}
+
+// ─── DEMOGRAPHIC PROFILE (Mobile Feature 2 & 3) ────────────────────────────
+export interface DemographicsProfile {
+  age_range: string | null
+  occupation: string | null
+  occupation_other: string | null
+  family_size: string | null
+  income_range: string | null
+  property_budget: string | null
+  preferred_location: string | null
+  purchase_timeline: string | null
+  last_call_status: string | null
+  last_call_topics: string[] | null
+  last_call_interest: string | null
+}
+
+export interface DemographicsInput {
+  age_range?: string | null
+  occupation?: string | null
+  occupation_other?: string | null
+  family_size?: string | null
+  income_range?: string | null
+  property_budget?: string | null
+  preferred_location?: string | null
+  purchase_timeline?: string | null
+  current_living_situation?: string | null
+  investment_purpose?: string | null
+}
+
+export interface TaskCompleteDemographicPayload {
+  call_status: 'connected' | 'no_answer' | 'wrong_number' | 'callback'
+  interest_level?: 'hot' | 'warm' | 'cold' | 'unknown' | null
+  topics_discussed?: string[]
+  demographics?: DemographicsInput | null
+  next_followup_at?: string | null
+  note?: string | null
+}
+
+export interface TaskCompleteDemographicResult {
+  task_id: string
+  lead_id: string
+  updated_fields: string[]
+  next_followup_id: string | null
 }

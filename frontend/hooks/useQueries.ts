@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
 export const useLeads = (params?: Record<string, string>) =>
-  useQuery({ queryKey: ['leads', params], queryFn: () => leadsApi.list(params), staleTime: 30000, refetchInterval: 10000 })
+  useQuery({ queryKey: ['leads', params], queryFn: () => leadsApi.list(params), staleTime: 30000 })
 
 export const useLeadsPaginated = (params?: {
   stage?: string
@@ -20,17 +20,16 @@ export const useLeadsPaginated = (params?: {
     queryKey: ['leads-paginated', params],
     queryFn: () => leadsApi.listPaginated(params),
     staleTime: 30000,
-    refetchInterval: 10000,
   })
 
 export const useKanbanBoard = () =>
-  useQuery({ queryKey: ['kanban'], queryFn: leadsApi.board, staleTime: 30000, refetchInterval: 10000 })
+  useQuery({ queryKey: ['kanban'], queryFn: leadsApi.board, staleTime: 30000 })
 
 export const useLead = (id: string) =>
-  useQuery({ queryKey: ['lead', id], queryFn: () => leadsApi.get(id), enabled: !!id, refetchInterval: 10000 })
+  useQuery({ queryKey: ['lead', id], queryFn: () => leadsApi.get(id), enabled: !!id })
 
 export const useLeadTimeline = (id: string) =>
-  useQuery({ queryKey: ['timeline', id], queryFn: () => leadsApi.timeline(id), enabled: !!id, refetchInterval: 10000 })
+  useQuery({ queryKey: ['timeline', id], queryFn: () => leadsApi.timeline(id), enabled: !!id })
 
 export const usePropertyMatches = (leadId: string) =>
   useQuery({ queryKey: ['matches', leadId], queryFn: () => leadsApi.propertyMatches(leadId), enabled: !!leadId })
@@ -72,7 +71,6 @@ export const useTodayTasks = () =>
       queryKey: ['tasks', 'today', role],
       queryFn: () => (role === 'call_agent' ? meApi.getTasks('pending') : tasksApi.today()),
       staleTime: 60000,
-      refetchInterval: 10000,
     })
   }
 
@@ -82,7 +80,6 @@ export const useAllTasks = (params?: Record<string, string>) =>
     return useQuery({
       queryKey: ['tasks', params, role],
       queryFn: () => (role === 'call_agent' ? meApi.getTasks(params?.status) : tasksApi.list(params)),
-      refetchInterval: 10000,
     })
   }
 
@@ -190,4 +187,16 @@ export const useAssignmentTable = (batchId: string, params?: Record<string, unkn
     queryKey: ['assignment-table', batchId, params],
     queryFn: () => campaignDashboardApi.assignmentTable(batchId, params as Record<string, string>),
     enabled: !!batchId,
+  })
+
+export const useMyPerformance = () =>
+  useQuery({
+    queryKey: ['me', 'performance'],
+    queryFn: () => meApi.getPerformance(),
+  })
+
+export const useMyLeads = (params?: { stage?: string; search?: string; skip?: number; limit?: number }) =>
+  useQuery({
+    queryKey: ['me', 'leads', params],
+    queryFn: () => meApi.getLeads(params),
   })

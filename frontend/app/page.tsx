@@ -6,11 +6,12 @@ import { useAnalyticsSummary, useTodayTasks, useNotifications, useSourceStats } 
 import { formatCurrency, formatDateTime, timeAgo } from '@/lib/utils'
 import Sidebar from '@/components/shared/Sidebar'
 import LeadSourceChart from '@/components/shared/LeadSourceChart'
-import { TaskCompletionModal } from '@/components/leads/TaskCompletionModal'
+import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
 import { authApi, notificationsApi } from '@/lib/api'
-import type { Agent, Task } from '@/lib/types'
+import { MobileHeader } from '@/components/mobile/MobileHeader'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import type { Agent, Task } from '@/lib/types'
 
 function StatCard({ label, value, sub, color = 'text-gray-900' }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
@@ -51,7 +52,11 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 p-8 overflow-auto crm-page-enter">
+      <main className="flex-1 overflow-auto crm-page-enter">
+        <MobileHeader
+          title="Dashboard"
+          subtitle={summary ? `${summary.total_leads} total leads` : 'Loading...'}
+        />
         {/* Header */}
         <div className="mb-10 mt-4 px-2">
           <h2 className="text-5xl font-semibold tracking-tight text-[#1f1914]">Good morning, {agent?.name?.split(' ')[0]}.</h2>
@@ -72,7 +77,7 @@ export default function Dashboard() {
           {/* Today's tasks */}
           <div className="crm-surface rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-[#2a231d]">Today's tasks</h3>
+              <h3 className="font-semibold text-[#2a231d]">Today&apos;s tasks</h3>
               <button onClick={() => router.push('/tasks')} className="text-xs text-[#a65630] hover:text-[#894827] transition-colors">View all</button>
             </div>
             {!tasks?.length ? (
@@ -178,7 +183,7 @@ export default function Dashboard() {
 
         {/* Task Completion Modal */}
         {completingTask && (
-          <TaskCompletionModal
+          <UnifiedTaskCompletionSheet
             task={completingTask}
             lead={null}
             onClose={() => setCompletingTask(null)}
@@ -224,18 +229,9 @@ function AdminBroadcastModal({
       ...(channelEmail ? ['email'] : []),
     ] as Array<'in_app' | 'whatsapp' | 'email'>
 
-    if (!channels.length) {
-      toast.error('Select at least one channel')
-      return
-    }
-    if (!message.trim()) {
-      toast.error('Message is required')
-      return
-    }
-    if (!allAgents && selectedAgentIds.length === 0) {
-      toast.error('Select at least one agent')
-      return
-    }
+    if (!channels.length) { toast.error('Select at least one channel'); return }
+    if (!message.trim()) { toast.error('Message is required'); return }
+    if (!allAgents && selectedAgentIds.length === 0) { toast.error('Select at least one agent'); return }
 
     setSending(true)
     try {
@@ -264,12 +260,10 @@ function AdminBroadcastModal({
         <div className="mt-4 space-y-3">
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm text-[#4f453b]">
-              <input type="radio" checked={allAgents} onChange={() => setAllAgents(true)} />
-              All agents
+              <input type="radio" checked={allAgents} onChange={() => setAllAgents(true)} /> All agents
             </label>
             <label className="flex items-center gap-2 text-sm text-[#4f453b]">
-              <input type="radio" checked={!allAgents} onChange={() => setAllAgents(false)} />
-              Selected agents
+              <input type="radio" checked={!allAgents} onChange={() => setAllAgents(false)} /> Selected agents
             </label>
           </div>
 
@@ -277,11 +271,7 @@ function AdminBroadcastModal({
             <div className="border border-[#eadfce] rounded-xl p-3 max-h-44 overflow-y-auto space-y-2">
               {eligibleAgents.map((agent) => (
                 <label key={agent.id} className="flex items-center gap-2 text-sm text-[#4f453b]">
-                  <input
-                    type="checkbox"
-                    checked={selectedAgentIds.includes(agent.id)}
-                    onChange={() => toggleAgent(agent.id)}
-                  />
+                  <input type="checkbox" checked={selectedAgentIds.includes(agent.id)} onChange={() => toggleAgent(agent.id)} />
                   {agent.name} ({agent.role})
                 </label>
               ))}
@@ -289,45 +279,20 @@ function AdminBroadcastModal({
           )}
 
           <div className="grid grid-cols-3 gap-3">
-            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
-              <input type="checkbox" checked={channelInApp} onChange={(e) => setChannelInApp(e.target.checked)} />
-              In-app
-            </label>
-            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
-              <input type="checkbox" checked={channelWhatsApp} onChange={(e) => setChannelWhatsApp(e.target.checked)} />
-              WhatsApp
-            </label>
-            <label className="flex items-center gap-2 text-sm text-[#4f453b]">
-              <input type="checkbox" checked={channelEmail} onChange={(e) => setChannelEmail(e.target.checked)} />
-              Email
-            </label>
+            {[['In-app', channelInApp, setChannelInApp] as const, ['WhatsApp', channelWhatsApp, setChannelWhatsApp] as const, ['Email', channelEmail, setChannelEmail] as const].map(([label, checked, setChecked]) => (
+              <label key={label} className="flex items-center gap-2 text-sm text-[#4f453b]">
+                <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} /> {label}
+              </label>
+            ))}
           </div>
 
-          <input
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Subject (optional)"
-            className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm"
-          />
-
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            rows={6}
-            placeholder="Write custom notification text..."
-            className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm"
-          />
+          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject (optional)" className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm" />
+          <textarea value={message} onChange={e => setMessage(e.target.value)} rows={6} placeholder="Write custom notification text..." className="w-full px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm" />
         </div>
 
         <div className="mt-5 flex gap-3">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-full border border-[#e5d7c5] text-[#6e6357]">
-            Cancel
-          </button>
-          <button
-            onClick={submit}
-            disabled={sending}
-            className="flex-1 px-4 py-2 rounded-full bg-[#2f2317] text-white font-semibold disabled:opacity-50"
-          >
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-full border border-[#e5d7c5] text-[#6e6357]">Cancel</button>
+          <button onClick={submit} disabled={sending} className="flex-1 px-4 py-2 rounded-full bg-[#2f2317] text-white font-semibold disabled:opacity-50">
             {sending ? 'Sending...' : 'Send notification'}
           </button>
         </div>
