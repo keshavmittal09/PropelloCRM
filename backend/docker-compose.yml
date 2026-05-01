@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  postgres-local:
+    image: postgres:15
+    container_name: propello_postgres_local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: propello_local_pwd
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+    name: propello_postgres_data

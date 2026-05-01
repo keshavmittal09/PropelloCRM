@@ -204,6 +204,18 @@ class LeadResponse(BaseModel):
     dnd: bool = False
     last_remark: Optional[str] = None
     last_interaction_at: Optional[datetime] = None
+    # Demographic fields (mobile Feature 2 & 3)
+    age_range: Optional[str] = None
+    occupation: Optional[str] = None
+    occupation_other: Optional[str] = None
+    family_size: Optional[str] = None
+    income_range: Optional[str] = None
+    property_budget: Optional[str] = None
+    preferred_location: Optional[str] = None
+    purchase_timeline: Optional[str] = None
+    last_call_status: Optional[str] = None
+    last_call_topics: Optional[List[str]] = None
+    last_call_interest: Optional[str] = None
     master_profile: Optional[Any] = None
     created_at: datetime
     updated_at: datetime
@@ -573,6 +585,14 @@ class AgentAssignment(BaseModel):
 class TaskCompleteWithRemarkRequest(BaseModel):
     remark_text: str = Field(min_length=80, max_length=5000)
     preset_tags: list[str] = Field(default_factory=list)
+    # ─── Optional demographic fields (mobile Feature 2) ────────────────────────
+    call_status: Optional[str] = Field(None, description="One of: connected, no_answer, wrong_number, callback")
+    interest_level: Optional[str] = Field(None, description="hot, warm, cold, unknown")
+    topics_discussed: Optional[list[str]] = Field(default_factory=list)
+    demographics: Optional[DemographicsInput] = None
+    next_followup_at: Optional[datetime] = None
+    # Override remark_text with demographic note when no free text
+    note: Optional[str] = Field(None, max_length=200)
 
 
 class DNCFlagRequest(BaseModel):
@@ -701,4 +721,49 @@ class LeaderboardEntry(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ─── DEMOGRAPHIC PROFILE (Mobile Feature 2 & 3) ────────────────────────────────
+
+class DemographicsInput(BaseModel):
+    age_range: Optional[str] = None
+    occupation: Optional[str] = None
+    occupation_other: Optional[str] = None
+    family_size: Optional[str] = None
+    income_range: Optional[str] = None
+    property_budget: Optional[str] = None
+    preferred_location: Optional[str] = None
+    purchase_timeline: Optional[str] = None
+    current_living_situation: Optional[str] = None
+    investment_purpose: Optional[str] = None
+
+
+class TaskCompleteDemographicRequest(BaseModel):
+    call_status: str = Field(..., description="One of: connected, no_answer, wrong_number, callback")
+    interest_level: Optional[str] = Field(None, description="One of: hot, warm, cold, unknown")
+    topics_discussed: Optional[List[str]] = Field(default_factory=list)
+    demographics: Optional[DemographicsInput] = None
+    next_followup_at: Optional[datetime] = None
+    note: Optional[str] = Field(None, max_length=200)
+
+
+class DemographicsResponse(BaseModel):
+    age_range: Optional[str] = None
+    occupation: Optional[str] = None
+    occupation_other: Optional[str] = None
+    family_size: Optional[str] = None
+    income_range: Optional[str] = None
+    property_budget: Optional[str] = None
+    preferred_location: Optional[str] = None
+    purchase_timeline: Optional[str] = None
+    last_call_status: Optional[str] = None
+    last_call_topics: Optional[List[str]] = None
+    last_call_interest: Optional[str] = None
+
+
+class TaskCompleteDemographicResponse(BaseModel):
+    task_id: str
+    lead_id: str
+    updated_fields: List[str]
+    next_followup_id: Optional[str] = None
 

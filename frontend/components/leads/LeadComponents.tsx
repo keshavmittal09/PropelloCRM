@@ -6,6 +6,7 @@ import { formatDateTime, activityIcons, formatCurrency, timeAgo } from '@/lib/ut
 import { ScoreBadge, SourceTag } from '@/components/shared/Badges'
 import type { Activity, Task, Property } from '@/lib/types'
 import toast from 'react-hot-toast'
+import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
 
 // ─── LOST REASON MODAL ────────────────────────────────────────────────────────
 const LOST_REASONS = ['Budget too low', 'Went to competitor', 'Not responding', 'Not ready yet', 'Location mismatch', 'Other']

@@ -17,7 +17,7 @@ from app.schemas.schemas import (
     SiteVisitCreate, SiteVisitUpdate, SiteVisitResponse,
     NotificationResponse, MemoryResponse, LeadResponse, AdminBroadcastRequest,
     TaskCompleteWithRemarkRequest, MasterProfileUpdate, MasterProfileResponse,
-    DNCFlagRequest,
+    DNCFlagRequest, TaskCompleteDemographicRequest, TaskCompleteDemographicResponse,
 )
 from app.services.services import (
     get_summary, get_funnel, get_source_stats, get_agent_stats,
@@ -25,6 +25,7 @@ from app.services.services import (
 )
 from app.services.memory_service import build_memory_brief
 from app.services.lead_service import create_notification
+from app.services.demographic_service import create_followup_from_completion, sync_demographics_to_lead
 from app.services.notification_dispatcher import notify_task_assignment_multichannel
 from app.services.notification_dispatcher import send_admin_broadcast
 import io
@@ -432,7 +433,7 @@ async def complete_task_with_remark(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    """Feature 1+2: Complete a task with mandatory remark gate + AI quality scoring."""
+    """Feature 1+2: Complete a task with remark + optional demographic form data."""
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -449,33 +450,50 @@ async def complete_task_with_remark(
     from app.services.remark_quality_service import evaluate_and_update_task
     await evaluate_and_update_task(db, task, data.remark_text)
 
-    # Update lead
     lead = await db.get(Lead, task.lead_id)
-    if lead:
-        lead.last_remark = data.remark_text[:120]
-        lead.last_interaction_at = datetime.utcnow()
-        lead.last_contacted_at = datetime.utcnow()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
 
-        # Log remark as activity
-        from app.services.lead_service import log_activity
-        tag_str = ", ".join(data.preset_tags) if data.preset_tags else ""
-        description = data.remark_text
-        if tag_str:
-            description = f"[Tags: {tag_str}] {description}"
-        activity = Activity(
-            lead_id=task.lead_id,
-            contact_id=lead.contact_id,
-            type="task_completion_remark",
-            title=f"Task completed: {task.title}",
-            description=description,
-            performed_by=current_user.id,
-            meta={
-                "task_id": task.id,
-                "preset_tags": data.preset_tags,
-                "remark_text": data.remark_text,
-            },
-        )
-        db.add(activity)
+    updated_lead_fields = await sync_demographics_to_lead(
+        db=db,
+        lead=lead,
+        demographics=data.demographics,
+        call_status=data.call_status,
+        interest_level=data.interest_level,
+        topics_discussed=data.topics_discussed or [],
+        note=data.note or data.remark_text,
+        agent_id=current_user.id,
+    )
+
+    lead.last_remark = data.remark_text[:120]
+    lead.last_interaction_at = datetime.utcnow()
+    lead.last_contacted_at = datetime.utcnow()
+
+    followup_task = await create_followup_from_completion(db, lead, data.next_followup_at, current_user.id)
+
+    from app.services.lead_service import log_activity
+    tag_str = ", ".join(data.preset_tags) if data.preset_tags else ""
+    description = data.remark_text
+    if tag_str:
+        description = f"[Tags: {tag_str}] {description}"
+
+    activity = Activity(
+        lead_id=task.lead_id,
+        contact_id=lead.contact_id,
+        type="task_completion_remark",
+        title=f"Task completed: {task.title}",
+        description=description,
+        performed_by=current_user.id,
+        meta={
+            "task_id": task.id,
+            "preset_tags": data.preset_tags,
+            "remark_text": data.remark_text,
+            "updated_lead_fields": updated_lead_fields,
+            "next_followup_at": data.next_followup_at.isoformat() if data.next_followup_at else None,
+            "followup_task_id": followup_task.id if followup_task else None,
+        },
+    )
+    db.add(activity)
 
     if task.assigned_to:
         await create_notification(
@@ -498,6 +516,86 @@ async def complete_task_with_remark(
     await db.commit()
     response_task = await _load_task_for_response(db, task.id)
     return TaskResponse.model_validate(response_task)
+
+
+@tasks_router.post("/{task_id}/complete-demographic", response_model=TaskCompleteDemographicResponse)
+async def complete_task_demographic(
+    task_id: str,
+    data: TaskCompleteDemographicRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """
+    Mobile Feature 2: Complete a task with structured demographic form.
+    Replaces the remark-based completion for call_agent flows.
+    """
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if current_user.role in {"agent", "call_agent"} and task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to complete this task")
+
+    # Mark task done
+    task.status = "done"
+    task.completed_at = datetime.utcnow()
+
+    # Get the lead
+    lead = await db.get(Lead, task.lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    # Sync demographics
+    from app.services.demographic_service import sync_demographics_to_lead, create_followup_from_completion
+
+    updated_fields = await sync_demographics_to_lead(
+        db=db,
+        lead=lead,
+        demographics=data.demographics,
+        call_status=data.call_status,
+        interest_level=data.interest_level,
+        topics_discussed=data.topics_discussed or [],
+        note=data.note,
+        agent_id=current_user.id,
+    )
+
+    # Create follow-up task if next_followup_at provided
+    next_followup_task = None
+    if data.next_followup_at and data.call_status == "connected":
+        next_followup_task = await create_followup_from_completion(
+            db=db,
+            lead=lead,
+            next_followup_at=data.next_followup_at,
+            agent_id=current_user.id,
+        )
+
+    # Update performance
+    if task.assigned_to:
+        try:
+            from app.services.performance_service import update_agent_performance_live
+            await update_agent_performance_live(db, task.assigned_to, days=30)
+        except Exception:
+            pass
+
+    # Notify
+    if task.assigned_to:
+        await create_notification(
+            db,
+            task.assigned_to,
+            title="Task completed",
+            body=f"{current_user.name} completed: {task.title}",
+            notif_type="reminder",
+            link="/tasks",
+        )
+
+    await db.commit()
+
+    return TaskCompleteDemographicResponse(
+        task_id=task.id,
+        lead_id=lead.id,
+        updated_fields=updated_fields,
+        next_followup_id=next_followup_task.id if next_followup_task else None,
+    )
 
 
 @tasks_router.post("/flag-dnc")

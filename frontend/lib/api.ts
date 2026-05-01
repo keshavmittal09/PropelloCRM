@@ -21,6 +21,8 @@ import type {
   BulkAssignPayload,
   LeaderboardEntry,
   AgentPerformanceResponse,
+  DemographicsProfile,
+  TaskCompleteDemographicPayload,
 } from './types'
 
 const api = axios.create({
@@ -111,6 +113,9 @@ export const leadsApi = {
     ).then(r => r.data),
   updateLeadPriority: (id: string, priority: string) =>
     api.patch<Lead>(`/api/leads/${id}/priority`, { priority }).then(r => r.data),
+  getDemographics: (id: string) => api.get<DemographicsProfile>(`/api/leads/${id}/demographics`).then(r => r.data),
+  updateDemographics: (id: string, data: Partial<DemographicsProfile>) =>
+    api.patch<Lead>(`/api/leads/${id}/demographics`, data).then(r => r.data),
 }
 
 // ─── CONTACTS ────────────────────────────────────────────────────────────────
@@ -140,6 +145,8 @@ export const tasksApi = {
   completeWithRemark: (id: string, data: TaskCompleteWithRemarkPayload) =>
     api.patch<Task>(`/api/tasks/${id}/complete-with-remark`, data).then(r => r.data),
   flagDnc: (data: DNCFlagPayload) => api.post(`/api/tasks/flag-dnc`, data).then(r => r.data),
+  completeWithDemographic: (id: string, data: TaskCompleteDemographicPayload) =>
+    api.post<Task>(`/api/tasks/${id}/complete-demographic`, data).then(r => r.data),
   update: (id: string, data: Record<string, unknown>) => api.patch<Task>(`/api/tasks/${id}`, data).then(r => r.data),
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
+import { MobileHeader } from '@/components/mobile/MobileHeader'
 import { useAllTasks } from '@/hooks/useQueries'
 import { useContacts, useProperties, useVisits } from '@/hooks/useQueries'
 import { formatDateTime, formatDate, formatCurrency } from '@/lib/utils'
@@ -10,13 +11,15 @@ import { authApi, contactsApi, propertiesApi, tasksApi, visitsApi } from '@/lib/
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/useAuthStore'
 import type { Agent, Task } from '@/lib/types'
-import { TaskCompletionModal } from '@/components/leads/TaskCompletionModal'
+import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
 import toast from 'react-hot-toast'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 export function TasksPageContent() {
   const router = useRouter()
   const qc = useQueryClient()
   const { agent } = useAuthStore()
+  const isMobile = useIsMobile()
   const canViewAll = agent?.role === 'admin' || agent?.role === 'manager'
   const canEditAll = agent?.role === 'admin' || agent?.role === 'manager'
 
@@ -55,7 +58,8 @@ export function TasksPageContent() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-8 crm-page-enter">
+      <main className="flex-1 overflow-auto crm-page-enter p-8">
+        <MobileHeader title="Tasks" subtitle={tasks ? `${tasks.filter(t => t.status !== 'done').length} pending` : ''} />
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-4xl font-semibold tracking-tight text-[#1f1914]">Tasks</h2>
@@ -173,13 +177,14 @@ export function TasksPageContent() {
 
         {/* Task Completion Modal */}
         {completingTask && (
-          <TaskCompletionModal
+          <UnifiedTaskCompletionSheet
             task={completingTask}
             lead={completingTask.lead ?? null}
             onClose={() => setCompletingTask(null)}
             onComplete={() => {
               setCompletingTask(null)
               qc.invalidateQueries({ queryKey: ['tasks'] })
+              qc.invalidateQueries({ queryKey: ['leads'] })
             }}
           />
         )}

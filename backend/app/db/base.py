@@ -1,7 +1,9 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
+import ssl
 
 
 class Base(DeclarativeBase):
@@ -16,6 +18,11 @@ const_engine_kwargs = {
     "pool_recycle": 1800,
     "pool_pre_ping": True,
 }
+
+parsed_url = make_url(settings.DATABASE_URL)
+use_ssl = parsed_url.host not in {"localhost", "127.0.0.1", "::1"}
+if use_ssl:
+    const_engine_kwargs["connect_args"] = {"ssl": "require"}
 
 engine = create_async_engine(
     settings.DATABASE_URL,
