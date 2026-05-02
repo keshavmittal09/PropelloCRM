@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 from datetime import datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select, or_
+from sqlalchemy import delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,8 +18,9 @@ from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
 from app.models.agent import Agent
 from app.models.campaign import Campaign, Project
+from app.models.followup import FollowUp
 from app.models.lead import Lead
-from app.models.models import Activity
+from app.models.models import Activity, SiteVisit, Task
 from app.schemas.schemas import (
     CampaignAnalyticsResponse,
     CampaignDetailResponse,
@@ -42,6 +44,8 @@ from app.services.campaign_service import (
 )
 
 router = APIRouter()
+# Batch size for campaign ingestion (reduces commit frequency)
+BATCH_SIZE = getattr(settings, "CAMPAIGN_BATCH_SIZE", 200)
 
 
 def _ensure_campaign_access(current_user: Agent) -> None:
@@ -131,7 +135,6 @@ async def ingest_campaign(
         name=payload.campaign_name.strip(),
         project_id=project_id,
         agent_name=payload.agent_name or "Niharika",
-        uploaded_by=current_user.id,
     )
     db.add(campaign)
     await db.flush()
@@ -140,48 +143,137 @@ async def ingest_campaign(
     hot = warm = cold = created = updated = failed_rows = skipped_duplicates = 0
     tier_dist: dict[str, int] = {}
     processed: list[CampaignLeadSummary] = []
+    first_row_error: str | None = None
 
-    for row in payload.rows:
-        row_data = row.model_dump()
-        if not row_data.get("name") and not row_data.get("phone_number"):
-            failed_rows += 1
-            continue
+    # Preload existing leads by phone to avoid per-row DB lookups
+    all_phones = set()
+    for r in payload.rows:
+        ph = normalise_phone(r.model_dump().get("phone_number", ""))
+        if ph:
+            all_phones.add(ph)
 
-        phone = normalise_phone(row_data.get("phone_number", ""))
-        if phone and phone in seen_phones:
-            skipped_duplicates += 1
-            continue
-        if phone:
-            seen_phones.add(phone)
-
+    phone_to_existing: dict[str, object] = {}
+    if all_phones:
         try:
-            outcome = await process_campaign_row(row_data, campaign, db)
-            score = outcome["score"]
-            if score == "hot":
-                hot += 1
-            elif score == "warm":
-                warm += 1
-            else:
-                cold += 1
-
-            if outcome["action"] == "created":
-                created += 1
-            else:
-                updated += 1
-
-            # Track tier distribution
-            tier = outcome.get("priority_tier", "P7")
-            tier_dist[tier] = tier_dist.get(tier, 0) + 1
-
-            processed.append(CampaignLeadSummary(**outcome))
+            result = await db.execute(
+                select(Lead, Contact).join(Contact, Lead.contact_id == Contact.id).where(Contact.phone.in_(list(all_phones)))
+            )
+            for lead, contact in result.all():
+                phone_to_existing[contact.phone] = lead
         except Exception:
-            failed_rows += 1
-            continue
+            # fallback: continue without preload
+            logger.exception("Preloading existing leads by phone failed")
+
+    # Process rows in batches to reduce transaction overhead
+    rows = payload.rows
+    total_rows = len(rows)
+    for start in range(0, total_rows, BATCH_SIZE):
+        batch = rows[start : start + BATCH_SIZE]
+
+        # Process all rows in-memory and add to session; commit once per batch
+        for row in batch:
+            row_data = row.model_dump()
+            if not row_data.get("name") and not row_data.get("phone_number"):
+                failed_rows += 1
+                continue
+
+            phone = normalise_phone(row_data.get("phone_number", ""))
+            if phone and phone in seen_phones:
+                skipped_duplicates += 1
+                continue
+            if phone:
+                seen_phones.add(phone)
+
+            try:
+                existing = phone_to_existing.get(phone) if phone else None
+                outcome = await process_campaign_row(row_data, campaign, db, existing=existing)
+
+                score = outcome["score"]
+                if score == "hot":
+                    hot += 1
+                elif score == "warm":
+                    warm += 1
+                else:
+                    cold += 1
+
+                if outcome["action"] == "created":
+                    created += 1
+                else:
+                    updated += 1
+
+                tier = outcome.get("priority_tier", "P7")
+                tier_dist[tier] = tier_dist.get(tier, 0) + 1
+
+                processed.append(CampaignLeadSummary(**outcome))
+            except Exception as exc:
+                logger.exception("Campaign ingest row failed (batch)")
+                if first_row_error is None:
+                    first_row_error = str(exc)
+                failed_rows += 1
+                # continue; do not rollback here — rollback will be done at batch level if needed
+
+        # Try committing the batch once
+        try:
+            await db.commit()
+        except Exception:
+            logger.exception("Batch commit failed, falling back to per-row commit")
+            # Batch-level commit failed. Roll back and process rows individually to isolate bad rows.
+            try:
+                await db.rollback()
+            except Exception:
+                logger.exception("Rollback after failed batch commit failed")
+
+            for row in batch:
+                row_data = row.model_dump()
+                if not row_data.get("name") and not row_data.get("phone_number"):
+                    continue
+
+                phone = normalise_phone(row_data.get("phone_number", ""))
+                if phone and phone in seen_phones:
+                    # already accounted for
+                    continue
+
+                try:
+                    existing = phone_to_existing.get(phone) if phone else None
+                    outcome = await process_campaign_row(row_data, campaign, db, existing=existing)
+                    # commit per-row to isolate issues
+                    await db.commit()
+
+                    score = outcome["score"]
+                    if score == "hot":
+                        hot += 1
+                    elif score == "warm":
+                        warm += 1
+                    else:
+                        cold += 1
+
+                    if outcome["action"] == "created":
+                        created += 1
+                    else:
+                        updated += 1
+
+                    tier = outcome.get("priority_tier", "P7")
+                    tier_dist[tier] = tier_dist.get(tier, 0) + 1
+
+                    processed.append(CampaignLeadSummary(**outcome))
+                except Exception as exc2:
+                    logger.exception("Per-row fallback failed")
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        logger.exception("Rollback after per-row fallback failed")
+                    if first_row_error is None:
+                        first_row_error = str(exc2)
+                    failed_rows += 1
+                    continue
 
     total_valid = hot + warm + cold
     if total_valid == 0:
         await db.rollback()
-        raise HTTPException(status_code=400, detail="No valid rows found in file. Check column headers match expected format.")
+        detail = "No valid rows found in file. Check column headers match expected format."
+        if first_row_error:
+            detail = f"{detail} First row error: {first_row_error}"
+        raise HTTPException(status_code=400, detail=detail)
 
     campaign.total_calls = total_valid
     campaign.hot_count = hot
@@ -339,8 +431,8 @@ async def remove_campaign_project(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admin/manager can remove projects")
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove projects")
 
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
@@ -579,8 +671,8 @@ async def delete_campaign(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admin/manager can remove campaigns")
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove campaigns")
 
     campaign = await db.get(Campaign, campaign_id)
     if not campaign:
@@ -588,29 +680,42 @@ async def delete_campaign(
 
     campaign_name = campaign.name
 
-    # Delete all leads associated with this campaign
-    lead_result = await db.execute(select(Lead).where(Lead.campaign_id == campaign_id))
-    linked_leads = lead_result.scalars().all()
-    for lead in linked_leads:
-        await db.delete(lead)
-
-    # Delete campaign activities
-    activity_result = await db.execute(
-        select(Activity)
-        .where(Activity.campaign_id == campaign_id)
-        .where(Activity.type == "campaign_call")
+    lead_count_result = await db.execute(
+        select(func.count(Lead.id)).where(Lead.campaign_id == campaign_id)
     )
-    campaign_activities = activity_result.scalars().all()
-    for activity in campaign_activities:
-        await db.delete(activity)
+    leads_deleted = int(lead_count_result.scalar() or 0)
 
-    await db.delete(campaign)
-    await db.commit()
+    activity_count_result = await db.execute(
+        select(func.count(Activity.id)).where(Activity.campaign_id == campaign_id)
+    )
+    activities_deleted = int(activity_count_result.scalar() or 0)
+
+    try:
+        lead_ids_subquery = select(Lead.id).where(Lead.campaign_id == campaign_id)
+
+        # Remove lead-owned records before deleting leads when DB constraints are non-cascading.
+        await db.execute(delete(FollowUp).where(FollowUp.lead_id.in_(lead_ids_subquery)))
+        await db.execute(delete(SiteVisit).where(SiteVisit.lead_id.in_(lead_ids_subquery)))
+        await db.execute(delete(Task).where(Task.lead_id.in_(lead_ids_subquery)))
+        await db.execute(delete(Activity).where(Activity.lead_id.in_(lead_ids_subquery)))
+
+        # Remove campaign-level activities, then leads, then campaign.
+        await db.execute(delete(Activity).where(Activity.campaign_id == campaign_id))
+        await db.execute(delete(Lead).where(Lead.campaign_id == campaign_id))
+        await db.delete(campaign)
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        logger.exception("Campaign delete failed due to referential integrity")
+        raise HTTPException(
+            status_code=409,
+            detail="Campaign cannot be deleted because dependent records are still protected by database constraints. Apply latest migrations to enable cascade deletion.",
+        ) from exc
 
     return {
         "status": "ok",
         "campaign_id": campaign_id,
         "campaign_name": campaign_name,
-        "leads_deleted": len(linked_leads),
-        "activities_deleted": len(campaign_activities),
+        "leads_deleted": leads_deleted,
+        "activities_deleted": activities_deleted,
     }

@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import uuid
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
@@ -130,6 +131,7 @@ async def create_auto_task(
     priority: str = "high",
 ):
     task = Task(
+        id=str(uuid.uuid4()),
         lead_id=lead_id,
         title=title,
         task_type=task_type,
@@ -139,7 +141,6 @@ async def create_auto_task(
         status="pending",
     )
     db.add(task)
-    await db.flush()
 
     if task.assigned_to:
         await create_notification(
@@ -177,6 +178,7 @@ async def create_notification(
     link: Optional[str] = None,
 ):
     notif = Notification(
+        id=str(uuid.uuid4()),
         agent_id=agent_id,
         title=title,
         body=body,
@@ -184,7 +186,7 @@ async def create_notification(
         link=link,
     )
     db.add(notif)
-    await db.flush()
+    # do not flush here; caller will commit
 
 
 async def process_inbound_lead(db: AsyncSession, data: InboundLead) -> dict:

@@ -8,9 +8,12 @@ import { projectsApi } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '@/store/useAuthStore'
 
 export default function ProjectsPage() {
   const qc = useQueryClient()
+  const agent = useAuthStore((s) => s.agent)
+  const isAdmin = agent?.role === 'admin'
   const { data: projects = [], isLoading } = useProjectsModule()
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const { data: detail, refetch } = useProjectDetail(selectedProjectId)
@@ -82,6 +85,10 @@ export default function ProjectsPage() {
   }
 
   const removeTag = async (leadId: string) => {
+    if (!isAdmin) {
+      toast.error('Only admin can remove project tags')
+      return
+    }
     if (!selectedProjectId) return
     try {
       await projectsApi.removeLeadTag(selectedProjectId, leadId)
@@ -200,7 +207,13 @@ export default function ProjectsPage() {
                             </td>
                             <td className="px-3 py-2"><ScoreBadge score={lead.lead_score} /></td>
                             <td className="px-3 py-2">{lead.stage}</td>
-                            <td className="px-3 py-2"><button onClick={() => removeTag(lead.id)} className="text-xs text-red-600 hover:underline">Remove tag</button></td>
+                            <td className="px-3 py-2">
+                              {isAdmin ? (
+                                <button onClick={() => removeTag(lead.id)} className="text-xs text-red-600 hover:underline">Remove tag</button>
+                              ) : (
+                                <span className="text-xs text-[#8a7d70]">View only</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                         {!detail.leads.length && <tr><td className="px-3 py-4 text-[#8a7d70]" colSpan={4}>No leads tagged to this project</td></tr>}

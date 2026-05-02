@@ -646,8 +646,8 @@ async def delete_batch(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in {"admin", "manager"}:
-        raise HTTPException(status_code=403, detail="Only admin or manager can remove campaign batches")
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can remove campaign batches")
 
     batch = await db.scalar(select(CampaignBatch).where(CampaignBatch.id == batch_id))
     if not batch:

@@ -43,7 +43,7 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id"), index=True)
+    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id", ondelete="CASCADE"), index=True)
     contact_id: Mapped[str | None] = mapped_column(String, ForeignKey("contacts.id"), nullable=True)
     type: Mapped[str] = mapped_column(
         SAEnum("call", "whatsapp", "email", "site_visit", "note",
@@ -55,7 +55,7 @@ class Activity(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     outcome: Mapped[str | None] = mapped_column(String(100), nullable=True)
     performed_by: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True)
-    campaign_id: Mapped[str | None] = mapped_column(String, ForeignKey("campaigns.id"), nullable=True, index=True)
+    campaign_id: Mapped[str | None] = mapped_column(String, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=True, index=True)
     recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     call_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -73,7 +73,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id"), index=True)
+    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     task_type: Mapped[str] = mapped_column(
@@ -123,7 +123,7 @@ class SiteVisit(Base):
     __tablename__ = "site_visits"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id"), index=True)
+    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id", ondelete="CASCADE"), index=True)
     property_id: Mapped[str | None] = mapped_column(String, ForeignKey("properties.id"), nullable=True)
     scheduled_at: Mapped[datetime] = mapped_column(DateTime)
     agent_id: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True)

@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, asc, desc
+from sqlalchemy import select, and_, or_, func, asc, desc, delete
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -11,7 +11,8 @@ from app.core.config import settings
 from app.models.agent import Agent
 from app.models.contact import Contact
 from app.models.lead import Lead
-from app.models.models import Activity, Task
+from app.models.models import Activity, Task, SiteVisit
+from app.models.followup import FollowUp
 from pydantic import Field
 from app.schemas.schemas import (
     InboundLead, InboundLeadResponse, LeadCreate, LeadUpdate,
@@ -39,6 +40,22 @@ class LeadPageResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class LeadBulkDeleteRequest(BaseModel):
+    lead_ids: list[str] = Field(default_factory=list)
+
+
+async def _delete_leads_and_dependencies(db: AsyncSession, lead_ids: list[str]) -> int:
+    if not lead_ids:
+        return 0
+
+    await db.execute(delete(Activity).where(Activity.lead_id.in_(lead_ids)))
+    await db.execute(delete(Task).where(Task.lead_id.in_(lead_ids)))
+    await db.execute(delete(FollowUp).where(FollowUp.lead_id.in_(lead_ids)))
+    await db.execute(delete(SiteVisit).where(SiteVisit.lead_id.in_(lead_ids)))
+    deleted_leads_result = await db.execute(delete(Lead).where(Lead.id.in_(lead_ids)))
+    return int(deleted_leads_result.rowcount or 0)
 
 
 def _ensure_lead_scope(current_user: Agent, lead: Lead) -> None:
@@ -621,22 +638,39 @@ async def delete_lead(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    if current_user.role not in ["admin", "manager"]:
-        raise HTTPException(status_code=403, detail="Only admin or manager can delete leads")
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can delete leads")
     lead = await db.get(Lead, lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
-    from sqlalchemy import delete
-    from app.models.models import Activity, Task, SiteVisit
-    from app.models.followup import FollowUp
-    await db.execute(delete(Activity).where(Activity.lead_id == lead_id))
-    await db.execute(delete(Task).where(Task.lead_id == lead_id))
-    await db.execute(delete(FollowUp).where(FollowUp.lead_id == lead_id))
-    await db.execute(delete(SiteVisit).where(SiteVisit.lead_id == lead_id))
-    await db.execute(delete(Lead).where(Lead.id == lead_id))
+
+    await _delete_leads_and_dependencies(db, [lead_id])
     await db.commit()
     return {"status": "deleted"}
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_leads(
+    data: LeadBulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admin can bulk delete leads")
+
+    lead_ids = [lead_id.strip() for lead_id in data.lead_ids if isinstance(lead_id, str) and lead_id.strip()]
+    lead_ids = list(dict.fromkeys(lead_ids))
+    if not lead_ids:
+        raise HTTPException(status_code=400, detail="lead_ids cannot be empty")
+
+    deleted_count = await _delete_leads_and_dependencies(db, lead_ids)
+    await db.commit()
+
+    return {
+        "status": "deleted",
+        "requested": len(lead_ids),
+        "deleted": deleted_count,
+    }
 
 
 # ─── MASTER PROFILE (Feature 3) ─────────────────────────────────────────────

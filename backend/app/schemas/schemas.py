@@ -583,7 +583,9 @@ class AgentAssignment(BaseModel):
 # ─── TASK COMPLETION WITH REMARK (Feature 1 & 2) ────────────────────────────
 
 class TaskCompleteWithRemarkRequest(BaseModel):
-    remark_text: str = Field(min_length=80, max_length=5000)
+    # Allow empty/short remark at schema level; enforce min-length in handler
+    # except when agent selects 'not_interested'.
+    remark_text: str = Field(min_length=0, max_length=5000)
     preset_tags: list[str] = Field(default_factory=list)
     # ─── Optional demographic fields (mobile Feature 2) ────────────────────────
     call_status: Optional[str] = Field(None, description="One of: connected, no_answer, wrong_number, callback")

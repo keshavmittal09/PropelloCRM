@@ -19,6 +19,7 @@ import { MobileHeader } from '@/components/mobile/MobileHeader'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { Task } from '@/lib/types'
+import { useAuthStore } from '@/store/useAuthStore'
 
 type Panel = 'profile' | 'timeline' | 'tasks' | 'properties' | 'memory'
 const STAGE_OPTIONS = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture'] as const
@@ -27,6 +28,8 @@ export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const qc = useQueryClient()
+  const agent = useAuthStore((s) => s.agent)
+  const isAdmin = agent?.role === 'admin'
   const { data: lead, isLoading } = useLead(id)
   const { data: activities } = useLeadTimeline(id)
   const { data: tasks } = useAllTasks({ lead_id: id })
@@ -104,6 +107,10 @@ export default function LeadDetailPage() {
   }
 
   const handleDeleteLead = async () => {
+    if (!isAdmin) {
+      toast.error('Only admin can delete leads')
+      return
+    }
     if (!lead) return
     if (!confirm(`Delete lead ${lead.contact?.name ?? lead.id}? This cannot be undone.`)) return
     setDeletingLead(true)
@@ -234,13 +241,15 @@ export default function LeadDetailPage() {
                 className="px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors">
                 🔔 Notify lead
               </button>
-              <button
-                onClick={handleDeleteLead}
-                disabled={deletingLead}
-                className="px-4 py-2 border border-red-200 text-red-700 bg-red-50 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
-              >
-                {deletingLead ? 'Deleting...' : 'Delete lead'}
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={handleDeleteLead}
+                  disabled={deletingLead}
+                  className="px-4 py-2 border border-red-200 text-red-700 bg-red-50 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                  {deletingLead ? 'Deleting...' : 'Delete lead'}
+                </button>
+              )}
             </div>
           </div>
         </div>

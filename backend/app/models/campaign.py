@@ -45,5 +45,5 @@ class Campaign(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="campaigns")
-    leads = relationship("Lead", back_populates="campaign")
-    activities = relationship("Activity", back_populates="campaign")
+    leads = relationship("Lead", back_populates="campaign", passive_deletes=True)
+    activities = relationship("Activity", back_populates="campaign", passive_deletes=True)

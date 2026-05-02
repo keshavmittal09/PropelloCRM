@@ -446,6 +446,10 @@ async def complete_task_with_remark(
     task.completion_remark = data.remark_text
     task.completion_tags = data.preset_tags
 
+    # Enforce minimum remark length for normal completions
+    if (not data.preset_tags or 'not_interested' not in data.preset_tags) and len((data.remark_text or "").strip()) < 80:
+        raise HTTPException(status_code=400, detail=f"Remark must be at least 80 characters unless 'Not interested' tag is selected")
+
     # Feature 5: AI remark quality scoring
     from app.services.remark_quality_service import evaluate_and_update_task
     await evaluate_and_update_task(db, task, data.remark_text)

@@ -15,7 +15,7 @@ class FollowUp(Base):
     __tablename__ = "followups"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id"), index=True)
+    lead_id: Mapped[str] = mapped_column(String, ForeignKey("leads.id", ondelete="CASCADE"), index=True)
     contact_id: Mapped[str | None] = mapped_column(String, ForeignKey("contacts.id"), nullable=True)
     agent_id: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True)
 
