@@ -143,6 +143,25 @@ async def ingest_campaign(
     processed: list[CampaignLeadSummary] = []
     first_row_error: str | None = None
 
+    # Preload existing leads by phone to avoid per-row DB lookups
+    all_phones = set()
+    for r in payload.rows:
+        ph = normalise_phone(r.model_dump().get("phone_number", ""))
+        if ph:
+            all_phones.add(ph)
+
+    phone_to_existing: dict[str, object] = {}
+    if all_phones:
+        try:
+            result = await db.execute(
+                select(Lead, Contact).join(Contact, Lead.contact_id == Contact.id).where(Contact.phone.in_(list(all_phones)))
+            )
+            for lead, contact in result.all():
+                phone_to_existing[contact.phone] = lead
+        except Exception:
+            # fallback: continue without preload
+            logger.exception("Preloading existing leads by phone failed")
+
     for row in payload.rows:
         row_data = row.model_dump()
         if not row_data.get("name") and not row_data.get("phone_number"):
@@ -157,9 +176,12 @@ async def ingest_campaign(
             seen_phones.add(phone)
 
         try:
-            # Keep each row isolated so a single bad row does not poison the whole batch.
-            async with db.begin_nested():
-                outcome = await process_campaign_row(row_data, campaign, db)
+            # Use preloaded existing lead by phone when available to avoid expensive per-row searches
+            phone = normalise_phone(row_data.get("phone_number", ""))
+            existing = phone_to_existing.get(phone) if phone else None
+
+            # Process row (no per-row savepoint to avoid SAVEPOINT churn)
+            outcome = await process_campaign_row(row_data, campaign, db, existing=existing)
 
             score = outcome["score"]
             if score == "hot":
