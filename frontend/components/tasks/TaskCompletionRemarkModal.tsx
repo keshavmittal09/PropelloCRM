@@ -60,18 +60,30 @@ export default function TaskCompletionRemarkModal({
   }
 
   const handleSubmit = async () => {
+    // If agent marked 'Not interested', skip further prompts and submit immediately
+    if (selectedTags.includes('not_interested')) {
+      setLoading(true)
+      try {
+        // Minimal remark allowed for Not Interested
+        const niRemark = remark && remark.length > 0 ? remark : 'Not interested'
+        await onComplete(niRemark, selectedTags)
+        onClose()
+      } catch (error) {
+        console.error('Failed to complete task:', error)
+      } finally {
+        setLoading(false)
+      }
+      return
+    }
+
     if (remark.length < MIN_CHARS) return
 
     setLoading(true)
     try {
       await onComplete(remark, selectedTags)
 
-      // Check if "Not interested" tag was selected
-      if (selectedTags.includes('not_interested')) {
-        setShowDncPrompt(true)
-      } else {
-        onClose()
-      }
+      // Check if "Not interested" tag was selected (handled above)
+      onClose()
     } catch (error) {
       console.error('Failed to complete task:', error)
     } finally {

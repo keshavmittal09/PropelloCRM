@@ -203,6 +203,11 @@ async def ingest_campaign(
             processed.append(CampaignLeadSummary(**outcome))
         except Exception as exc:
             logger.exception("Campaign ingest row failed")
+            # Rollback the session to recover from partial failure
+            try:
+                await db.rollback()
+            except Exception:
+                logger.exception("Rollback after row failure also failed")
             if first_row_error is None:
                 first_row_error = str(exc)
             failed_rows += 1
