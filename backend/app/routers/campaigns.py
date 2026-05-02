@@ -44,6 +44,8 @@ from app.services.campaign_service import (
 )
 
 router = APIRouter()
+# Batch size for campaign ingestion (reduces commit frequency)
+BATCH_SIZE = getattr(settings, "CAMPAIGN_BATCH_SIZE", 200)
 
 
 def _ensure_campaign_access(current_user: Agent) -> None:
@@ -162,56 +164,108 @@ async def ingest_campaign(
             # fallback: continue without preload
             logger.exception("Preloading existing leads by phone failed")
 
-    for row in payload.rows:
-        row_data = row.model_dump()
-        if not row_data.get("name") and not row_data.get("phone_number"):
-            failed_rows += 1
-            continue
+    # Process rows in batches to reduce transaction overhead
+    rows = payload.rows
+    total_rows = len(rows)
+    for start in range(0, total_rows, BATCH_SIZE):
+        batch = rows[start : start + BATCH_SIZE]
 
-        phone = normalise_phone(row_data.get("phone_number", ""))
-        if phone and phone in seen_phones:
-            skipped_duplicates += 1
-            continue
-        if phone:
-            seen_phones.add(phone)
+        # Process all rows in-memory and add to session; commit once per batch
+        for row in batch:
+            row_data = row.model_dump()
+            if not row_data.get("name") and not row_data.get("phone_number"):
+                failed_rows += 1
+                continue
 
-        try:
-            # Use preloaded existing lead by phone when available to avoid expensive per-row searches
             phone = normalise_phone(row_data.get("phone_number", ""))
-            existing = phone_to_existing.get(phone) if phone else None
+            if phone and phone in seen_phones:
+                skipped_duplicates += 1
+                continue
+            if phone:
+                seen_phones.add(phone)
 
-            # Process row (no per-row savepoint to avoid SAVEPOINT churn)
-            outcome = await process_campaign_row(row_data, campaign, db, existing=existing)
+            try:
+                existing = phone_to_existing.get(phone) if phone else None
+                outcome = await process_campaign_row(row_data, campaign, db, existing=existing)
 
-            score = outcome["score"]
-            if score == "hot":
-                hot += 1
-            elif score == "warm":
-                warm += 1
-            else:
-                cold += 1
+                score = outcome["score"]
+                if score == "hot":
+                    hot += 1
+                elif score == "warm":
+                    warm += 1
+                else:
+                    cold += 1
 
-            if outcome["action"] == "created":
-                created += 1
-            else:
-                updated += 1
+                if outcome["action"] == "created":
+                    created += 1
+                else:
+                    updated += 1
 
-            # Track tier distribution
-            tier = outcome.get("priority_tier", "P7")
-            tier_dist[tier] = tier_dist.get(tier, 0) + 1
+                tier = outcome.get("priority_tier", "P7")
+                tier_dist[tier] = tier_dist.get(tier, 0) + 1
 
-            processed.append(CampaignLeadSummary(**outcome))
-        except Exception as exc:
-            logger.exception("Campaign ingest row failed")
-            # Rollback the session to recover from partial failure
+                processed.append(CampaignLeadSummary(**outcome))
+            except Exception as exc:
+                logger.exception("Campaign ingest row failed (batch)")
+                if first_row_error is None:
+                    first_row_error = str(exc)
+                failed_rows += 1
+                # continue; do not rollback here — rollback will be done at batch level if needed
+
+        # Try committing the batch once
+        try:
+            await db.commit()
+        except Exception:
+            logger.exception("Batch commit failed, falling back to per-row commit")
+            # Batch-level commit failed. Roll back and process rows individually to isolate bad rows.
             try:
                 await db.rollback()
             except Exception:
-                logger.exception("Rollback after row failure also failed")
-            if first_row_error is None:
-                first_row_error = str(exc)
-            failed_rows += 1
-            continue
+                logger.exception("Rollback after failed batch commit failed")
+
+            for row in batch:
+                row_data = row.model_dump()
+                if not row_data.get("name") and not row_data.get("phone_number"):
+                    continue
+
+                phone = normalise_phone(row_data.get("phone_number", ""))
+                if phone and phone in seen_phones:
+                    # already accounted for
+                    continue
+
+                try:
+                    existing = phone_to_existing.get(phone) if phone else None
+                    outcome = await process_campaign_row(row_data, campaign, db, existing=existing)
+                    # commit per-row to isolate issues
+                    await db.commit()
+
+                    score = outcome["score"]
+                    if score == "hot":
+                        hot += 1
+                    elif score == "warm":
+                        warm += 1
+                    else:
+                        cold += 1
+
+                    if outcome["action"] == "created":
+                        created += 1
+                    else:
+                        updated += 1
+
+                    tier = outcome.get("priority_tier", "P7")
+                    tier_dist[tier] = tier_dist.get(tier, 0) + 1
+
+                    processed.append(CampaignLeadSummary(**outcome))
+                except Exception as exc2:
+                    logger.exception("Per-row fallback failed")
+                    try:
+                        await db.rollback()
+                    except Exception:
+                        logger.exception("Rollback after per-row fallback failed")
+                    if first_row_error is None:
+                        first_row_error = str(exc2)
+                    failed_rows += 1
+                    continue
 
     total_valid = hot + warm + cold
     if total_valid == 0:
