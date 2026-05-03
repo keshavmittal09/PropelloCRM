@@ -17,6 +17,7 @@ from app.models.campaign_dashboard import CampaignBatch, CampaignFlag, CampaignL
 from app.models.contact import Contact
 from app.models.lead import Lead
 from app.services.campaign_dashboard_ai import analyze_lead_with_groq, generate_batch_insights_with_groq
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -189,12 +190,26 @@ def _to_int(value: Any) -> int | None:
 
 
 def _to_phone(value: Any) -> int | None:
-    parsed = _to_int(value)
-    if parsed is None:
+    if value is None:
         return None
-    if parsed <= 0:
+    # Accept strings like +91-98765 43210 or numeric floats; normalize to digits
+    try:
+        text = str(value).strip()
+    except Exception:
         return None
-    return parsed
+    if not text:
+        return None
+    # Strip all non-digit characters
+    digits = re.sub(r"\D", "", text)
+    if not digits:
+        return None
+    try:
+        num = int(digits)
+        if num <= 0:
+            return None
+        return num
+    except Exception:
+        return None
 
 
 async def create_batch_from_upload(db: AsyncSession, file: UploadFile, campaign_name: str) -> CampaignBatch:
