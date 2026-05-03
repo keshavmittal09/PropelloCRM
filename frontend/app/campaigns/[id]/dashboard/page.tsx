@@ -105,7 +105,7 @@ export default function CampaignDashboardPage() {
     campaignId, { tier: tierFilter || undefined, search: searchQuery || undefined }
   )
   const canManageProject = ['admin', 'manager'].includes(currentAgent?.role || '')
-  const isAdmin = currentAgent?.role === 'admin'
+  const canRemoveCampaign = ['admin', 'manager'].includes(currentAgent?.role || '')
 
   useEffect(() => {
     authApi.listAgents()
@@ -178,10 +178,6 @@ export default function CampaignDashboardPage() {
   }
 
   const handleRemoveProject = async () => {
-    if (!isAdmin) {
-      toast.error('Only admin can remove project links')
-      return
-    }
     if (!campaignId) return
     setRemovingProject(true)
     try {
@@ -196,10 +192,6 @@ export default function CampaignDashboardPage() {
   }
 
   const handleRemoveCampaign = async () => {
-    if (!isAdmin) {
-      toast.error('Only admin can remove campaigns')
-      return
-    }
     if (!campaignId || !campaign?.name) return
     if (typeof window !== 'undefined') {
       const confirmed = window.confirm(`Remove campaign \"${campaign.name}\"? This action cannot be undone.`)
@@ -237,7 +229,7 @@ export default function CampaignDashboardPage() {
                 Linked project: {campaign.project_name}
               </span>
             ) : null}
-            {isAdmin ? (
+            {canRemoveCampaign ? (
               <button
                 onClick={handleRemoveCampaign}
                 disabled={removingCampaign}
@@ -246,7 +238,7 @@ export default function CampaignDashboardPage() {
                 {removingCampaign ? 'Removing...' : 'Remove Campaign'}
               </button>
             ) : null}
-            {isAdmin && campaign?.project_id ? (
+            {canManageProject && campaign?.project_id ? (
               <button
                 onClick={handleRemoveProject}
                 disabled={removingProject}

@@ -9,11 +9,13 @@ from typing import Any
 
 import pandas as pd
 from fastapi import UploadFile
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import AsyncSessionLocal
 from app.models.campaign_dashboard import CampaignBatch, CampaignFlag, CampaignLead
+from app.models.contact import Contact
+from app.models.lead import Lead
 from app.services.campaign_dashboard_ai import analyze_lead_with_groq, generate_batch_insights_with_groq
 
 logger = logging.getLogger(__name__)
@@ -235,8 +237,106 @@ async def create_batch_from_upload(db: AsyncSession, file: UploadFile, campaign_
     await db.commit()
     await db.refresh(batch)
 
+    await sync_campaign_batch_to_main_leads(db, batch.id)
+
     set_progress(batch.id, "processing", "upload_complete", 0, batch.total_leads, "File uploaded. Starting AI analysis")
     return batch
+
+
+def _campaign_priority_to_lead_score(priority_tier: str | None) -> str:
+    if priority_tier in {"P1", "P2"}:
+        return "hot"
+    if priority_tier == "P3":
+        return "warm"
+    return "cold"
+
+
+async def sync_campaign_batch_to_main_leads(db: AsyncSession, batch_id: str) -> int:
+    batch = await db.scalar(select(CampaignBatch).where(CampaignBatch.id == batch_id))
+    if not batch:
+        raise CampaignDashboardError("Batch not found")
+
+    campaign_leads = list((await db.scalars(select(CampaignLead).where(CampaignLead.batch_id == batch_id))).all())
+    created_count = 0
+
+    for campaign_lead in campaign_leads:
+        if campaign_lead.phone_number is None:
+            continue
+
+        phone_text = str(campaign_lead.phone_number)
+        contact = await db.scalar(
+            select(Contact).where(
+                or_(Contact.phone == phone_text, Contact.phone.like(f"%{phone_text}"))
+            )
+        )
+        if not contact:
+            contact = Contact(
+                name=campaign_lead.name or phone_text,
+                phone=phone_text,
+                source="campaign",
+            )
+            db.add(contact)
+            await db.flush()
+
+        lead = await db.scalar(select(Lead).where(Lead.contact_id == contact.id))
+        campaign_profile = {
+            "campaign_batch_id": batch_id,
+            "campaign_lead_id": campaign_lead.id,
+            "call_id": campaign_lead.call_id,
+            "attempt_number": campaign_lead.attempt_number,
+            "call_eval_tag": campaign_lead.call_eval_tag,
+            "summary": campaign_lead.summary,
+            "priority_tier": campaign_lead.priority_tier,
+            "lead_score": campaign_lead.lead_score,
+            "intent_level": campaign_lead.intent_level,
+            "engagement_quality": campaign_lead.engagement_quality,
+            "recommended_action": campaign_lead.recommended_action,
+            "enriched_summary": campaign_lead.enriched_summary,
+            "key_quote": campaign_lead.key_quote,
+            "site_visit_committed": campaign_lead.site_visit_committed,
+            "site_visit_timeframe": campaign_lead.site_visit_timeframe,
+            "whatsapp_number_captured": campaign_lead.whatsapp_number_captured,
+        }
+
+        if lead:
+            profile = lead.master_profile or {}
+            profile.update(campaign_profile)
+            lead.master_profile = profile
+            lead.ai_analysis = {
+                **(lead.ai_analysis or {}),
+                "campaign": campaign_profile,
+            }
+            if campaign_lead.priority_tier:
+                lead.priority = campaign_lead.priority_tier
+            lead.lead_score = _campaign_priority_to_lead_score(campaign_lead.priority_tier)
+            lead.last_contacted_at = campaign_lead.call_dialing_at or campaign_lead.user_picked_up or lead.last_contacted_at
+            lead.last_interaction_at = lead.last_contacted_at or lead.last_interaction_at
+            continue
+
+        new_lead = Lead(
+            contact_id=contact.id,
+            source="campaign",
+            stage="new",
+            lead_score=_campaign_priority_to_lead_score(campaign_lead.priority_tier),
+            assigned_to=None,
+            campaign_id=None,
+            project_ids=None,
+            lost_reason=None,
+            days_in_stage=0,
+            priority=campaign_lead.priority_tier or "P3",
+            call_count=1,
+            ai_analysis={"campaign": campaign_profile},
+            ai_analyzed_at=campaign_lead.updated_at if campaign_lead.ai_analyzed else None,
+            last_contacted_at=campaign_lead.call_dialing_at or campaign_lead.user_picked_up,
+            last_interaction_at=campaign_lead.call_dialing_at or campaign_lead.user_picked_up,
+            master_profile=campaign_profile,
+        )
+        db.add(new_lead)
+        await db.flush()
+        created_count += 1
+
+    await db.commit()
+    return created_count
 
 
 def _apply_lead_analysis(lead: CampaignLead, analysis: dict[str, Any]) -> None:
@@ -440,6 +540,8 @@ async def analyze_batch(batch_id: str) -> None:
         batch.analysis_status = "completed"
 
         await db.commit()
+
+        await sync_campaign_batch_to_main_leads(db, batch_id)
 
         set_progress(batch_id, "completed", "done", total, total, "Campaign analysis completed")
 

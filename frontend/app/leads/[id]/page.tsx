@@ -13,23 +13,24 @@ import { leadsApi, tasksApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { MasterProfileTab } from '@/components/leads/MasterProfileTab'
-import { TaskCompletionModal } from '@/components/leads/TaskCompletionModal'
-import type { Task } from '@/lib/types'
+import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
+import { MobileLeadDetailView } from '@/components/mobile/MobileLeadDetailView'
+import { MobileHeader } from '@/components/mobile/MobileHeader'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import type { Task } from '@/lib/types'
 
-type Panel = 'timeline' | 'tasks' | 'properties' | 'memory' | 'profile'
+type Panel = 'profile' | 'timeline' | 'tasks' | 'properties' | 'memory'
 const STAGE_OPTIONS = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture'] as const
 
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const qc = useQueryClient()
-  const agent = useAuthStore((s) => s.agent)
-  const isAdmin = agent?.role === 'admin'
   const { data: lead, isLoading } = useLead(id)
   const { data: activities } = useLeadTimeline(id)
   const { data: tasks } = useAllTasks({ lead_id: id })
-  const [panel, setPanel] = useState<Panel>('timeline')
+  const [panel, setPanel] = useState<Panel>('profile')
   const [showCallLog, setShowCallLog] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
   const [showVisitModal, setShowVisitModal] = useState(false)
@@ -45,6 +46,7 @@ export default function LeadDetailPage() {
   const [deletingLead, setDeletingLead] = useState(false)
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
   const [updatingPriority, setUpdatingPriority] = useState(false)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     if (lead) {
@@ -102,10 +104,6 @@ export default function LeadDetailPage() {
   }
 
   const handleDeleteLead = async () => {
-    if (!isAdmin) {
-      toast.error('Only admin can delete leads')
-      return
-    }
     if (!lead) return
     if (!confirm(`Delete lead ${lead.contact?.name ?? lead.id}? This cannot be undone.`)) return
     setDeletingLead(true)
@@ -154,6 +152,17 @@ export default function LeadDetailPage() {
     </div>
   )
 
+  // All roles get the mobile lead detail shell on phones.
+  if (isMobile) {
+    return (
+      <MobileLeadDetailView
+        lead={lead}
+        activities={activities ?? []}
+        tasks={tasks ?? []}
+      />
+    )
+  }
+
   const stageCfg = stageConfig[lead.stage]
   const isDuplicate = activities?.some(a => a.meta?.duplicate === true) || lead.call_count > 1 && lead.source === 'priya_ai'
 
@@ -161,6 +170,12 @@ export default function LeadDetailPage() {
     <div className="flex min-h-screen">
       <Sidebar />
       <main className="flex-1 overflow-auto crm-page-enter">
+        <MobileHeader
+          title={lead.contact?.name ?? 'Lead'}
+          subtitle={`${lead.stage.replace('_', ' ')} · ${lead.lead_score}`}
+          showBack={true}
+          onBack={() => router.back()}
+        />
         {/* Top bar */}
         <div className="bg-[#fffaf4] border-b border-[#e8ddcf] px-8 py-5">
           <button onClick={() => router.back()} className="text-sm text-[#7b7166] hover:text-[#5f554b] mb-3 flex items-center gap-1 transition-colors">
@@ -219,15 +234,13 @@ export default function LeadDetailPage() {
                 className="px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors">
                 🔔 Notify lead
               </button>
-              {isAdmin && (
-                <button
-                  onClick={handleDeleteLead}
-                  disabled={deletingLead}
-                  className="px-4 py-2 border border-red-200 text-red-700 bg-red-50 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
-                >
-                  {deletingLead ? 'Deleting...' : 'Delete lead'}
-                </button>
-              )}
+              <button
+                onClick={handleDeleteLead}
+                disabled={deletingLead}
+                className="px-4 py-2 border border-red-200 text-red-700 bg-red-50 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+              >
+                {deletingLead ? 'Deleting...' : 'Delete lead'}
+              </button>
             </div>
           </div>
         </div>
@@ -386,7 +399,7 @@ export default function LeadDetailPage() {
 
         {/* Task Completion Modal */}
         {completingTask && (
-          <TaskCompletionModal
+          <UnifiedTaskCompletionSheet
             task={completingTask}
             lead={lead}
             onClose={() => setCompletingTask(null)}
@@ -395,6 +408,7 @@ export default function LeadDetailPage() {
               qc.invalidateQueries({ queryKey: ['tasks'] })
               qc.invalidateQueries({ queryKey: ['timeline', id] })
               qc.invalidateQueries({ queryKey: ['lead', id] })
+              qc.invalidateQueries({ queryKey: ['master-profile', id] })
             }}
           />
         )}

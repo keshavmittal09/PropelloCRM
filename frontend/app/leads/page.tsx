@@ -9,7 +9,6 @@ import { leadsApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { LeadStage, LeadScore } from '@/lib/types'
-import { useAuthStore } from '@/store/useAuthStore'
 
 const STAGES: LeadStage[] = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture']
 const SCORES: LeadScore[] = ['hot', 'warm', 'cold']
@@ -19,8 +18,6 @@ const PAGE_SIZE = 25
 export default function LeadsPage() {
   const router = useRouter()
   const qc = useQueryClient()
-  const agent = useAuthStore((s) => s.agent)
-  const isAdmin = agent?.role === 'admin'
 
   const [search, setSearch] = useState('')
   const [stage, setStage] = useState('')
@@ -29,8 +26,6 @@ export default function LeadsPage() {
   const [campaignId, setCampaignId] = useState('')
   const [page, setPage] = useState(1)
   const [showNewLead, setShowNewLead] = useState(false)
-  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([])
-  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -62,53 +57,6 @@ export default function LeadsPage() {
   const startPage = Math.max(1, Math.min(page - 2, totalPages - 4))
   const endPage = Math.min(totalPages, startPage + 4)
 
-  useEffect(() => {
-    setSelectedLeadIds((prev) => prev.filter((id) => leads.some((lead) => lead.id === id)))
-  }, [leads])
-
-  const allVisibleSelected = leads.length > 0 && leads.every((lead) => selectedLeadIds.includes(lead.id))
-
-  const toggleLeadSelection = (leadId: string, checked: boolean) => {
-    setSelectedLeadIds((prev) => {
-      if (checked) return prev.includes(leadId) ? prev : [...prev, leadId]
-      return prev.filter((id) => id !== leadId)
-    })
-  }
-
-  const toggleSelectAllVisible = (checked: boolean) => {
-    if (!checked) {
-      setSelectedLeadIds((prev) => prev.filter((id) => !leads.some((lead) => lead.id === id)))
-      return
-    }
-    setSelectedLeadIds((prev) => Array.from(new Set([...prev, ...leads.map((lead) => lead.id)])))
-  }
-
-  const handleBulkDelete = async () => {
-    if (!isAdmin) {
-      toast.error('Only admin can delete leads')
-      return
-    }
-    if (!selectedLeadIds.length) {
-      toast.error('Select at least one lead')
-      return
-    }
-    if (!confirm(`Delete ${selectedLeadIds.length} selected lead(s)? This cannot be undone.`)) return
-
-    setBulkDeleting(true)
-    try {
-      const result = await leadsApi.bulkDelete(selectedLeadIds)
-      toast.success(`${result.deleted} lead(s) deleted`)
-      setSelectedLeadIds([])
-      qc.invalidateQueries({ queryKey: ['leads'] })
-      qc.invalidateQueries({ queryKey: ['leads-paginated'] })
-      qc.invalidateQueries({ queryKey: ['kanban'] })
-    } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? 'Failed to delete selected leads')
-    } finally {
-      setBulkDeleting(false)
-    }
-  }
-
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
@@ -122,15 +70,6 @@ export default function LeadsPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            {isAdmin && selectedLeadIds.length > 0 && (
-              <button
-                onClick={handleBulkDelete}
-                disabled={bulkDeleting}
-                className="px-4 py-2 border border-red-200 rounded-xl text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"
-              >
-                {bulkDeleting ? 'Deleting...' : `Delete selected (${selectedLeadIds.length})`}
-              </button>
-            )}
             <button onClick={() => router.push('/leads/board')}
               className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50">
               Board view
@@ -191,16 +130,6 @@ export default function LeadsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {isAdmin && (
-                        <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3 w-10">
-                          <input
-                            type="checkbox"
-                            checked={allVisibleSelected}
-                            onChange={(e) => toggleSelectAllVisible(e.target.checked)}
-                            aria-label="Select all visible leads"
-                          />
-                        </th>
-                      )}
                       {['Contact', 'Score', 'Stage', 'Budget', 'Source', 'Days', 'Agent', 'Created'].map(h => (
                         <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
                       ))}
@@ -210,20 +139,7 @@ export default function LeadsPage() {
                     {leads.map(lead => (
                       <tr key={lead.id}
                         className="border-b border-gray-50 hover:bg-indigo-50/30 cursor-pointer transition-colors"
-                        onClick={(e) => {
-                          if ((e.target as HTMLElement).closest('input[type="checkbox"]')) return
-                          router.push(`/leads/${lead.id}`)
-                        }}>
-                        {isAdmin && (
-                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selectedLeadIds.includes(lead.id)}
-                              onChange={(e) => toggleLeadSelection(lead.id, e.target.checked)}
-                              aria-label={`Select ${lead.contact?.name ?? lead.id}`}
-                            />
-                          </td>
-                        )}
+                        onClick={() => router.push(`/leads/${lead.id}`)}>
                         <td className="px-4 py-3">
                           <p className="text-sm font-semibold text-gray-900">{lead.contact?.name}</p>
                           <p className="text-xs text-gray-400">{lead.contact?.phone}</p>

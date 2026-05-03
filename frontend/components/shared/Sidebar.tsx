@@ -7,18 +7,18 @@ import { useState, useEffect } from 'react'
 import { cn } from '@/lib/cn'
 
 const nav = [
-  { href: '/',           label: 'Dashboard',   icon: '▦' },
-  { href: '/leads/board',label: 'Pipeline',    icon: '⬛' },
-  { href: '/leads',      label: 'All Leads',   icon: '☰' },
-  { href: '/tasks',      label: 'Tasks',       icon: '✓' },
+  { href: '/',           label: 'Dashboard',    icon: '▦' },
+  { href: '/leads/board',label: 'Pipeline',     icon: '⬛', roles: ['admin', 'manager'] as const },
+  { href: '/leads',      label: 'All Leads',    icon: '☰' },
+  { href: '/tasks',      label: 'Tasks',        icon: '✓' },
   { href: '/campaigns',  label: 'Campaigns',   icon: '📣', roles: ['admin', 'manager'] as const },
   { href: '/campaigns/dashboard', label: 'Call Campaign Dashboard', icon: '📈', roles: ['admin', 'manager'] as const },
   { href: '/leads/nurture',label: 'Re-engagement', icon: '♻️', roles: ['admin', 'manager'] as const },
-  { href: '/contacts',   label: 'Contacts',    icon: '👥', roles: ['admin', 'manager'] as const },
+  { href: '/contacts',   label: 'Contacts',     icon: '👥', roles: ['admin', 'manager'] as const },
   { href: '/projects',   label: 'Projects',    icon: '🏗️', roles: ['admin', 'manager'] as const },
-  { href: '/properties', label: 'Properties',  icon: '🏠', roles: ['admin', 'manager'] as const },
-  { href: '/visits',     label: 'Site Visits', icon: '📅', roles: ['admin', 'manager'] as const },
-  { href: '/analytics',  label: 'Analytics',   icon: '📊', roles: ['admin', 'manager'] as const },
+  { href: '/properties', label: 'Properties',   icon: '🏠', roles: ['admin', 'manager'] as const },
+  { href: '/visits',     label: 'Site Visits',  icon: '📅', roles: ['admin', 'manager'] as const },
+  { href: '/analytics',  label: 'Analytics',    icon: '📊', roles: ['admin', 'manager'] as const },
   { href: '/staff',      label: 'Staff & Agents', icon: '🧑‍💼', roles: ['admin', 'manager'] as const },
   { href: '/settings',   label: 'Settings',    icon: '⚙️', roles: ['admin'] as const },
 ]

@@ -23,7 +23,7 @@ export default function CampaignDetailPage() {
   const [removingCampaign, setRemovingCampaign] = useState(false)
   const [selectedProject, setSelectedProject] = useState('')
   const canManageProject = ['admin', 'manager'].includes(agent?.role || '')
-  const isAdmin = agent?.role === 'admin'
+  const canRemoveCampaign = ['admin', 'manager'].includes(agent?.role || '')
 
   useEffect(() => {
     if (agent && !canAccessFeature(agent.role as any, 'campaign_management')) {
@@ -52,10 +52,6 @@ export default function CampaignDetailPage() {
   }
 
   const removeProject = async () => {
-    if (!isAdmin) {
-      toast.error('Only admin can remove project links')
-      return
-    }
     if (!campaignId) return
     setRemovingProject(true)
     try {
@@ -70,10 +66,6 @@ export default function CampaignDetailPage() {
   }
 
   const removeCampaign = async () => {
-    if (!isAdmin) {
-      toast.error('Only admin can remove campaigns')
-      return
-    }
     if (!campaignId || !campaign?.name) return
     if (typeof window !== 'undefined') {
       const confirmed = window.confirm(`Remove campaign \"${campaign.name}\"? This action cannot be undone.`)
@@ -109,7 +101,7 @@ export default function CampaignDetailPage() {
               >
                 📊 Open Analytics Dashboard
               </button>
-              {isAdmin ? (
+              {canRemoveCampaign ? (
                 <button
                   onClick={removeCampaign}
                   disabled={removingCampaign}
@@ -133,7 +125,7 @@ export default function CampaignDetailPage() {
               <p className="text-sm text-[#5f5348]">
                 Linked project: <span className="font-semibold text-[#2a231d]">{campaign.project_name || 'Not linked'}</span>
               </p>
-              {campaign.project_id && isAdmin && (
+              {campaign.project_id && canManageProject && (
                 <div className="mt-3">
                   <button
                     onClick={removeProject}

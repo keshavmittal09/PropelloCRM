@@ -212,7 +212,7 @@ export default function UnifiedCampaignDashboard() {
   )
 
   const canManageBatches = useMemo(
-    () => String(currentAgent?.role || '') === 'admin',
+    () => ['admin', 'manager'].includes(String(currentAgent?.role || '')),
     [currentAgent?.role],
   )
 
