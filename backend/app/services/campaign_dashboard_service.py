@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Any
 
@@ -472,11 +473,37 @@ async def _analyze_single_lead(lead: CampaignLead, retries: int = 2) -> dict[str
     return None
 
 
+def _chunked(items: list[Any], size: int):
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
+
+
+async def _analyze_lead_with_limit(lead: CampaignLead, semaphore: asyncio.Semaphore) -> dict[str, Any] | None:
+    async with semaphore:
+        return await _analyze_single_lead(lead)
+
+
 async def analyze_batch(batch_id: str) -> None:
     async with AsyncSessionLocal() as db:
         batch = await db.scalar(select(CampaignBatch).where(CampaignBatch.id == batch_id))
         if not batch:
             set_progress(batch_id, "failed", "load_failed", 0, 0, "Batch not found", error="Batch not found")
+            return
+
+        fast_ingest = os.getenv("CAMPAIGN_FAST_INGEST", "").lower() in {"1", "true", "yes"}
+        if fast_ingest:
+            await sync_campaign_batch_to_main_leads(db, batch_id)
+            batch.analysis_status = "completed"
+            await db.commit()
+            total = batch.total_leads or 0
+            set_progress(
+                batch_id,
+                "completed",
+                "analysis_skipped",
+                total,
+                total,
+                "Fast ingest mode enabled: AI analysis skipped",
+            )
             return
 
         # First sync campaign leads to main leads table
@@ -499,21 +526,39 @@ async def analyze_batch(batch_id: str) -> None:
         compact_rows: list[dict[str, Any]] = []
         all_flags: list[CampaignFlag] = []
 
-        for lead in leads:
-            analysis = await _analyze_single_lead(lead)
-            if analysis:
-                _apply_lead_analysis(lead, analysis)
-            else:
-                lead.ai_analyzed = False
+        concurrency = max(1, int(os.getenv("CAMPAIGN_ANALYSIS_CONCURRENCY", "12")))
+        batch_size = max(1, int(os.getenv("CAMPAIGN_ANALYSIS_BATCH_SIZE", "200")))
+        semaphore = asyncio.Semaphore(concurrency)
 
-            compact_rows.append(_lead_to_compact(lead))
-            all_flags.extend(_build_flags(batch_id, lead))
+        for batch in _chunked(leads, batch_size):
+            tasks = [asyncio.create_task(_analyze_lead_with_limit(lead, semaphore)) for lead in batch]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            processed += 1
-            set_progress(batch_id, "processing", "lead_analysis", processed, total, f"Analyzed {processed}/{total} leads")
+            for lead, result in zip(batch, results):
+                if isinstance(result, Exception):
+                    lead.ai_analyzed = False
+                else:
+                    analysis = result
+                    if analysis:
+                        _apply_lead_analysis(lead, analysis)
+                    else:
+                        lead.ai_analyzed = False
 
-            if processed % 10 == 0:
-                await db.commit()
+                compact_rows.append(_lead_to_compact(lead))
+                all_flags.extend(_build_flags(batch_id, lead))
+
+                processed += 1
+                if processed % 25 == 0 or processed == total:
+                    set_progress(
+                        batch_id,
+                        "processing",
+                        "lead_analysis",
+                        processed,
+                        total,
+                        f"Analyzed {processed}/{total} leads",
+                    )
+
+            await db.commit()
 
         if all_flags:
             db.add_all(all_flags)
