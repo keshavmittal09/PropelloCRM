@@ -81,8 +81,11 @@ export const meApi = {
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
 export const leadsApi = {
-  list: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; search?: string; skip?: number; limit?: number }) =>
-    api.get<Lead[]>('/api/leads', { params }).then(r => r.data),
+  list: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; search?: string; skip?: number; limit?: number }) => {
+    // Default limit to 500 to fetch all leads (instead of paginating)
+    const finalParams = { limit: 500, ...params }
+    return api.get<Lead[]>('/api/leads', { params: finalParams }).then(r => r.data)
+  },
   listPaginated: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; campaign_id?: string; search?: string; page?: number; page_size?: number }) =>
     api.get<LeadPaginatedResponse>('/api/leads/paginated', { params }).then(r => r.data),
   board: () => api.get<KanbanBoard>('/api/leads/board').then(r => r.data),

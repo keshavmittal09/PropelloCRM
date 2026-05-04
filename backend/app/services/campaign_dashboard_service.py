@@ -479,6 +479,9 @@ async def analyze_batch(batch_id: str) -> None:
             set_progress(batch_id, "failed", "load_failed", 0, 0, "Batch not found", error="Batch not found")
             return
 
+        # First sync campaign leads to main leads table
+        await sync_campaign_batch_to_main_leads(db, batch_id)
+
         leads = list((await db.scalars(select(CampaignLead).where(CampaignLead.batch_id == batch_id))).all())
         total = len(leads)
         if total == 0:

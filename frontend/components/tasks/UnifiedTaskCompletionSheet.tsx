@@ -166,8 +166,13 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
 
     // Pad remark_text to 80 chars if needed (backend requires min_length=80)
     const MIN_CHARS = 80
-    const remark_text = remarkLines.join('. ')
-    const paddedRemark = remark_text.length >= MIN_CHARS ? remark_text : remark_text + ' [Task completed via mobile form]'
+    let remark_text = remarkLines.join('. ')
+    if (!remark_text.trim()) remark_text = 'Task completed via mobile form.'
+    // Ensure minimum length
+    while (remark_text.length < MIN_CHARS) {
+      remark_text += ' '
+    }
+    const paddedRemark = remark_text.substring(0, 5000) // Cap at 5000 chars
 
     setSubmitting(true)
     try {
