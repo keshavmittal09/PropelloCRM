@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     CAMPAIGN_AI_ENABLED: bool = True
+    CAMPAIGN_FAST_INGEST: bool = True
+    CAMPAIGN_ANALYSIS_CONCURRENCY: int = 10
+    CAMPAIGN_ANALYSIS_BATCH_SIZE: int = 100
 
     # Notification controls
     TASK_ASSIGN_NOTIFY_WHATSAPP_ENABLED: bool = True

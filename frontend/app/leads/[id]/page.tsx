@@ -202,7 +202,14 @@ export default function LeadDetailPage() {
                   <option value="low">Low</option>
                 </select>
               </div>
-              <p className="text-[#7b7166]">{lead.contact?.phone} {lead.contact?.email && `· ${lead.contact.email}`}</p>
+              <p className="text-[#7b7166] flex items-center gap-2">
+                {lead.contact?.phone} {lead.contact?.email && `· ${lead.contact.email}`}
+                {(() => {
+                  const callActivity = activities?.find(a => a.meta?.call_id)
+                  const callId = callActivity?.meta?.call_id as string | undefined
+                  return callId ? <span className="px-2 py-0.5 rounded bg-[#f3ece2] text-xs font-mono">{callId}</span> : null
+                })()}
+              </p>
               <div className="flex items-center gap-3 mt-2 flex-wrap">
                 <span className="flex items-center gap-1.5 text-sm">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: stageCfg.color }} />
@@ -280,12 +287,6 @@ export default function LeadDetailPage() {
               <DetailRow label="Location" value={lead.location_preference ?? '—'} />
               <DetailRow label="Timeline" value={lead.timeline?.replace('_', ' ') ?? '—'} />
               <DetailRow label="Calls" value={`${lead.call_count} call(s)`} />
-              {/* Show call_id from the latest activity meta */}
-              {(() => {
-                const callActivity = activities?.find(a => a.meta?.call_id)
-                const callId = callActivity?.meta?.call_id as string | undefined
-                return callId ? <DetailRow label="Call ID" value={callId} /> : null
-              })()}
               <DetailRow label="Created" value={formatDate(lead.created_at)} />
               {lead.lost_reason && <DetailRow label="Lost reason" value={lead.lost_reason} className="text-red-600" />}
             </div>

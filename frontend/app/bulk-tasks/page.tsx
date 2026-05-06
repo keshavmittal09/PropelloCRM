@@ -50,6 +50,8 @@ export default function BulkTasksPage() {
   const [assignAgent, setAssignAgent] = useState('')
   const [assigning, setAssigning] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [callerFilter, setCallerFilter] = useState('')
+  const [heatFilter, setHeatFilter] = useState('')
 
   const isAdmin = agent?.role === 'admin' || agent?.role === 'manager'
 
@@ -89,11 +91,20 @@ export default function BulkTasksPage() {
   const loadBatch = async (id: string) => {
     setLoading(true)
     try {
-      const data = await bulkTasksApi.getBatch(id, { limit: 200 })
+      const data = await bulkTasksApi.getBatch(id, {
+        caller_name: callerFilter || undefined,
+        heat: heatFilter || undefined,
+        limit: 200,
+      })
       setSelectedBatch(data)
     } catch { toast.error('Failed to load batch') }
     finally { setLoading(false) }
   }
+
+  useEffect(() => {
+    if (selectedBatch?.id) loadBatch(selectedBatch.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callerFilter, heatFilter])
 
   // Assign ALL records in the batch to one agent
   const handleAssignAll = async () => {
@@ -324,8 +335,32 @@ export default function BulkTasksPage() {
                   </div>
                 </div>
 
+                {/* Filters */}
+                <div className="flex flex-wrap gap-3 items-center px-1">
+                  <select value={heatFilter} onChange={e => setHeatFilter(e.target.value)}
+                    className="px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm">
+                    <option value="">All Heat Levels</option>
+                    <option value="hot">🔥 Hot</option>
+                    <option value="warm">🌤️ Warm</option>
+                    <option value="cold">❄️ Cold</option>
+                  </select>
+                  {selectedBatch.caller_names && selectedBatch.caller_names.length > 0 && (
+                    <select value={callerFilter} onChange={e => setCallerFilter(e.target.value)}
+                      className="px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm">
+                      <option value="">All Callers / Sheets</option>
+                      {selectedBatch.caller_names.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {(callerFilter || heatFilter) && (
+                    <button onClick={() => { setCallerFilter(''); setHeatFilter('') }}
+                      className="text-xs text-[#a65630] hover:underline font-medium">Clear filters</button>
+                  )}
+                </div>
+
                 {/* Records Table */}
-                <div className="crm-surface rounded-2xl overflow-hidden">
+                <div className="crm-surface rounded-2xl overflow-hidden mt-3">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
@@ -333,6 +368,7 @@ export default function BulkTasksPage() {
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Name</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Phone</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Call ID</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Caller/Sheet</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Heat</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Status</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Call Status</th>
@@ -342,12 +378,13 @@ export default function BulkTasksPage() {
                       </thead>
                       <tbody>
                         {selectedBatch.records.length === 0 ? (
-                          <tr><td colSpan={8} className="px-4 py-8 text-center text-[#8f8378]">No records</td></tr>
+                          <tr><td colSpan={9} className="px-4 py-8 text-center text-[#8f8378]">No records match filters</td></tr>
                         ) : selectedBatch.records.map(r => (
                           <tr key={r.id} className="border-t border-[#f0e8de] hover:bg-[#fdf9f4] transition-colors">
                             <td className="px-3 py-2.5 font-medium text-[#2d261f]">{r.name || '—'}</td>
                             <td className="px-3 py-2.5 text-[#6e6357] font-mono text-xs">{r.phone_number || '—'}</td>
                             <td className="px-3 py-2.5 text-[#8f8378] text-xs truncate max-w-[120px]">{r.call_id || '—'}</td>
+                            <td className="px-3 py-2.5 text-[#6e6357] text-xs font-medium">{r.caller_name || '—'}</td>
                             <td className="px-3 py-2.5"><HeatBadge heat={r.lead_heat_bucket} /></td>
                             <td className="px-3 py-2.5"><StatusBadge status={r.ingestion_status} /></td>
                             <td className="px-3 py-2.5 text-[#6e6357] text-xs">{r.call_status || '—'}</td>

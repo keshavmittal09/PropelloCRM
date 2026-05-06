@@ -705,9 +705,10 @@ async def get_master_profile(
         except (ValueError, TypeError):
             phone_int = None
         if phone_int:
+            from sqlalchemy import cast, String
             cd_result = await db.execute(
                 select(CDLead)
-                .where(CDLead.phone_number == phone_int)
+                .where(cast(CDLead.phone_number, String) == str(phone_int))
                 .order_by(CDLead.updated_at.desc())
                 .limit(1)
             )

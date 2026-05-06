@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -181,6 +181,34 @@ async def upload_bulk_csv(
     skipped = 0
     failed = 0
 
+    # ─── Pre-load Contacts & Leads to avoid N+1 queries ───
+    phones_in_batch = set()
+    for row in records_data:
+        p = _clean_phone(row.get("phone_number") or row.get("phone") or row.get("mobile") or row.get("mobile_number") or row.get("contact_number") or "")
+        if p and len(p) >= 7:
+            phones_in_batch.add(p)
+
+    contact_by_phone = {}
+    lead_by_contact_id = {}
+
+    if phones_in_batch:
+        existing_contacts_res = await db.execute(
+            select(Contact).where(Contact.phone.in_(phones_in_batch))
+        )
+        for c in existing_contacts_res.scalars().all():
+            contact_by_phone[c.phone] = c
+
+        contact_ids = [c.id for c in contact_by_phone.values()]
+        if contact_ids:
+            existing_leads_res = await db.execute(
+                select(Lead)
+                .where(Lead.contact_id.in_(contact_ids))
+                .where(Lead.stage.notin_(["won", "lost"]))
+                .order_by(Lead.created_at.asc())
+            )
+            for l in existing_leads_res.scalars().all():
+                lead_by_contact_id[l.contact_id] = l
+
     # Column name mapping (flexible to handle various CSV formats)
     COLUMN_MAP = {
         "call_id": ["call_id", "callid", "call_identifier"],
@@ -233,36 +261,28 @@ async def upload_bulk_csv(
                 continue
 
             # ─── Find or create Contact ───────────────────────────────
-            existing_contact = await db.scalar(
-                select(Contact).where(Contact.phone == phone)
-            )
-            if existing_contact:
-                contact = existing_contact
+            if phone in contact_by_phone:
+                contact = contact_by_phone[phone]
             else:
                 contact = Contact(
+                    id=str(uuid.uuid4()),
                     name=lead_name or "Unknown",
                     phone=phone,
                     type="buyer",
                     source="campaign",
                 )
                 db.add(contact)
-                await db.flush()
+                contact_by_phone[phone] = contact
 
             # ─── Find or create Lead ──────────────────────────────────
-            existing_lead = await db.scalar(
-                select(Lead)
-                .where(Lead.contact_id == contact.id)
-                .where(Lead.stage.notin_(["won", "lost"]))
-                .order_by(Lead.created_at.desc())
-            )
-
-            if existing_lead:
-                lead = existing_lead
+            if contact.id in lead_by_contact_id:
+                lead = lead_by_contact_id[contact.id]
                 # Update heat/score if provided
                 lead.lead_score = heat
                 lead.last_contacted_at = datetime.utcnow()
             else:
                 lead = Lead(
+                    id=str(uuid.uuid4()),
                     contact_id=contact.id,
                     source="campaign",
                     stage="new",
@@ -270,7 +290,7 @@ async def upload_bulk_csv(
                     priority="P2" if heat == "hot" else ("P3" if heat == "warm" else "P4"),
                 )
                 db.add(lead)
-                await db.flush()
+                lead_by_contact_id[contact.id] = lead
                 created_leads += 1
 
             # ─── Create Task for follow-up ────────────────────────────
@@ -286,6 +306,7 @@ async def upload_bulk_csv(
                 task_desc = f"Warm lead — {lead_heat_reason_text(row)}"
 
             task = Task(
+                id=str(uuid.uuid4()),
                 lead_id=lead.id,
                 title=task_title,
                 description=task_desc,
@@ -295,7 +316,6 @@ async def upload_bulk_csv(
                 created_by=current_user.id,
             )
             db.add(task)
-            await db.flush()
             created_tasks += 1
 
             # ─── Log Activity ─────────────────────────────────────────
@@ -543,25 +563,37 @@ async def assign_all_in_batch(
         raise HTTPException(status_code=404, detail="Batch not found")
 
     result = await db.execute(
-        select(BulkTaskRecord).where(BulkTaskRecord.ingest_id == batch_id)
+        select(BulkTaskRecord.task_id, BulkTaskRecord.lead_id)
+        .where(BulkTaskRecord.ingest_id == batch_id)
     )
-    records = result.scalars().all()
+    rows = result.all()
 
-    assigned_count = 0
-    for record in records:
-        record.assigned_to = agent_id
+    assigned_count = len(rows)
+    task_ids = [r.task_id for r in rows if r.task_id]
+    lead_ids = [r.lead_id for r in rows if r.lead_id]
 
-        if record.task_id:
-            task = await db.get(Task, record.task_id)
-            if task:
-                task.assigned_to = agent_id
+    # Bulk update BulkTaskRecord
+    await db.execute(
+        update(BulkTaskRecord)
+        .where(BulkTaskRecord.ingest_id == batch_id)
+        .values(assigned_to=agent_id)
+    )
 
-        if record.lead_id:
-            lead = await db.get(Lead, record.lead_id)
-            if lead:
-                lead.assigned_to = agent_id
+    # Bulk update Tasks
+    if task_ids:
+        await db.execute(
+            update(Task)
+            .where(Task.id.in_(task_ids))
+            .values(assigned_to=agent_id)
+        )
 
-        assigned_count += 1
+    # Bulk update Leads
+    if lead_ids:
+        await db.execute(
+            update(Lead)
+            .where(Lead.id.in_(lead_ids))
+            .values(assigned_to=agent_id)
+        )
 
     await db.commit()
     return {
@@ -698,7 +730,7 @@ async def export_batch_csv(
     filename = f"bulk_ingest_{safe_name}_{batch_id[:8]}.csv"
 
     return StreamingResponse(
-        iter([output.getvalue()]),
+        iter(["\ufeff", output.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
@@ -768,7 +800,7 @@ async def export_all_data(
     now = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
     return StreamingResponse(
-        iter([output.getvalue()]),
+        iter(["\ufeff", output.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=propello_leads_export_{now}.csv"},
     )
