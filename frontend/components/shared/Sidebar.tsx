@@ -13,6 +13,7 @@ const nav = [
   { href: '/tasks',      label: 'Tasks',        icon: '✓' },
   { href: '/campaigns',  label: 'Campaigns',   icon: '📣', roles: ['admin', 'manager'] as const },
   { href: '/campaigns/dashboard', label: 'Call Campaign Dashboard', icon: '📈', roles: ['admin', 'manager'] as const },
+  { href: '/bulk-tasks', label: 'Bulk Task Ingest', icon: '📋', roles: ['admin', 'manager'] as const },
   { href: '/leads/nurture',label: 'Re-engagement', icon: '♻️', roles: ['admin', 'manager'] as const },
   { href: '/contacts',   label: 'Contacts',     icon: '👥', roles: ['admin', 'manager'] as const },
   { href: '/projects',   label: 'Projects',    icon: '🏗️', roles: ['admin', 'manager'] as const },

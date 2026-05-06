@@ -711,3 +711,66 @@ export interface TaskCompleteDemographicResult {
   updated_fields: string[]
   next_followup_id: string | null
 }
+
+// ─── BULK TASK INGEST (CSV Upload Dashboard) ──────────────────────────────
+
+export interface BulkTaskRecord {
+  id: string
+  caller_name: string | null
+  name: string | null
+  call_id: string | null
+  phone_number: string | null
+  transcript_url: string | null
+  recording_url: string | null
+  extracted_entities: string | null
+  call_eval_tags: string | null
+  summary: string | null
+  call_conversation_quality: string | null
+  call_dialing_at: string | null
+  call_ringing_at: string | null
+  user_picked_up: string | null
+  call_status: string | null
+  duration: string | null
+  lead_heat_bucket: string | null
+  lead_heat_reason: string | null
+  contact_id: string | null
+  lead_id: string | null
+  task_id: string | null
+  assigned_to: string | null
+  ingestion_status: string
+  extra_data: Record<string, unknown> | null
+  created_at: string | null
+}
+
+export interface BulkTaskIngest {
+  id: string
+  batch_name: string
+  file_name: string | null
+  uploaded_by: string | null
+  total_records: number
+  hot_count: number
+  warm_count: number
+  cold_count: number
+  created_leads: number
+  created_tasks: number
+  skipped_records: number
+  failed_records: number
+  caller_names: string[] | null
+  status: string
+  created_at: string | null
+}
+
+export interface BulkTaskIngestDetail extends BulkTaskIngest {
+  records: BulkTaskRecord[]
+}
+
+export interface BulkTaskBulkAssignPayload {
+  record_ids: string[]
+  agent_id: string
+}
+
+export interface BulkTaskAssignByCallerPayload {
+  caller_name: string
+  agent_id: string
+}
+

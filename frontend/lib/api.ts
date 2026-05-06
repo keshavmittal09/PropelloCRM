@@ -23,6 +23,10 @@ import type {
   AgentPerformanceResponse,
   DemographicsProfile,
   TaskCompleteDemographicPayload,
+  BulkTaskIngest,
+  BulkTaskIngestDetail,
+  BulkTaskBulkAssignPayload,
+  BulkTaskAssignByCallerPayload,
 } from './types'
 
 const api = axios.create({
@@ -293,6 +297,40 @@ export const projectsApi = {
   update: (id: string, payload: Record<string, unknown>) => api.patch<Project>(`/api/projects/${id}`, payload).then(r => r.data),
   addLeadTag: (projectId: string, leadId: string) => api.post(`/api/projects/${projectId}/leads/${leadId}`).then(r => r.data),
   removeLeadTag: (projectId: string, leadId: string) => api.delete(`/api/projects/${projectId}/leads/${leadId}`).then(r => r.data),
+}
+
+// ─── BULK TASK INGEST ─────────────────────────────────────────────────────
+export const bulkTasksApi = {
+  upload: async (file: File, batchName: string) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('batch_name', batchName)
+    const token = typeof window !== 'undefined' ? localStorage.getItem('propello_token') : null
+    const response = await fetch(`${api.defaults.baseURL}/api/bulk-tasks/upload`, {
+      method: 'POST',
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+      body: form,
+    })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+      throw new Error(error.detail || 'Upload failed')
+    }
+    return response.json() as Promise<BulkTaskIngest>
+  },
+  listBatches: (limit = 50) =>
+    api.get<BulkTaskIngest[]>('/api/bulk-tasks/batches', { params: { limit } }).then(r => r.data),
+  getBatch: (batchId: string, params?: { caller_name?: string; heat?: string; page?: number; limit?: number }) =>
+    api.get<BulkTaskIngestDetail>(`/api/bulk-tasks/batch/${batchId}`, { params }).then(r => r.data),
+  deleteBatch: (batchId: string) =>
+    api.delete<{ status: string; batch_id: string; batch_name: string }>(`/api/bulk-tasks/batch/${batchId}`).then(r => r.data),
+  bulkAssign: (batchId: string, payload: BulkTaskBulkAssignPayload) =>
+    api.post(`/api/bulk-tasks/batch/${batchId}/bulk-assign`, payload).then(r => r.data),
+  assignByCaller: (batchId: string, payload: BulkTaskAssignByCallerPayload) =>
+    api.post(`/api/bulk-tasks/batch/${batchId}/assign-by-caller`, payload).then(r => r.data),
+  exportBatch: (batchId: string) =>
+    `${api.defaults.baseURL}/api/bulk-tasks/export/${batchId}`,
+  exportAll: () =>
+    `${api.defaults.baseURL}/api/bulk-tasks/export-all`,
 }
 
 export default api

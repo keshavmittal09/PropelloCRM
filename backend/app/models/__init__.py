@@ -5,6 +5,7 @@ from app.models.lead import Lead
 from app.models.models import Property, Activity, Task, SiteVisit, Notification
 from app.models.followup import FollowUp
 from app.models.notification_dispatch import NotificationDispatchLog, NotificationLog
+from app.models.bulk_task_ingest import BulkTaskIngest, BulkTaskRecord
 
 __all__ = [
 	"Agent",
@@ -20,4 +21,6 @@ __all__ = [
 	"FollowUp",
 	"NotificationDispatchLog",
 	"NotificationLog",
+	"BulkTaskIngest",
+	"BulkTaskRecord",
 ]

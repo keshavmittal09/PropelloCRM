@@ -105,3 +105,61 @@ async def init_db():
             """))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_agent_id ON performance_snapshots (agent_id)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_snapshot_date ON performance_snapshots (snapshot_date)"))
+
+            # Bulk Task Ingest tables (additive — safe for production)
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS bulk_task_ingests (
+                    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                    batch_name VARCHAR(200) NOT NULL,
+                    file_name VARCHAR(255),
+                    uploaded_by VARCHAR REFERENCES agents(id),
+                    total_records INTEGER DEFAULT 0,
+                    hot_count INTEGER DEFAULT 0,
+                    warm_count INTEGER DEFAULT 0,
+                    cold_count INTEGER DEFAULT 0,
+                    created_leads INTEGER DEFAULT 0,
+                    created_tasks INTEGER DEFAULT 0,
+                    skipped_records INTEGER DEFAULT 0,
+                    failed_records INTEGER DEFAULT 0,
+                    caller_names JSONB,
+                    status VARCHAR(32) DEFAULT 'processing',
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bulk_task_ingests_batch_name ON bulk_task_ingests (batch_name)"))
+
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS bulk_task_records (
+                    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+                    ingest_id VARCHAR NOT NULL REFERENCES bulk_task_ingests(id) ON DELETE CASCADE,
+                    caller_name VARCHAR(200),
+                    name VARCHAR(200),
+                    call_id VARCHAR(200),
+                    phone_number VARCHAR(30),
+                    transcript_url TEXT,
+                    recording_url TEXT,
+                    extracted_entities TEXT,
+                    call_eval_tags VARCHAR(200),
+                    summary TEXT,
+                    call_conversation_quality TEXT,
+                    call_dialing_at VARCHAR(100),
+                    call_ringing_at VARCHAR(100),
+                    user_picked_up VARCHAR(100),
+                    call_status VARCHAR(100),
+                    duration VARCHAR(100),
+                    lead_heat_bucket VARCHAR(32),
+                    lead_heat_reason TEXT,
+                    contact_id VARCHAR REFERENCES contacts(id),
+                    lead_id VARCHAR REFERENCES leads(id) ON DELETE SET NULL,
+                    task_id VARCHAR REFERENCES tasks(id) ON DELETE SET NULL,
+                    assigned_to VARCHAR REFERENCES agents(id),
+                    ingestion_status VARCHAR(32) DEFAULT 'pending',
+                    extra_data JSONB,
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bulk_task_records_ingest_id ON bulk_task_records (ingest_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bulk_task_records_call_id ON bulk_task_records (call_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bulk_task_records_phone_number ON bulk_task_records (phone_number)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_bulk_task_records_lead_heat_bucket ON bulk_task_records (lead_heat_bucket)"))
+

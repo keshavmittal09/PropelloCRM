@@ -702,3 +702,74 @@ class LeaderboardEntry(BaseModel):
     class Config:
         from_attributes = True
 
+
+# ─── BULK TASK INGEST (CSV Upload Dashboard) ────────────────────────────────
+
+class BulkTaskRecordResponse(BaseModel):
+    id: str
+    caller_name: Optional[str] = None
+    name: Optional[str] = None
+    call_id: Optional[str] = None
+    phone_number: Optional[str] = None
+    transcript_url: Optional[str] = None
+    recording_url: Optional[str] = None
+    extracted_entities: Optional[str] = None
+    call_eval_tags: Optional[str] = None
+    summary: Optional[str] = None
+    call_conversation_quality: Optional[str] = None
+    call_dialing_at: Optional[str] = None
+    call_ringing_at: Optional[str] = None
+    user_picked_up: Optional[str] = None
+    call_status: Optional[str] = None
+    duration: Optional[str] = None
+    lead_heat_bucket: Optional[str] = None
+    lead_heat_reason: Optional[str] = None
+    contact_id: Optional[str] = None
+    lead_id: Optional[str] = None
+    task_id: Optional[str] = None
+    assigned_to: Optional[str] = None
+    ingestion_status: str = "pending"
+    extra_data: Optional[Any] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BulkTaskIngestResponse(BaseModel):
+    id: str
+    batch_name: str
+    file_name: Optional[str] = None
+    uploaded_by: Optional[str] = None
+    total_records: int = 0
+    hot_count: int = 0
+    warm_count: int = 0
+    cold_count: int = 0
+    created_leads: int = 0
+    created_tasks: int = 0
+    skipped_records: int = 0
+    failed_records: int = 0
+    caller_names: Optional[List[str]] = None
+    status: str = "processing"
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BulkTaskIngestDetailResponse(BulkTaskIngestResponse):
+    records: List[BulkTaskRecordResponse] = Field(default_factory=list)
+
+
+class BulkTaskBulkAssignRequest(BaseModel):
+    """Bulk assign tasks from a batch to an agent."""
+    record_ids: List[str] = Field(min_length=1)
+    agent_id: str
+
+
+class BulkTaskAssignByCallerRequest(BaseModel):
+    """Assign all records from a specific caller/tab to an agent."""
+    caller_name: str
+    agent_id: str
+
+
