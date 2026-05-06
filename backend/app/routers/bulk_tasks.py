@@ -236,6 +236,8 @@ async def upload_bulk_csv(
                 return row[alias]
         return ""
 
+    records_to_insert = []
+
     for row in records_data:
         try:
             phone_raw = _get_field(row, "phone_number")
@@ -342,38 +344,17 @@ async def upload_bulk_csv(
             )
             db.add(activity)
 
-            # ─── Create BulkTaskRecord ────────────────────────────────
-            record = BulkTaskRecord(
-                ingest_id=ingest.id,
-                caller_name=caller_name,
-                name=lead_name,
-                call_id=_get_field(row, "call_id"),
-                phone_number=phone,
-                transcript_url=_get_field(row, "transcript_url"),
-                recording_url=_get_field(row, "recording_url"),
-                extracted_entities=_get_field(row, "extracted_entities"),
-                call_eval_tags=_get_field(row, "call_eval_tags"),
-                summary=_get_field(row, "summary"),
-                call_conversation_quality=_get_field(row, "call_conversation_quality"),
-                call_dialing_at=_get_field(row, "call_dialing_at"),
-                call_ringing_at=_get_field(row, "call_ringing_at"),
-                user_picked_up=_get_field(row, "user_picked_up"),
-                call_status=_get_field(row, "call_status"),
-                duration=_get_field(row, "duration"),
-                lead_heat_bucket=heat,
-                lead_heat_reason=_get_field(row, "lead_heat_reason"),
-                contact_id=contact.id,
-                lead_id=lead.id,
-                task_id=task.id,
-                ingestion_status="ingested",
-                extra_data={
-                    k: v for k, v in row.items()
-                    if k != "_caller_name" and k not in {
-                        alias for aliases in COLUMN_MAP.values() for alias in aliases
-                    }
-                } or None,
-            )
-            db.add(record)
+            # Defer record creation until after flush to prevent FK dependency cycle errors
+            records_to_insert.append({
+                "row": row,
+                "caller_name": caller_name,
+                "lead_name": lead_name,
+                "phone": phone,
+                "heat": heat,
+                "contact_id": contact.id,
+                "lead_id": lead.id,
+                "task_id": task.id,
+            })
 
         except Exception as e:
             logger.error(f"Failed to process row: {e}")
@@ -388,6 +369,44 @@ async def upload_bulk_csv(
                 extra_data={"error": str(e)},
             )
             db.add(record)
+
+    # ─── Flush all core CRM entities first (Contacts, Leads, Tasks, Activities)
+    await db.flush()
+
+    # ─── Insert BulkTaskRecords now that FK references are guaranteed to exist
+    for item in records_to_insert:
+        row = item["row"]
+        record = BulkTaskRecord(
+            ingest_id=ingest.id,
+            caller_name=item["caller_name"],
+            name=item["lead_name"],
+            call_id=_get_field(row, "call_id"),
+            phone_number=item["phone"],
+            transcript_url=_get_field(row, "transcript_url"),
+            recording_url=_get_field(row, "recording_url"),
+            extracted_entities=_get_field(row, "extracted_entities"),
+            call_eval_tags=_get_field(row, "call_eval_tags"),
+            summary=_get_field(row, "summary"),
+            call_conversation_quality=_get_field(row, "call_conversation_quality"),
+            call_dialing_at=_get_field(row, "call_dialing_at"),
+            call_ringing_at=_get_field(row, "call_ringing_at"),
+            user_picked_up=_get_field(row, "user_picked_up"),
+            call_status=_get_field(row, "call_status"),
+            duration=_get_field(row, "duration"),
+            lead_heat_bucket=item["heat"],
+            lead_heat_reason=_get_field(row, "lead_heat_reason"),
+            contact_id=item["contact_id"],
+            lead_id=item["lead_id"],
+            task_id=item["task_id"],
+            ingestion_status="ingested",
+            extra_data={
+                k: v for k, v in row.items()
+                if k != "_caller_name" and k not in {
+                    alias for aliases in COLUMN_MAP.values() for alias in aliases
+                }
+            } or None,
+        )
+        db.add(record)
 
     # Update ingest totals
     ingest.created_leads = created_leads
@@ -477,13 +496,67 @@ async def delete_batch(
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
-    """Delete a batch and all its records. Does NOT delete the created leads/tasks."""
+    """Delete a batch and all its records, including created leads, tasks, and activities."""
     _require_admin_or_manager(current_user)
 
     ingest = await db.get(BulkTaskIngest, batch_id)
     if not ingest:
         raise HTTPException(status_code=404, detail="Batch not found")
 
+    result = await db.execute(select(BulkTaskRecord).where(BulkTaskRecord.ingest_id == batch_id))
+    records = result.scalars().all()
+    
+    task_ids = [r.task_id for r in records if r.task_id]
+    lead_ids = list({r.lead_id for r in records if r.lead_id})
+    contact_ids = list({r.contact_id for r in records if r.contact_id})
+
+    from sqlalchemy import delete, text
+    # 1. Delete tasks created by this batch
+    if task_ids:
+        chunk_size = 5000
+        for i in range(0, len(task_ids), chunk_size):
+            await db.execute(delete(Task).where(Task.id.in_(task_ids[i:i + chunk_size])))
+
+    # 2. Delete activities created by this batch
+    if lead_ids:
+        chunk_size = 5000
+        for i in range(0, len(lead_ids), chunk_size):
+            await db.execute(
+                delete(Activity)
+                .where(Activity.lead_id.in_(lead_ids[i:i + chunk_size]))
+                .where(text("meta->>'batch_id' = :bid").bindparams(bid=batch_id))
+            )
+
+    # 3. Clean up leads specifically created by this batch (within 120s of batch creation)
+    if lead_ids:
+        leads = await db.execute(select(Lead.id, Lead.created_at).where(Lead.id.in_(lead_ids)))
+        leads_to_delete = []
+        for l_id, created_at in leads.all():
+            if created_at and abs((created_at - ingest.created_at).total_seconds()) < 120:
+                leads_to_delete.append(l_id)
+                
+        if leads_to_delete:
+            from app.routers.leads import _delete_leads_and_dependencies
+            await _delete_leads_and_dependencies(db, leads_to_delete)
+
+    # 4. Clean up orphaned contacts created by this batch
+    if contact_ids:
+        contacts = await db.execute(select(Contact.id, Contact.created_at).where(Contact.id.in_(contact_ids)))
+        contacts_to_delete = []
+        for c_id, created_at in contacts.all():
+            if created_at and abs((created_at - ingest.created_at).total_seconds()) < 120:
+                contacts_to_delete.append(c_id)
+                
+        if contacts_to_delete:
+            active_leads = await db.execute(
+                select(Lead.contact_id).where(Lead.contact_id.in_(contacts_to_delete))
+            )
+            active_c_ids = {r[0] for r in active_leads.all()}
+            safe_to_delete = [c for c in contacts_to_delete if c not in active_c_ids]
+            if safe_to_delete:
+                await db.execute(delete(Contact).where(Contact.id.in_(safe_to_delete)))
+
+    # 5. Delete the batch itself (cascades to BulkTaskRecord)
     await db.delete(ingest)
     await db.commit()
     return {"status": "deleted", "batch_id": batch_id, "batch_name": ingest.batch_name}
