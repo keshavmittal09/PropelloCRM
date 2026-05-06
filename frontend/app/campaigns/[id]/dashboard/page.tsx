@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
 import CampaignLeadDrawer from '@/components/leads/CampaignLeadDrawer'
 import { useCampaign, useCampaignAnalytics, useCampaignLeadsDetail } from '@/hooks/useQueries'
-import { authApi, campaignsApi } from '@/lib/api'
+import api, { authApi, campaignsApi } from '@/lib/api'
 import type { Agent, CampaignLeadDetail, CampaignInsight } from '@/lib/types'
 import { useAuthStore } from '@/store/useAuthStore'
 import toast from 'react-hot-toast'
@@ -420,6 +420,39 @@ function PriorityQueueTab({ leads, loading, tierFilter, searchQuery, onTierChang
   onSearchChange: (v: string) => void
   onSelectLead: (l: CampaignLeadDetail) => void
 }) {
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportQueue = async () => {
+    setExporting(true)
+    try {
+      // Build CSV from current leads data
+      const header = ['Tier','Score','Name','Phone','CRM Score','Eval','Attempt','Quality','Summary']
+      const rows = leads.map(l => [
+        l.priority_tier,
+        l.priority_score,
+        l.name || '',
+        l.phone || '',
+        l.lead_score || '',
+        l.call_eval_tag || '',
+        l.attempt_number,
+        l.call_quality?.overall_quality ?? '',
+        (l.summary || '').replace(/[\n\r,]/g, ' ').slice(0, 200),
+      ])
+      const csv = [header, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `priority_queue_export_${new Date().toISOString().slice(0,10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+      toast.success('Priority queue exported')
+    } catch { toast.error('Export failed') }
+    finally { setExporting(false) }
+  }
+
   return (
     <div className="space-y-4 crm-page-enter">
       {/* Filters */}
@@ -445,6 +478,13 @@ function PriorityQueueTab({ leads, loading, tierFilter, searchQuery, onTierChang
           <svg className="absolute left-3 top-3 w-4 h-4 text-[#8c7f73]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="11" cy="11" r="8" strokeWidth="2" /><path d="m21 21-4.35-4.35" strokeWidth="2" /></svg>
         </div>
         <span className="text-sm text-[#7f7266]">{leads.length} leads</span>
+        <button
+          onClick={handleExportQueue}
+          disabled={exporting || leads.length === 0}
+          className="px-4 py-2 rounded-xl border border-[#e2d6c7] bg-white text-sm font-medium text-[#2a231d] hover:bg-[#faf3ea] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+        >
+          {exporting ? '⏳ Exporting...' : '📥 Export Data'}
+        </button>
       </div>
 
       {/* Table */}
@@ -574,25 +614,56 @@ function AiAnalysisTab({ leads, loading, running, lastRunMessage, onRunAi, onSel
 
   return (
     <div className="space-y-6 crm-page-enter">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-lg font-semibold text-[#2a231d]">AI-Powered Analysis</h3>
           <p className="text-sm text-[#7f7266]">
             {analyzedLeads.length} analyzed · {pendingLeads.length} pending · Uses Groq LLaMA 3.3 70B
           </p>
         </div>
-        <button
-          onClick={onRunAi}
-          disabled={running || pendingLeads.length === 0}
-          className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[#c86f43] to-[#e8a06c] text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-md disabled:opacity-50"
-        >
-          {running ? (
-            <span className="flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity="0.25" /><path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
-              Analyzing {pendingLeads.length} calls...
-            </span>
-          ) : `🤖 Run AI Analysis (${pendingLeads.length} calls)`}
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => {
+              const header = ['Tier','Name','Phone','Engagement','Quality Assessment','Next Action','Close Probability']
+              const rows = analyzedLeads.map(l => {
+                const ai = l.ai_analysis || {} as any
+                return [
+                  l.priority_tier, l.name || '', l.phone || '',
+                  ai.engagement_level || '', (String(ai.lead_quality_assessment || '')).replace(/[\n\r,]/g, ' ').slice(0,200),
+                  (String(ai.suggested_next_action || '')).replace(/[\n\r,]/g, ' ').slice(0,200),
+                  ai.close_probability ?? '',
+                ]
+              })
+              const csv = [header, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+              const blob = new Blob([csv], { type: 'text/csv' })
+              const url = window.URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = `ai_analysis_export_${new Date().toISOString().slice(0,10)}.csv`
+              document.body.appendChild(a)
+              a.click()
+              a.remove()
+              window.URL.revokeObjectURL(url)
+              toast.success('AI analysis exported')
+            }}
+            disabled={analyzedLeads.length === 0}
+            className="px-4 py-2 rounded-xl border border-[#e2d6c7] bg-white text-sm font-medium text-[#2a231d] hover:bg-[#faf3ea] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          >
+            📥 Export AI Data
+          </button>
+          <button
+            onClick={onRunAi}
+            disabled={running || pendingLeads.length === 0}
+            className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[#c86f43] to-[#e8a06c] text-white text-sm font-semibold hover:opacity-90 transition-opacity shadow-md disabled:opacity-50"
+          >
+            {running ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" opacity="0.25" /><path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                Analyzing {pendingLeads.length} calls...
+              </span>
+            ) : `🤖 Run AI Analysis (${pendingLeads.length} calls)`}
+          </button>
+        </div>
       </div>
 
       {lastRunMessage ? (

@@ -325,12 +325,38 @@ export const bulkTasksApi = {
     api.delete<{ status: string; batch_id: string; batch_name: string }>(`/api/bulk-tasks/batch/${batchId}`).then(r => r.data),
   bulkAssign: (batchId: string, payload: BulkTaskBulkAssignPayload) =>
     api.post(`/api/bulk-tasks/batch/${batchId}/bulk-assign`, payload).then(r => r.data),
+  assignAll: (batchId: string, agentId: string) =>
+    api.post(`/api/bulk-tasks/batch/${batchId}/assign-all`, { agent_id: agentId }).then(r => r.data),
   assignByCaller: (batchId: string, payload: BulkTaskAssignByCallerPayload) =>
     api.post(`/api/bulk-tasks/batch/${batchId}/assign-by-caller`, payload).then(r => r.data),
-  exportBatch: (batchId: string) =>
-    `${api.defaults.baseURL}/api/bulk-tasks/export/${batchId}`,
-  exportAll: () =>
-    `${api.defaults.baseURL}/api/bulk-tasks/export-all`,
+  exportBatch: async (batchId: string) => {
+    const res = await api.get(`/api/bulk-tasks/export/${batchId}`, { responseType: 'blob' })
+    const disposition = res.headers['content-disposition'] || ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : `bulk_export_${batchId}.csv`
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  },
+  exportAll: async () => {
+    const res = await api.get('/api/bulk-tasks/export-all', { responseType: 'blob' })
+    const disposition = res.headers['content-disposition'] || ''
+    const match = disposition.match(/filename=(.+)/)
+    const filename = match ? match[1] : 'propello_leads_export.csv'
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    window.URL.revokeObjectURL(url)
+  },
 }
 
 export default api

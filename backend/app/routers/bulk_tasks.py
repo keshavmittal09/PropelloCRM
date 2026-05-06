@@ -520,6 +520,59 @@ async def bulk_assign_tasks(
     }
 
 
+@router.post("/batch/{batch_id}/assign-all")
+async def assign_all_in_batch(
+    batch_id: str,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Assign ALL records in a batch to a single agent (the whole ingest as one)."""
+    _require_admin_or_manager(current_user)
+
+    agent_id = data.get("agent_id")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agent_id is required")
+
+    agent = await db.get(Agent, agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    ingest = await db.get(BulkTaskIngest, batch_id)
+    if not ingest:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    result = await db.execute(
+        select(BulkTaskRecord).where(BulkTaskRecord.ingest_id == batch_id)
+    )
+    records = result.scalars().all()
+
+    assigned_count = 0
+    for record in records:
+        record.assigned_to = agent_id
+
+        if record.task_id:
+            task = await db.get(Task, record.task_id)
+            if task:
+                task.assigned_to = agent_id
+
+        if record.lead_id:
+            lead = await db.get(Lead, record.lead_id)
+            if lead:
+                lead.assigned_to = agent_id
+
+        assigned_count += 1
+
+    await db.commit()
+    return {
+        "status": "ok",
+        "assigned": assigned_count,
+        "agent_id": agent_id,
+        "agent_name": agent.name,
+        "batch_name": ingest.batch_name,
+    }
+
+
 @router.post("/batch/{batch_id}/assign-by-caller")
 async def assign_by_caller(
     batch_id: str,

@@ -280,6 +280,12 @@ export default function LeadDetailPage() {
               <DetailRow label="Location" value={lead.location_preference ?? '—'} />
               <DetailRow label="Timeline" value={lead.timeline?.replace('_', ' ') ?? '—'} />
               <DetailRow label="Calls" value={`${lead.call_count} call(s)`} />
+              {/* Show call_id from the latest activity meta */}
+              {(() => {
+                const callActivity = activities?.find(a => a.meta?.call_id)
+                const callId = callActivity?.meta?.call_id as string | undefined
+                return callId ? <DetailRow label="Call ID" value={callId} /> : null
+              })()}
               <DetailRow label="Created" value={formatDate(lead.created_at)} />
               {lead.lost_reason && <DetailRow label="Lost reason" value={lead.lost_reason} className="text-red-600" />}
             </div>

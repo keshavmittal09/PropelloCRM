@@ -6,7 +6,7 @@ import Sidebar from '@/components/shared/Sidebar'
 import { MobileHeader } from '@/components/mobile/MobileHeader'
 import { bulkTasksApi, authApi } from '@/lib/api'
 import toast from 'react-hot-toast'
-import type { BulkTaskIngest, BulkTaskIngestDetail, BulkTaskRecord, Agent } from '@/lib/types'
+import type { BulkTaskIngest, BulkTaskIngestDetail, Agent } from '@/lib/types'
 
 const HEAT_COLORS: Record<string, string> = {
   hot: 'bg-red-100 text-red-700 border-red-200',
@@ -47,11 +47,9 @@ export default function BulkTasksPage() {
   const [uploading, setUploading] = useState(false)
   const [batchName, setBatchName] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set())
   const [assignAgent, setAssignAgent] = useState('')
-  const [callerFilter, setCallerFilter] = useState('')
-  const [heatFilter, setHeatFilter] = useState('')
   const [assigning, setAssigning] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const isAdmin = agent?.role === 'admin' || agent?.role === 'manager'
 
@@ -91,77 +89,51 @@ export default function BulkTasksPage() {
   const loadBatch = async (id: string) => {
     setLoading(true)
     try {
-      const data = await bulkTasksApi.getBatch(id, {
-        caller_name: callerFilter || undefined,
-        heat: heatFilter || undefined,
-        limit: 200,
-      })
+      const data = await bulkTasksApi.getBatch(id, { limit: 200 })
       setSelectedBatch(data)
-      setSelectedRecords(new Set())
     } catch { toast.error('Failed to load batch') }
     finally { setLoading(false) }
   }
 
-  useEffect(() => {
-    if (selectedBatch?.id) loadBatch(selectedBatch.id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callerFilter, heatFilter])
-
-  const handleBulkAssign = async () => {
-    if (!selectedBatch || !assignAgent) return
-    if (selectedRecords.size === 0) { toast.error('Select records first'); return }
+  // Assign ALL records in the batch to one agent
+  const handleAssignAll = async () => {
+    if (!selectedBatch || !assignAgent) {
+      toast.error('Select a batch and an agent')
+      return
+    }
     setAssigning(true)
     try {
-      const res = await bulkTasksApi.bulkAssign(selectedBatch.id, {
-        record_ids: Array.from(selectedRecords),
-        agent_id: assignAgent,
-      })
-      toast.success(`Assigned ${res.assigned} records to ${res.agent_name}`)
+      const res = await bulkTasksApi.assignAll(selectedBatch.id, assignAgent)
+      toast.success(`✅ Assigned all ${res.assigned} records to ${res.agent_name}`)
       loadBatch(selectedBatch.id)
-    } catch (e: any) { toast.error(e?.response?.data?.detail || 'Assignment failed') }
-    finally { setAssigning(false) }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Assignment failed')
+    } finally {
+      setAssigning(false)
+    }
   }
 
-  const handleAssignByCaller = async (callerName: string) => {
-    if (!selectedBatch || !assignAgent) { toast.error('Select an agent first'); return }
-    setAssigning(true)
+  const handleExport = async (batchId: string) => {
+    setExporting(true)
     try {
-      const res = await bulkTasksApi.assignByCaller(selectedBatch.id, {
-        caller_name: callerName,
-        agent_id: assignAgent,
-      })
-      toast.success(`Assigned ${res.assigned} records (${callerName}) to ${res.agent_name}`)
-      loadBatch(selectedBatch.id)
-    } catch (e: any) { toast.error(e?.response?.data?.detail || 'Assignment failed') }
-    finally { setAssigning(false) }
+      await bulkTasksApi.exportBatch(batchId)
+      toast.success('CSV downloaded')
+    } catch {
+      toast.error('Export failed')
+    } finally {
+      setExporting(false)
+    }
   }
 
-  const handleExport = (batchId: string) => {
-    const token = localStorage.getItem('propello_token')
-    const url = `${bulkTasksApi.exportBatch(batchId)}?token=${token}`
-    window.open(url, '_blank')
-  }
-
-  const handleExportAll = () => {
-    const token = localStorage.getItem('propello_token')
-    const url = `${bulkTasksApi.exportAll()}?token=${token}`
-    window.open(url, '_blank')
-  }
-
-  const toggleRecord = (id: string) => {
-    setSelectedRecords(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
-  const toggleAll = () => {
-    if (!selectedBatch) return
-    if (selectedRecords.size === selectedBatch.records.length) {
-      setSelectedRecords(new Set())
-    } else {
-      setSelectedRecords(new Set(selectedBatch.records.map(r => r.id)))
+  const handleExportAll = async () => {
+    setExporting(true)
+    try {
+      await bulkTasksApi.exportAll()
+      toast.success('All leads CSV downloaded')
+    } catch {
+      toast.error('Export failed')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -195,7 +167,7 @@ export default function BulkTasksPage() {
         <div className="mb-8 mt-4 px-2">
           <h2 className="text-4xl font-semibold tracking-tight text-[#1f1914]">Bulk Task Ingest</h2>
           <p className="text-[#756c63] font-medium tracking-wide text-sm mt-2">
-            Upload CSV call data, categorize by lead heat, and assign tasks to agents in bulk.
+            Upload CSV call data, auto-categorize by lead heat, and assign the entire batch to an agent.
           </p>
         </div>
 
@@ -235,9 +207,10 @@ export default function BulkTasksPage() {
         <div className="flex justify-end mb-4 px-2">
           <button
             onClick={handleExportAll}
-            className="px-5 py-2 bg-[#2f2317] hover:bg-[#1a150e] text-white rounded-full text-sm font-semibold transition-all shadow-md flex items-center gap-2"
+            disabled={exporting}
+            className="px-5 py-2 bg-[#2f2317] hover:bg-[#1a150e] text-white rounded-full text-sm font-semibold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
           >
-            📥 Export All Leads (CSV)
+            {exporting ? '⏳ Exporting...' : '📥 Export All Leads (CSV)'}
           </button>
         </div>
 
@@ -298,7 +271,8 @@ export default function BulkTasksPage() {
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-[#2a231d] text-lg">{selectedBatch.batch_name}</h3>
                     <button onClick={() => handleExport(selectedBatch.id)}
-                      className="px-4 py-1.5 bg-[#2f2317] text-white rounded-full text-xs font-semibold hover:bg-[#1a150e] transition-all flex items-center gap-1.5">
+                      disabled={exporting}
+                      className="px-4 py-1.5 bg-[#2f2317] text-white rounded-full text-xs font-semibold hover:bg-[#1a150e] transition-all flex items-center gap-1.5 disabled:opacity-50">
                       📥 Download CSV
                     </button>
                   </div>
@@ -322,16 +296,17 @@ export default function BulkTasksPage() {
                   </div>
                 </div>
 
-                {/* Caller Tabs + Assignment */}
+                {/* Assign Entire Batch to Agent */}
                 <div className="crm-surface rounded-2xl p-5">
-                  <h4 className="font-semibold text-[#2a231d] mb-3">👥 Callers / Tabs — Bulk Assign</h4>
-                  <div className="flex flex-wrap gap-3 items-end mb-4">
-                    <div>
-                      <label className="text-xs text-[#887d72] font-semibold uppercase mb-1 block">Assign To Agent</label>
+                  <h4 className="font-semibold text-[#2a231d] mb-3">🚀 Assign Entire Batch to Agent</h4>
+                  <p className="text-xs text-[#887d72] mb-3">All {selectedBatch.total_records} records (leads + tasks) will be assigned to the selected agent.</p>
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                      <label className="text-xs text-[#887d72] font-semibold uppercase mb-1 block">Select Agent</label>
                       <select
                         value={assignAgent}
                         onChange={e => setAssignAgent(e.target.value)}
-                        className="px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm min-w-[180px]"
+                        className="w-full px-3 py-2.5 border border-[#e5d7c5] rounded-xl text-sm"
                       >
                         <option value="">Select agent...</option>
                         {agents.filter(a => a.role !== 'admin').map(a => (
@@ -340,50 +315,13 @@ export default function BulkTasksPage() {
                       </select>
                     </div>
                     <button
-                      onClick={handleBulkAssign}
-                      disabled={assigning || !assignAgent || selectedRecords.size === 0}
-                      className="px-5 py-2 bg-[#be6a3f] hover:bg-[#a95d36] text-white rounded-full text-sm font-semibold transition-all disabled:opacity-50"
+                      onClick={handleAssignAll}
+                      disabled={assigning || !assignAgent}
+                      className="px-6 py-2.5 bg-[#be6a3f] hover:bg-[#a95d36] text-white rounded-full text-sm font-semibold transition-all shadow-lg disabled:opacity-50 whitespace-nowrap"
                     >
-                      {assigning ? 'Assigning...' : `Assign ${selectedRecords.size} Selected`}
+                      {assigning ? '⏳ Assigning...' : `✅ Assign All ${selectedBatch.total_records} Records`}
                     </button>
                   </div>
-                  {selectedBatch.caller_names && selectedBatch.caller_names.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedBatch.caller_names.map(name => (
-                        <div key={name} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[#eadfce] bg-[#faf7f2]">
-                          <span className="text-sm font-medium text-[#2d261f]">{name}</span>
-                          <button
-                            onClick={() => handleAssignByCaller(name)}
-                            disabled={assigning || !assignAgent}
-                            className="text-xs px-2.5 py-1 rounded-full bg-[#be6a3f] text-white font-semibold hover:bg-[#a95d36] disabled:opacity-50 transition-all"
-                          >
-                            Assign All
-                          </button>
-                          <button
-                            onClick={() => setCallerFilter(callerFilter === name ? '' : name)}
-                            className={`text-xs px-2 py-1 rounded-full border transition-all ${callerFilter === name ? 'bg-[#2f2317] text-white border-[#2f2317]' : 'bg-white text-[#6e5540] border-[#dcc9b3] hover:bg-[#f7ede5]'}`}
-                          >
-                            Filter
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Filters */}
-                <div className="flex gap-3 px-1">
-                  <select value={heatFilter} onChange={e => setHeatFilter(e.target.value)}
-                    className="px-3 py-2 border border-[#e5d7c5] rounded-xl text-sm">
-                    <option value="">All Heat Levels</option>
-                    <option value="hot">🔥 Hot</option>
-                    <option value="warm">🌤️ Warm</option>
-                    <option value="cold">❄️ Cold</option>
-                  </select>
-                  {(callerFilter || heatFilter) && (
-                    <button onClick={() => { setCallerFilter(''); setHeatFilter('') }}
-                      className="text-xs text-[#a65630] hover:underline">Clear filters</button>
-                  )}
                 </div>
 
                 {/* Records Table */}
@@ -392,36 +330,29 @@ export default function BulkTasksPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-[#f7f2ec] text-[#6e6357]">
-                          <th className="px-3 py-3 text-left">
-                            <input type="checkbox" checked={selectedRecords.size === selectedBatch.records.length && selectedBatch.records.length > 0}
-                              onChange={toggleAll} className="rounded" />
-                          </th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Name</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Phone</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Call ID</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Heat</th>
-                          <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Caller</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Status</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Call Status</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Duration</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider">Summary</th>
                         </tr>
                       </thead>
                       <tbody>
                         {selectedBatch.records.length === 0 ? (
-                          <tr><td colSpan={9} className="px-4 py-8 text-center text-[#8f8378]">No records match filters</td></tr>
+                          <tr><td colSpan={8} className="px-4 py-8 text-center text-[#8f8378]">No records</td></tr>
                         ) : selectedBatch.records.map(r => (
-                          <tr key={r.id} className={`border-t border-[#f0e8de] hover:bg-[#fdf9f4] transition-colors ${selectedRecords.has(r.id) ? 'bg-[#fdf5ef]' : ''}`}>
-                            <td className="px-3 py-2.5">
-                              <input type="checkbox" checked={selectedRecords.has(r.id)} onChange={() => toggleRecord(r.id)} />
-                            </td>
+                          <tr key={r.id} className="border-t border-[#f0e8de] hover:bg-[#fdf9f4] transition-colors">
                             <td className="px-3 py-2.5 font-medium text-[#2d261f]">{r.name || '—'}</td>
                             <td className="px-3 py-2.5 text-[#6e6357] font-mono text-xs">{r.phone_number || '—'}</td>
                             <td className="px-3 py-2.5 text-[#8f8378] text-xs truncate max-w-[120px]">{r.call_id || '—'}</td>
                             <td className="px-3 py-2.5"><HeatBadge heat={r.lead_heat_bucket} /></td>
-                            <td className="px-3 py-2.5 text-[#6e6357] text-xs">{r.caller_name || '—'}</td>
                             <td className="px-3 py-2.5"><StatusBadge status={r.ingestion_status} /></td>
                             <td className="px-3 py-2.5 text-[#6e6357] text-xs">{r.call_status || '—'}</td>
                             <td className="px-3 py-2.5 text-[#6e6357] text-xs">{r.duration || '—'}</td>
+                            <td className="px-3 py-2.5 text-[#6e6357] text-xs truncate max-w-[200px]">{r.summary || '—'}</td>
                           </tr>
                         ))}
                       </tbody>
