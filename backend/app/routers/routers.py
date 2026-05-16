@@ -224,6 +224,7 @@ async def list_tasks(
     status: Optional[str] = None,
     assigned_to: Optional[str] = None,
     lead_id: Optional[str] = None,
+    limit: int = 100,
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
@@ -261,6 +262,9 @@ async def list_tasks(
         query = query.where(Task.assigned_to == assigned_to)
     if lead_id:
         query = query.where(Task.lead_id == lead_id)
+        
+    query = query.limit(limit)
+    
     result = await db.execute(query)
     tasks = result.scalars().all()
 
