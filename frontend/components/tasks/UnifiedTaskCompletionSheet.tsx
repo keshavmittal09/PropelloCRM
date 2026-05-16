@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { tasksApi, leadsApi } from '@/lib/api'
+import { tasksApi } from '@/lib/api'
 import type { Task, Lead, DemographicsInput } from '@/lib/types'
 import toast from 'react-hot-toast'
 
@@ -87,11 +87,7 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
   const [followupDate, setFollowupDate] = useState('')
   const [followupTime, setFollowupTime] = useState('09:00')
   const [remarkText, setRemarkText] = useState('')
-  // Step 3 lead edit fields
-  const [editName, setEditName] = useState(lead?.contact?.name ?? '')
-  const [editPhone, setEditPhone] = useState(lead?.contact?.phone ?? '')
-  const [editEmail, setEditEmail] = useState(lead?.contact?.email ?? '')
-  const [showLeadEdit, setShowLeadEdit] = useState(false)
+
   const isInterested = interest === 'hot' || interest === 'warm' || interest === 'cold'
   const needsProfileStep = callStatus === 'connected' && isInterested
 
@@ -187,18 +183,6 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
         note: remarkText.trim() || undefined,
       })
 
-      // Sync any edited lead fields
-      const hasEdits = editName !== (lead?.contact?.name ?? '') ||
-        editPhone !== (lead?.contact?.phone ?? '') ||
-        editEmail !== (lead?.contact?.email ?? '')
-      if (hasEdits && task.lead_id) {
-        try {
-          await leadsApi.updateMasterProfile(task.lead_id, {
-            full_name: editName || undefined,
-            email: editEmail || undefined,
-          })
-        } catch { /* non-critical */ }
-      }
 
       toast.success('Task completed!')
       qc.invalidateQueries({ queryKey: ['tasks'] })
@@ -241,7 +225,7 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
     setStep(2)
   }
 
-  const handleNextFromStep2 = () => {
+  const handleSubmitFromStep2 = () => {
     const missing: string[] = []
     if (!age) missing.push('Age range')
     if (!occupation) missing.push('Occupation')
@@ -259,7 +243,7 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
       return
     }
 
-    setStep(3)
+    handleSubmit()
   }
 
   const leadName = lead?.contact?.name ?? task.lead?.contact?.name ?? 'Lead'
@@ -287,15 +271,13 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
             </button>
           </div>
           <div className="flex gap-1.5 mt-3">
-            {[1, 2, 3].map(s => (
+            {[1, 2].map(s => (
               <div key={s} className={`flex-1 h-1.5 rounded-full transition-colors ${s <= step ? 'bg-[#c86f43]' : 'bg-[#e8ddcf]'}`} />
             ))}
           </div>
           <p className="text-xs text-[#8f8378] mt-1.5">
-            Step {step} of 3 — {
-              step === 1 ? 'Call Details' :
-              step === 2 ? 'Customer Profile' :
-                'Review & Submit'
+            Step {step} of 2 — {
+              step === 1 ? 'Call Details' : 'Customer Profile'
             }
           </p>
         </div>
@@ -319,35 +301,7 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
               investmentPurpose={investmentPurpose} setInvestmentPurpose={setInvestmentPurpose}
             />
           )}
-          {step === 3 && (
-            <div className="space-y-5">
-              {!showLeadEdit ? (
-                <Step3LeadEdit
-                  editName={editName} setEditName={setEditName}
-                  editPhone={editPhone} setEditPhone={setEditPhone}
-                  editEmail={editEmail} setEditEmail={setEditEmail}
-                  onShowEdit={() => setShowLeadEdit(true)}
-                />
-              ) : (
-                <Step3LeadEditForm
-                  editName={editName} setEditName={setEditName}
-                  editPhone={editPhone} setEditPhone={setEditPhone}
-                  editEmail={editEmail} setEditEmail={setEditEmail}
-                  onCancel={() => setShowLeadEdit(false)}
-                />
-              )}
-              <Step4Confirm
-                callStatus={callStatus}
-                interest={interest}
-                topics={topics}
-                age={age} occupation={occupation} familySize={familySize}
-                income={income} budget={budget} preferredLocation={preferredLocation}
-                timeline={timeline} livingSituation={livingSituation} investmentPurpose={investmentPurpose}
-                followupOption={followupOption} remarkText={remarkText}
-                editName={editName}
-              />
-            </div>
-          )}
+
         </div>
 
         {/* Footer */}
@@ -365,13 +319,8 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
                 className="flex-1 px-5 py-3 rounded-xl bg-[#2f2317] text-white font-semibold hover:bg-[#1f1610] transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {callStatus === 'connected' && interest !== 'not_interested' ? 'Next' : 'Mark Done'}
               </button>
-            ) : step === 2 ? (
-              <button onClick={handleNextFromStep2}
-                className="flex-1 px-5 py-3 rounded-xl bg-[#2f2317] text-white font-semibold hover:bg-[#1f1610] transition-colors">
-                Next
-              </button>
             ) : (
-              <button onClick={handleSubmit} disabled={!callStatus || submitting}
+              <button onClick={handleSubmitFromStep2} disabled={submitting}
                 className="flex-1 px-5 py-3 rounded-xl bg-[#2f7a4e] text-white font-semibold hover:bg-[#236539] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 {submitting ? (
                   <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Submitting...</>
@@ -524,99 +473,4 @@ function Step2({ age, setAge, occupation, setOccupation, occupationOther, setOcc
     </div>
   )
 }
-
-function Step3LeadEdit({ editName, editPhone, editEmail, onShowEdit }: {
-  editName: string; setEditName: (v: string) => void
-  editPhone: string; setEditPhone: (v: string) => void
-  editEmail: string; setEditEmail: (v: string) => void
-  onShowEdit: () => void
-}) {
-  return (
-    <div className="space-y-5">
-      <div className="bg-[#fef7f2] border border-[#efd7c6] rounded-2xl p-4 space-y-3">
-        <p className="text-sm font-semibold text-[#1f1914]">Lead Contact Info</p>
-        <div className="grid grid-cols-1 gap-2 text-sm">
-          <div><span className="text-[#8f8378]">Name:</span> <span className="font-medium text-[#2b241e]">{editName || '—'}</span></div>
-          <div><span className="text-[#8f8378]">Phone:</span> <span className="font-medium text-[#2b241e]">{editPhone || '—'}</span></div>
-          <div><span className="text-[#8f8378]">Email:</span> <span className="font-medium text-[#2b241e]">{editEmail || '—'}</span></div>
-        </div>
-        <button onClick={onShowEdit}
-          className="w-full px-4 py-2.5 rounded-xl border border-[#c86f43] text-[#c86f43] text-sm font-semibold hover:bg-[#fdf0e6] transition-colors">
-          Edit Lead Info
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function Step3LeadEditForm({ editName, setEditName, editPhone, setEditPhone, editEmail, setEditEmail, onCancel }: {
-  editName: string; setEditName: (v: string) => void
-  editPhone: string; setEditPhone: (v: string) => void
-  editEmail: string; setEditEmail: (v: string) => void
-  onCancel: () => void
-}) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-xs text-[#7b7166] font-medium block mb-1">Name</label>
-        <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
-          className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-[#fefcfa] focus:outline-none focus:border-[#c86f43]" />
-      </div>
-      <div>
-        <label className="text-xs text-[#7b7166] font-medium block mb-1">Phone</label>
-        <input type="text" value={editPhone} onChange={e => setEditPhone(e.target.value)}
-          className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-[#fefcfa] focus:outline-none focus:border-[#c86f43]" />
-      </div>
-      <div>
-        <label className="text-xs text-[#7b7166] font-medium block mb-1">Email</label>
-        <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)}
-          className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-[#fefcfa] focus:outline-none focus:border-[#c86f43]" />
-      </div>
-      <button onClick={onCancel}
-        className="w-full px-4 py-2.5 rounded-xl border border-[#e1d3c2] text-[#6e6357] text-sm font-medium hover:bg-[#f0e8de] transition-colors">
-        Done Editing
-      </button>
-    </div>
-  )
-}
-
-function Step4Confirm({ callStatus, interest, topics, age, occupation, familySize, income, budget, preferredLocation, timeline, livingSituation, investmentPurpose, followupOption, remarkText, editName }: any) {
-  const summaryItems = [
-    { label: 'Call Status', value: CALL_STATUS_OPTIONS.find(o => o.value === callStatus)?.label ?? callStatus },
-    interest && { label: 'Interest', value: INTEREST_OPTIONS.find(o => o.value === interest)?.label ?? interest },
-    topics.length > 0 && { label: 'Topics', value: topics.map(t => L[t] ?? t).join(', ') },
-    age && { label: 'Age', value: L[age] ?? age },
-    occupation && { label: 'Occupation', value: L[occupation] ?? occupation },
-    familySize && { label: 'Family Size', value: L[familySize] },
-    income && { label: 'Income', value: L[income] ?? income },
-    budget && { label: 'Budget', value: L[budget] ?? budget },
-    preferredLocation && { label: 'Preferred Location', value: preferredLocation },
-    timeline && { label: 'Timeline', value: L[timeline] ?? timeline },
-    livingSituation && { label: 'Living Situation', value: L[livingSituation] ?? livingSituation },
-    investmentPurpose && { label: 'Investment Purpose', value: investmentPurpose },
-    followupOption && followupOption !== 'not_needed' && { label: 'Follow-up', value: FOLLOWUP_OPTIONS.find(o => o.value === followupOption)?.label },
-    remarkText && { label: 'Note', value: remarkText },
-  ].filter(Boolean) as { label: string; value: string }[]
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-[#f8f4ef] rounded-2xl p-4">
-        <p className="text-sm font-semibold text-[#1f1914] mb-3">Summary</p>
-        <div className="space-y-2">
-          {summaryItems.map(item => (
-            <div key={item.label} className="flex justify-between text-sm">
-              <span className="text-[#8f8378]">{item.label}</span>
-              <span className="font-medium text-[#2b241e] text-right max-w-[60%]">{item.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {editName && (
-        <div className="bg-[#fef7f2] border border-[#efd7c6] rounded-2xl p-4">
-          <p className="text-xs font-semibold text-[#7b7166] mb-1">Lead Name</p>
-          <p className="text-sm font-medium text-[#2b241e]">{editName}</p>
-        </div>
-      )}
-    </div>
-  )
-}
+

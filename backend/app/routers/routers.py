@@ -456,6 +456,52 @@ async def complete_task_with_remark(
         lead.last_interaction_at = datetime.utcnow()
         lead.last_contacted_at = datetime.utcnow()
 
+        # ── Persist demographics & call data to master_profile ──
+        profile = lead.master_profile or {}
+
+        # Save call status, interest level, topics discussed
+        if data.call_status:
+            profile["last_call_status"] = data.call_status
+        if data.interest_level:
+            profile["last_call_interest"] = data.interest_level
+        if data.topics_discussed:
+            profile["last_call_topics"] = data.topics_discussed
+
+        # Save demographics
+        if data.demographics:
+            demo = data.demographics.model_dump(exclude_unset=True)
+            for key, value in demo.items():
+                if value is not None:
+                    profile[key] = value
+
+        # Save agent note
+        if data.note:
+            existing_notes = profile.get("agent_notes") or ""
+            if existing_notes:
+                profile["agent_notes"] = f"{existing_notes}\n---\n{data.note}"
+            else:
+                profile["agent_notes"] = data.note
+
+        lead.master_profile = profile
+        lead.updated_at = datetime.utcnow()
+
+        # Build comprehensive activity meta
+        activity_meta = {
+            "task_id": task.id,
+            "preset_tags": data.preset_tags,
+            "remark_text": data.remark_text,
+        }
+        if data.call_status:
+            activity_meta["call_status"] = data.call_status
+        if data.interest_level:
+            activity_meta["interest_level"] = data.interest_level
+        if data.topics_discussed:
+            activity_meta["topics_discussed"] = data.topics_discussed
+        if data.demographics:
+            activity_meta["demographics"] = data.demographics.model_dump(exclude_unset=True)
+        if data.note:
+            activity_meta["note"] = data.note
+
         # Log remark as activity
         from app.services.lead_service import log_activity
         tag_str = ", ".join(data.preset_tags) if data.preset_tags else ""
@@ -469,13 +515,33 @@ async def complete_task_with_remark(
             title=f"Task completed: {task.title}",
             description=description,
             performed_by=current_user.id,
-            meta={
-                "task_id": task.id,
-                "preset_tags": data.preset_tags,
-                "remark_text": data.remark_text,
-            },
+            meta=activity_meta,
         )
         db.add(activity)
+
+        # ── Create follow-up task if requested ──
+        if data.next_followup_at:
+            try:
+                followup_str = data.next_followup_at.replace("Z", "+00:00")
+                followup_dt = datetime.fromisoformat(followup_str)
+                # Strip timezone if present for DB consistency
+                if followup_dt.tzinfo is not None:
+                    followup_dt = followup_dt.replace(tzinfo=None)
+                contact = await db.get(Contact, lead.contact_id)
+                contact_name = contact.name if contact else "Lead"
+                followup_task = Task(
+                    lead_id=task.lead_id,
+                    title=f"Follow up: {contact_name}",
+                    description=f"Follow-up from completed task: {task.title}",
+                    task_type="call",
+                    assigned_to=task.assigned_to,
+                    due_at=followup_dt,
+                    priority=task.priority,
+                    created_by=current_user.id,
+                )
+                db.add(followup_task)
+            except Exception:
+                pass  # Follow-up creation is non-critical
 
     if task.assigned_to:
         await create_notification(
@@ -686,17 +752,20 @@ async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_d
                 link=f"/leads/{lead.id}",
             )
         if contact:
-            await send_whatsapp(
-                to_phone=contact.phone,
-                template="site_visit_confirmation",
-                variables={
-                    "name": contact.name,
-                    "date": data.scheduled_at.strftime("%B %d, %Y"),
-                    "time": data.scheduled_at.strftime("%I:%M %p"),
-                    "agent_name": current_user.name,
-                },
-                db=db, lead_id=lead.id, contact_id=contact.id, agent_id=current_user.id,
-            )
+            try:
+                await send_whatsapp(
+                    to_phone=contact.phone,
+                    template="site_visit_confirmation",
+                    variables={
+                        "name": contact.name,
+                        "date": data.scheduled_at.strftime("%B %d, %Y"),
+                        "time": data.scheduled_at.strftime("%I:%M %p"),
+                        "agent_name": current_user.name,
+                    },
+                    db=db, lead_id=lead.id, contact_id=contact.id, agent_id=current_user.id,
+                )
+            except Exception:
+                pass  # WhatsApp notification is non-critical; visit is still saved
 
     await db.commit()
     await db.refresh(visit)

@@ -570,9 +570,28 @@ class AgentAssignment(BaseModel):
 
 # ─── TASK COMPLETION WITH REMARK (Feature 1 & 2) ────────────────────────────
 
+class DemographicsInput(BaseModel):
+    age_range: Optional[str] = None
+    occupation: Optional[str] = None
+    occupation_other: Optional[str] = None
+    family_size: Optional[str] = None
+    income_range: Optional[str] = None
+    property_budget: Optional[str] = None
+    preferred_location: Optional[str] = None
+    purchase_timeline: Optional[str] = None
+    current_living_situation: Optional[str] = None
+    investment_purpose: Optional[str] = None
+
+
 class TaskCompleteWithRemarkRequest(BaseModel):
     remark_text: str = Field(min_length=80, max_length=5000)
     preset_tags: list[str] = Field(default_factory=list)
+    call_status: Optional[str] = None
+    interest_level: Optional[str] = None
+    topics_discussed: Optional[List[str]] = None
+    demographics: Optional[DemographicsInput] = None
+    next_followup_at: Optional[str] = None
+    note: Optional[str] = None
 
 
 class DNCFlagRequest(BaseModel):
@@ -600,6 +619,7 @@ class MasterProfileUpdate(BaseModel):
     city: Optional[str] = None
     locality: Optional[str] = None
     occupation: Optional[str] = None
+    occupation_other: Optional[str] = None
     family_size: Optional[int] = None
     current_living_situation: Optional[str] = None
     investment_purpose: Optional[str] = None
@@ -607,6 +627,16 @@ class MasterProfileUpdate(BaseModel):
     agent_notes: Optional[str] = None
     priority_override: Optional[str] = None
     priority_override_reason: Optional[str] = None
+    # Demographic fields (synced from task completion)
+    age_range: Optional[str] = None
+    income_range: Optional[str] = None
+    property_budget: Optional[str] = None
+    preferred_location: Optional[str] = None
+    purchase_timeline: Optional[str] = None
+    # Last call data
+    last_call_status: Optional[str] = None
+    last_call_interest: Optional[str] = None
+    last_call_topics: Optional[List[str]] = None
 
 
 class MasterProfileResponse(BaseModel):

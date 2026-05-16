@@ -753,6 +753,7 @@ async def get_master_profile(
         "city": profile.get("city"),
         "locality": profile.get("locality"),
         "occupation": profile.get("occupation"),
+        "occupation_other": profile.get("occupation_other"),
         "family_size": profile.get("family_size"),
         "current_living_situation": profile.get("current_living_situation"),
         "investment_purpose": profile.get("investment_purpose"),
@@ -760,6 +761,16 @@ async def get_master_profile(
         "agent_notes": profile.get("agent_notes"),
         "priority_override": profile.get("priority_override"),
         "priority_override_reason": profile.get("priority_override_reason"),
+        # Demographic fields (synced from task completion)
+        "age_range": profile.get("age_range"),
+        "income_range": profile.get("income_range"),
+        "property_budget": profile.get("property_budget"),
+        "preferred_location": profile.get("preferred_location"),
+        "purchase_timeline": profile.get("purchase_timeline"),
+        # Last call data (synced from task completion)
+        "last_call_status": profile.get("last_call_status"),
+        "last_call_interest": profile.get("last_call_interest"),
+        "last_call_topics": profile.get("last_call_topics", []),
         # Computed
         "total_calls": lead.call_count,
         "first_contact_date": first_contact,
@@ -792,9 +803,14 @@ async def update_master_profile(
         "config_preference", "budget_range", "site_visit_intent", "primary_language",
         "objection_type", "intent_level", "ai_summary", "key_quote",
         "full_name", "email", "alternate_phone", "city", "locality",
-        "occupation", "family_size", "current_living_situation",
+        "occupation", "occupation_other", "family_size", "current_living_situation",
         "investment_purpose", "source", "agent_notes",
         "priority_override", "priority_override_reason",
+        # Demographic fields
+        "age_range", "income_range", "property_budget", "preferred_location",
+        "purchase_timeline",
+        # Last call data
+        "last_call_status", "last_call_interest", "last_call_topics",
     }
 
     if "priority_override" in incoming or "priority_override_reason" in incoming:
