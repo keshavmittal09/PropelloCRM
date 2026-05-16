@@ -99,9 +99,9 @@ export function TasksPageContent() {
         ) : !tasks?.length ? (
           <div className="text-center py-20"><p className="text-gray-400">No {filter} tasks</p></div>
         ) : (
-          <div className="crm-surface rounded-3xl overflow-hidden shadow-sm">
-            <table className="w-full">
-              <thead className="border-b border-[#eee5d9] bg-[#fbf7f0]">
+          <div className="crm-surface rounded-3xl shadow-sm border border-[#e8ddcf] max-h-[calc(100vh-250px)] overflow-y-auto">
+            <table className="w-full relative">
+              <thead className="sticky top-0 z-10 bg-[#fbf7f0] shadow-[0_1px_0_0_#eee5d9]">
                 <tr>
                   <th className="px-5 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Task</th>
                   <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Assigned To</th>
