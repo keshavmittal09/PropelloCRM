@@ -330,9 +330,22 @@ async def update_lead(
 
     contact = await db.get(Contact, lead.contact_id)
 
+    old_assigned_to = lead.assigned_to
+
     for field, value in data.model_dump(exclude_unset=True, exclude={"personal_notes"}).items():
         setattr(lead, field, value)
     lead.updated_at = datetime.utcnow()
+
+    # Cascade assignment to pending tasks if lead assignment changed
+    if "assigned_to" in data.model_dump(exclude_unset=True) and lead.assigned_to != old_assigned_to:
+        from sqlalchemy import update
+        from app.models.models import Task
+        await db.execute(
+            update(Task)
+            .where(Task.lead_id == lead.id)
+            .where(Task.status.in_(["pending", "overdue"]))
+            .values(assigned_to=lead.assigned_to)
+        )
 
     # personal_notes goes on the contact
     if data.personal_notes:
@@ -340,7 +353,16 @@ async def update_lead(
             contact.personal_notes = data.personal_notes
             lead.priya_memory_brief = await build_memory_brief(db, lead, contact)
 
-    if lead.assigned_to:
+    if lead.assigned_to and lead.assigned_to != old_assigned_to:
+        await create_notification(
+            db,
+            lead.assigned_to,
+            title="Lead assigned",
+            body=f"{(contact.name if contact else 'A lead')} was assigned to you by {current_user.name}.",
+            notif_type="new_lead",
+            link=f"/leads/{lead.id}",
+        )
+    elif lead.assigned_to:
         await create_notification(
             db,
             lead.assigned_to,

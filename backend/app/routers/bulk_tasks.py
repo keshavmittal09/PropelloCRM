@@ -208,6 +208,19 @@ async def upload_bulk_csv(
             )
             for l in existing_leads_res.scalars().all():
                 lead_by_contact_id[l.contact_id] = l
+                
+    # Pre-fetch existing pending tasks to avoid duplicates
+    existing_tasks_by_lead_id = {}
+    lead_ids_in_batch = [l.id for l in lead_by_contact_id.values()]
+    if lead_ids_in_batch:
+        existing_tasks_res = await db.execute(
+            select(Task)
+            .where(Task.lead_id.in_(lead_ids_in_batch))
+            .where(Task.status.in_(["pending", "overdue"]))
+            .order_by(Task.created_at.asc())
+        )
+        for t in existing_tasks_res.scalars().all():
+            existing_tasks_by_lead_id[t.lead_id] = t
 
     # Column name mapping (flexible to handle various CSV formats)
     COLUMN_MAP = {
@@ -307,18 +320,24 @@ async def upload_bulk_csv(
                 task_priority = "normal"
                 task_desc = f"Warm lead — {lead_heat_reason_text(row)}"
 
-            task = Task(
-                id=str(uuid.uuid4()),
-                lead_id=lead.id,
-                title=task_title,
-                description=task_desc,
-                task_type="call",
-                priority=task_priority,
-                status="pending",
-                created_by=current_user.id,
-            )
-            db.add(task)
-            created_tasks += 1
+            if lead.id in existing_tasks_by_lead_id:
+                task = existing_tasks_by_lead_id[lead.id]
+                task.priority = task_priority
+                task.description = task_desc
+            else:
+                task = Task(
+                    id=str(uuid.uuid4()),
+                    lead_id=lead.id,
+                    title=task_title,
+                    description=task_desc,
+                    task_type="call",
+                    priority=task_priority,
+                    status="pending",
+                    created_by=current_user.id,
+                )
+                db.add(task)
+                existing_tasks_by_lead_id[lead.id] = task
+                created_tasks += 1
 
             # ─── Log Activity ─────────────────────────────────────────
             activity = Activity(
