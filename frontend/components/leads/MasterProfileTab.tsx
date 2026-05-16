@@ -31,7 +31,6 @@ const MANUAL_FIELDS: { key: keyof MasterProfile; label: string; type?: string; o
   { key: 'current_living_situation', label: 'Current Living', options: ['Renting', 'Owned', 'Other'] },
   { key: 'investment_purpose', label: 'Investment Purpose', options: ['Self-use', 'Investment', 'Both'] },
   { key: 'source', label: 'Source', options: ['Expo', 'Online Ad', 'Referral', 'Cold Call', 'Other'] },
-  // Demographic fields
   { key: 'age_range', label: 'Age Range' },
   { key: 'income_range', label: 'Monthly Income' },
   { key: 'property_budget', label: 'Property Budget' },
@@ -102,44 +101,11 @@ export function MasterProfileTab({ leadId }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Column 1: AI-Populated Fields */}
-      <div className="space-y-4">
-        <SectionHeader title="AI Analysis" badge="AI" />
-        <div className="space-y-3">
-          {AI_FIELDS.map(field => (
-            <ProfileCard
-              key={field.key}
-              label={field.label}
-              value={profile[field.key] as string | null}
-              isAI
-            />
-          ))}
-          {profile.ai_summary && (
-            <div className="crm-surface rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-[#7b7166]">AI Summary</span>
-                <AIBadge />
-              </div>
-              <p className="text-sm text-[#4f453b] leading-relaxed">{profile.ai_summary}</p>
-            </div>
-          )}
-          {profile.key_quote && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-amber-700">Key Quote</span>
-                <AIBadge />
-              </div>
-              <p className="text-sm text-amber-800 italic">&ldquo;{profile.key_quote}&rdquo;</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Column 2: Manual Fields */}
+    <div className="space-y-8">
+      {/* Lead Information (Manual) */}
       <div className="space-y-4">
         <SectionHeader title="Lead Information" />
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {MANUAL_FIELDS.map(field => (
             <EditableField
               key={field.key}
@@ -162,10 +128,53 @@ export function MasterProfileTab({ leadId }: Props) {
         </div>
       </div>
 
-      {/* Column 3: Computed Stats + Agent Notes + Priority Override */}
+      <div className="h-px w-full bg-[#e8ddcf]" />
+
+      {/* AI Analysis */}
       <div className="space-y-4">
-        <SectionHeader title="Pipeline Stats" />
-        <div className="space-y-3">
+        <SectionHeader title="AI Analysis" badge="AI" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {AI_FIELDS.map(field => (
+            <ProfileCard
+              key={field.key}
+              label={field.label}
+              value={profile[field.key] as string | null}
+              isAI
+            />
+          ))}
+        </div>
+        
+        {/* Full-width AI Summaries */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+          {profile.ai_summary && (
+            <div className="crm-surface rounded-xl p-4 border border-[#e8ddcf]">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-[#7b7166]">AI Summary</span>
+                <AIBadge />
+              </div>
+              <p className="text-sm text-[#4f453b] leading-relaxed">{profile.ai_summary}</p>
+            </div>
+          )}
+          {profile.key_quote && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-amber-700">Key Quote</span>
+                <AIBadge />
+              </div>
+              <p className="text-sm text-amber-800 italic">&ldquo;{profile.key_quote}&rdquo;</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="h-px w-full bg-[#e8ddcf]" />
+
+      {/* Computed Stats + Workflow */}
+      <div className="space-y-4">
+        <SectionHeader title="Pipeline & Activity" />
+        
+        {/* Pipeline Stats Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
           {COMPUTED_FIELDS.map(field => (
             <ProfileCard
               key={field.key}
@@ -176,76 +185,80 @@ export function MasterProfileTab({ leadId }: Props) {
           ))}
         </div>
 
-        {/* Last Call Summary */}
-        <div className="crm-surface rounded-xl p-4 space-y-2">
-          <p className="text-xs font-semibold text-[#7b7166] uppercase">Last Call</p>
-          <div className="flex justify-between text-sm">
-            <span className="text-[#8f8378]">Status</span>
-            <span className="font-medium text-[#2b241e]">{profile.last_call_status ?? '—'}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-[#8f8378]">Interest</span>
-            <span className="font-medium text-[#2b241e]">{profile.last_call_interest ?? '—'}</span>
-          </div>
-          {(profile.last_call_topics ?? []).length > 0 && (
-            <div>
-              <p className="text-[#8f8378] text-xs mb-1">Topics Discussed</p>
-              <div className="flex flex-wrap gap-1">
-                {profile.last_call_topics.map((t: string) => (
-                  <span key={t} className="px-2 py-0.5 bg-[#f0e8de] text-[#6e6357] rounded-full text-xs">{t}</span>
-                ))}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Last Call Summary */}
+          <div className="crm-surface border border-[#e8ddcf] rounded-xl p-4 space-y-3 col-span-1">
+            <p className="text-xs font-semibold text-[#7b7166] uppercase">Last Call Summary</p>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-[#8f8378]">Status</span>
+                <span className="font-medium text-[#2b241e]">{profile.last_call_status ?? '—'}</span>
               </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[#8f8378]">Interest</span>
+                <span className="font-medium text-[#2b241e]">{profile.last_call_interest ?? '—'}</span>
+              </div>
+              {(profile.last_call_topics ?? []).length > 0 && (
+                <div className="pt-1">
+                  <p className="text-[#8f8378] text-xs mb-1.5">Topics Discussed</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {profile.last_call_topics.map((t: string) => (
+                      <span key={t} className="px-2 py-0.5 bg-[#f0e8de] text-[#6e6357] rounded-full text-xs font-medium">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Agent Notes */}
-        <div className="crm-surface rounded-xl p-4 space-y-3">
-          <label className="text-xs font-semibold text-[#7b7166]">Agent Notes</label>
-          <textarea
-            value={agentNotes}
-            onChange={e => setAgentNotes(e.target.value)}
-            rows={4}
-            className="w-full px-3 py-2 border border-[#e1d3c2] rounded-lg text-sm resize-none focus:outline-none focus:border-[#c86f43] focus:ring-1 focus:ring-[#c86f43]/30"
-            placeholder="Add your observations about this lead..."
-          />
-          <button
-            onClick={() => saveSection('notes', { agent_notes: agentNotes })}
-            disabled={savingSection === 'notes'}
-            className="w-full px-3 py-2 rounded-lg bg-[#2f2317] text-white text-sm font-medium hover:bg-[#1f1610] transition-colors disabled:opacity-50"
-          >
-            {savingSection === 'notes' ? 'Saving...' : 'Save Notes'}
-          </button>
-        </div>
+          {/* Agent Notes */}
+          <div className="crm-surface border border-[#e8ddcf] rounded-xl p-4 space-y-3 col-span-1">
+            <label className="text-xs font-semibold text-[#7b7166] uppercase">Agent Notes</label>
+            <textarea
+              value={agentNotes}
+              onChange={e => setAgentNotes(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-[#e1d3c2] rounded-lg text-sm resize-none focus:outline-none focus:border-[#c86f43] focus:ring-1 focus:ring-[#c86f43]/30"
+              placeholder="Add your observations about this lead..."
+            />
+            <button
+              onClick={() => saveSection('notes', { agent_notes: agentNotes })}
+              disabled={savingSection === 'notes'}
+              className="w-full py-2 rounded-lg bg-[#2f2317] text-white text-sm font-medium hover:bg-[#1f1610] transition-colors disabled:opacity-50"
+            >
+              {savingSection === 'notes' ? 'Saving...' : 'Save Notes'}
+            </button>
+          </div>
 
-        {/* Priority Override */}
-        <div className="crm-surface rounded-xl p-4 space-y-3">
-          <label className="text-xs font-semibold text-[#7b7166]">Priority Override</label>
-          <select
-            value={priorityOverride}
-            onChange={e => setPriorityOverride(e.target.value)}
-            className="w-full px-3 py-2 border border-[#e1d3c2] rounded-lg text-sm bg-white focus:outline-none focus:border-[#c86f43]"
-          >
-            <option value="">No override (use AI tier)</option>
-            <option value="P1">P1 — Highest</option>
-            <option value="P2">P2 — High</option>
-            <option value="P3">P3 — Medium</option>
-            <option value="P4">P4 — Low</option>
-            <option value="P5">P5 — Lowest</option>
-          </select>
-          <input
-            value={overrideReason}
-            onChange={e => setOverrideReason(e.target.value)}
-            placeholder="Reason for override..."
-            className="w-full px-3 py-2 border border-[#e1d3c2] rounded-lg text-sm focus:outline-none focus:border-[#c86f43]"
-          />
-          <button
-            onClick={() => saveSection('priority', { priority_override: priorityOverride, priority_override_reason: overrideReason })}
-            disabled={savingSection === 'priority'}
-            className="w-full px-3 py-2 rounded-lg bg-[#2f2317] text-white text-sm font-medium hover:bg-[#1f1610] transition-colors disabled:opacity-50"
-          >
-            {savingSection === 'priority' ? 'Saving...' : 'Save Priority Override'}
-          </button>
+          {/* Priority Override */}
+          <div className="crm-surface border border-[#e8ddcf] rounded-xl p-4 space-y-3 col-span-1">
+            <label className="text-xs font-semibold text-[#7b7166] uppercase">Priority Override</label>
+            <select
+              value={priorityOverride}
+              onChange={e => setPriorityOverride(e.target.value)}
+              className="w-full px-3 py-2 border border-[#e1d3c2] rounded-lg text-sm bg-white focus:outline-none focus:border-[#c86f43]"
+            >
+              <option value="">No override (use AI tier)</option>
+              <option value="P1">P1 — Highest</option>
+              <option value="P2">P2 — High</option>
+              <option value="P3">P3 — Medium</option>
+              <option value="P4">P4 — Low</option>
+              <option value="P5">P5 — Lowest</option>
+            </select>
+            <input
+              value={overrideReason}
+              onChange={e => setOverrideReason(e.target.value)}
+              placeholder="Reason for override..."
+              className="w-full px-3 py-2 border border-[#e1d3c2] rounded-lg text-sm focus:outline-none focus:border-[#c86f43]"
+            />
+            <button
+              onClick={() => saveSection('priority', { priority_override: priorityOverride, priority_override_reason: overrideReason })}
+              disabled={savingSection === 'priority'}
+              className="w-full py-2 rounded-lg bg-[#2f2317] text-white text-sm font-medium hover:bg-[#1f1610] transition-colors disabled:opacity-50"
+            >
+              {savingSection === 'priority' ? 'Saving...' : 'Save Priority'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -308,59 +321,43 @@ function EditableField({
   onSave: () => void
   onCancel: () => void
 }) {
-  if (isEditing) {
-    return (
-      <div className="rounded-xl px-4 py-3 border-2 border-[#c86f43] bg-[#fefcfa]">
-        <span className="text-xs text-[#96897c] block mb-1">{label}</span>
-        {options ? (
-          <select
-            value={editValue}
-            onChange={e => onEditChange(e.target.value)}
-            className="w-full px-2 py-1.5 border border-[#e1d3c2] rounded-lg text-sm bg-white focus:outline-none"
-            autoFocus
-          >
-            <option value="">Select...</option>
-            {options.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        ) : (
-          <input
-            type={type || 'text'}
-            value={editValue}
-            onChange={e => onEditChange(e.target.value)}
-            className="w-full px-2 py-1.5 border border-[#e1d3c2] rounded-lg text-sm focus:outline-none"
-            autoFocus
-            onKeyDown={e => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel() }}
-          />
-        )}
-        <div className="flex gap-2 mt-2">
-          <button onClick={onSave} className="text-xs px-3 py-1 bg-[#2f2317] text-white rounded-lg font-medium">Save</button>
-          <button onClick={onCancel} className="text-xs px-3 py-1 text-[#7b7166] border border-[#e1d3c2] rounded-lg">Cancel</button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div
-      onClick={fieldKey === 'last_call_topics' ? undefined : onStartEdit}
-      className={fieldKey === 'last_call_topics' ? 'rounded-xl px-4 py-3 border border-[#e8ddcf] bg-white' : 'rounded-xl px-4 py-3 border border-[#e8ddcf] bg-white cursor-pointer hover:border-[#c86f43]/50 hover:bg-[#fefcfa] transition-all group'}
-    >
-      <span className="text-xs text-[#96897c] flex items-center gap-2">
-        {label}
-        {fieldKey !== 'last_call_topics' && <span className="text-[10px] text-[#c86f43] opacity-0 group-hover:opacity-100 transition-opacity">click to edit</span>}
-      </span>
-      {fieldKey === 'last_call_topics' && Array.isArray(value) && value.length > 0 ? (
-        <div className="flex flex-wrap gap-1 mt-1">
-          {value.map((t: string) => (
-            <span key={t} className="px-2 py-0.5 bg-[#f0e8de] text-[#6e6357] rounded-full text-xs">{t}</span>
-          ))}
+    <div className="rounded-xl px-4 py-3 border bg-white border-[#e8ddcf] group relative">
+      <span className="text-xs text-[#96897c] block mb-1">{label}</span>
+      {isEditing ? (
+        <div className="flex gap-2">
+          {options ? (
+            <select
+              value={editValue}
+              onChange={e => onEditChange(e.target.value)}
+              className="flex-1 bg-white border border-[#e1d3c2] rounded-lg text-sm px-2 py-1 focus:outline-none focus:border-[#c86f43]"
+            >
+              <option value="">Select...</option>
+              {options.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+          ) : (
+            <input
+              type={type || 'text'}
+              value={editValue}
+              onChange={e => onEditChange(e.target.value)}
+              className="flex-1 bg-white border border-[#e1d3c2] rounded-lg text-sm px-2 py-1 focus:outline-none focus:border-[#c86f43]"
+            />
+          )}
+          <button onClick={onSave} className="text-xs font-bold text-emerald-600 hover:text-emerald-700 px-2 py-1 bg-emerald-50 rounded-lg">✓</button>
+          <button onClick={onCancel} className="text-xs font-bold text-gray-500 hover:text-gray-700 px-2 py-1 bg-gray-50 rounded-lg">✕</button>
         </div>
       ) : (
-        <p className={`text-sm font-medium mt-0.5 ${value ? 'text-[#2b241e]' : 'text-gray-400 italic'}`}>
-          {value ?? 'Not set'}
-        </p>
+        <div className="flex justify-between items-center">
+          <p className={`text-sm font-medium ${value ? 'text-[#2b241e]' : 'text-gray-400'}`}>
+            {value ?? 'Not set'}
+          </p>
+          <button
+            onClick={onStartEdit}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-[#c86f43] font-medium"
+          >
+            Edit
+          </button>
+        </div>
       )}
     </div>
   )
