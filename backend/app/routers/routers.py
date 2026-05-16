@@ -731,31 +731,45 @@ async def list_visits(
 
 @visits_router.post("", response_model=SiteVisitResponse)
 async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    import logging
+    logger = logging.getLogger(__name__)
+
     _require_non_call_agent(current_user)
 
+    # 1. Create the visit record
     visit = SiteVisit(**data.model_dump(exclude={"agent_id"}), agent_id=data.agent_id or current_user.id)
     db.add(visit)
 
-    # Auto stage-change and WhatsApp notification
     lead = await db.get(Lead, data.lead_id)
     contact = None
+
     if lead:
         contact = await db.get(Contact, lead.contact_id)
-        try:
-            from app.services.lead_service import change_lead_stage
-            await change_lead_stage(db, lead, "site_visit_scheduled", current_user.id)
-        except Exception:
-            pass  # Stage change is non-critical; visit is still saved
 
+        # 2. Stage change in a savepoint — if it fails, only the savepoint rolls back
+        try:
+            async with db.begin_nested():
+                from app.services.lead_service import change_lead_stage
+                await change_lead_stage(db, lead, "site_visit_scheduled", current_user.id)
+        except Exception as e:
+            logger.error(f"[schedule_visit] Stage change failed for lead {data.lead_id}: {e}")
+
+        # 3. In-app notification (also in savepoint)
         if visit.agent_id:
-            await create_notification(
-                db,
-                visit.agent_id,
-                title="Site visit scheduled",
-                body=f"A site visit was scheduled for lead {lead.id}.",
-                notif_type="reminder",
-                link=f"/leads/{lead.id}",
-            )
+            try:
+                async with db.begin_nested():
+                    await create_notification(
+                        db,
+                        visit.agent_id,
+                        title="Site visit scheduled",
+                        body=f"A site visit was scheduled for lead {lead.id}.",
+                        notif_type="reminder",
+                        link=f"/leads/{lead.id}",
+                    )
+            except Exception as e:
+                logger.error(f"[schedule_visit] Notification failed: {e}")
+
+        # 4. WhatsApp confirmation (non-critical)
         if contact:
             try:
                 await send_whatsapp(
@@ -769,8 +783,8 @@ async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_d
                     },
                     db=db, lead_id=lead.id, contact_id=contact.id, agent_id=current_user.id,
                 )
-            except Exception:
-                pass  # WhatsApp notification is non-critical; visit is still saved
+            except Exception as e:
+                logger.error(f"[schedule_visit] WhatsApp failed: {e}")
 
     await db.commit()
     await db.refresh(visit)
