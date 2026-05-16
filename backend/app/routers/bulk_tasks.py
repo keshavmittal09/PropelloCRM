@@ -530,6 +530,10 @@ async def delete_batch(
     contact_ids = list({r.contact_id for r in records if r.contact_id})
 
     from sqlalchemy import delete, text
+    
+    # 0. Delete BulkTaskRecords first to free up Foreign Key constraints
+    await db.execute(delete(BulkTaskRecord).where(BulkTaskRecord.ingest_id == batch_id))
+
     # 1. Delete tasks created by this batch
     if task_ids:
         chunk_size = 5000
