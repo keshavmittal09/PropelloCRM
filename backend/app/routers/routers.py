@@ -737,7 +737,12 @@ async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_d
     _require_non_call_agent(current_user)
 
     # 1. Create the visit record
-    visit = SiteVisit(**data.model_dump(exclude={"agent_id"}), agent_id=data.agent_id or current_user.id)
+    scheduled_dt = data.scheduled_at
+    if scheduled_dt.tzinfo is not None:
+        scheduled_dt = scheduled_dt.replace(tzinfo=None)
+        
+    dump_data = data.model_dump(exclude={"agent_id", "scheduled_at"})
+    visit = SiteVisit(**dump_data, scheduled_at=scheduled_dt, agent_id=data.agent_id or current_user.id)
     db.add(visit)
 
     lead = await db.get(Lead, data.lead_id)
