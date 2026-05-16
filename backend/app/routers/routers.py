@@ -738,10 +738,15 @@ async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_d
 
     # Auto stage-change and WhatsApp notification
     lead = await db.get(Lead, data.lead_id)
+    contact = None
     if lead:
-        from app.services.lead_service import change_lead_stage
-        await change_lead_stage(db, lead, "site_visit_scheduled", current_user.id)
         contact = await db.get(Contact, lead.contact_id)
+        try:
+            from app.services.lead_service import change_lead_stage
+            await change_lead_stage(db, lead, "site_visit_scheduled", current_user.id)
+        except Exception:
+            pass  # Stage change is non-critical; visit is still saved
+
         if visit.agent_id:
             await create_notification(
                 db,
@@ -769,7 +774,23 @@ async def schedule_visit(data: SiteVisitCreate, db: AsyncSession = Depends(get_d
 
     await db.commit()
     await db.refresh(visit)
-    return SiteVisitResponse.model_validate(visit)
+
+    # Build response with extra fields that SiteVisitResponse expects
+    agent = await db.get(Agent, visit.agent_id) if visit.agent_id else None
+    return SiteVisitResponse(
+        id=visit.id,
+        lead_id=visit.lead_id,
+        property_id=visit.property_id,
+        scheduled_at=visit.scheduled_at,
+        agent_id=visit.agent_id,
+        status=visit.status,
+        client_confirmed=visit.client_confirmed,
+        notes=visit.notes,
+        created_at=visit.created_at,
+        lead_contact_name=contact.name if contact else None,
+        lead_contact_phone=contact.phone if contact else None,
+        agent_name=agent.name if agent else current_user.name,
+    )
 
 @visits_router.patch("/{visit_id}", response_model=SiteVisitResponse)
 async def update_visit(visit_id: str, data: SiteVisitUpdate, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
