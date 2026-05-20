@@ -13,7 +13,12 @@
       "Bash(uvicorn app.main:app:*)",
       "Bash(npm run:*)",
       "Bash(powershell:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Read(//c/Users/Lenovo/Desktop/Whatsapp-agent/backend/**)",
+      "Bash(node --check src/routes/admin.js)",
+      "Bash(node --check src/routes/webhook.js)",
+      "Bash(node --check src/crmClient.js)",
+      "Bash(node test_send_endpoint.js)"
     ]
   }
 }
