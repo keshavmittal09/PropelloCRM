@@ -13,7 +13,8 @@ class Lead(Base):
     source: Mapped[str] = mapped_column(
         SAEnum("priya_ai", "website", "facebook_ads", "google_ads",
                "99acres", "magicbricks", "walk_in", "referral",
-               "email_campaign", "manual", "campaign", name="lead_source"),
+               "email_campaign", "manual", "campaign", "whatsapp_bot",
+               name="lead_source"),
         default="manual"
     )
     stage: Mapped[str] = mapped_column(

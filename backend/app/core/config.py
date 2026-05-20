@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     # Priya AI webhook secret
     PRIYA_WEBHOOK_SECRET: str = "priya-secret-change-in-prod"
     CAMPAIGN_WEBHOOK_SECRET: str = "campaign-secret-change-in-prod"
+    WHATSAPP_WEBHOOK_SECRET: str = "whatsapp-secret-change-in-prod"
+
+    # WhatsApp Agent (DreamHome bot) integration
+    WHATSAPP_BOT_BASE_URL: str = ""
+    WHATSAPP_BOT_TIMEOUT_SECONDS: int = 10
+    WHATSAPP_AUTO_CREATE_LEAD: bool = True
+    WHATSAPP_TRIGGER_DEDUPE_HOURS: int = 24
+    WHATSAPP_ESCALATION_DEDUPE_MINUTES: int = 60
+    WHATSAPP_BULK_THROTTLE_SECONDS: int = 1
 
     # Groq AI (for lead analysis engine)
     GROQ_API_KEY: str = ""

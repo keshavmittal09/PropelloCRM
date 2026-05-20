@@ -1,8 +1,9 @@
 from typing import AsyncGenerator
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.config import settings
 from app.db.base import AsyncSessionLocal
 from app.core.security import decode_token
 from app.models.agent import Agent
@@ -51,3 +52,15 @@ def require_role(*roles: str):
             )
         return current_user
     return _checker
+
+
+async def require_whatsapp_secret(
+    x_webhook_secret: str | None = Header(default=None, alias="X-Webhook-Secret"),
+) -> None:
+    """Service-to-service auth for WhatsApp bot ↔ CRM integration endpoints."""
+    expected = settings.WHATSAPP_WEBHOOK_SECRET
+    if not expected or not x_webhook_secret or x_webhook_secret != expected:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid or missing X-Webhook-Secret",
+        )

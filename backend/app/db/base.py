@@ -59,6 +59,12 @@ async def init_db():
             await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'task_completion_remark'"))
             await conn.execute(text("ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'call_agent'"))
 
+            # WhatsApp Agent integration (v2) — additive enum values, no table changes
+            await conn.execute(text("ALTER TYPE lead_source ADD VALUE IF NOT EXISTS 'whatsapp_bot'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'whatsapp_triggered'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'whatsapp_inbound'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'whatsapp_outbound'"))
+
             # Feature 1-3: new columns on tasks and leads
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_remark TEXT"))
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_tags JSONB"))
