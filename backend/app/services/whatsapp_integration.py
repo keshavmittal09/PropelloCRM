@@ -125,7 +125,7 @@ async def _activity_exists_for_call_id(
             and_(
                 Activity.lead_id == lead_id,
                 Activity.type == activity_type,
-                Activity.meta["call_id"].astext == call_id,
+                Activity.meta["call_id"].as_string() == call_id,
             )
         ).limit(1)
     )
@@ -145,7 +145,7 @@ async def _trigger_already_sent_recently(
             and_(
                 Activity.lead_id == lead_id,
                 Activity.type == "whatsapp_triggered",
-                Activity.meta["call_id"].astext == call_id,
+                Activity.meta["call_id"].as_string() == call_id,
                 Activity.performed_at >= cutoff,
             )
         ).limit(1)
