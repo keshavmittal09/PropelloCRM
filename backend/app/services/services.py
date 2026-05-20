@@ -75,6 +75,13 @@ Login: {crm_url}""",
 }
 
 
+def render_whatsapp_message(template: str, variables: dict) -> str:
+    message_body = WHATSAPP_TEMPLATES.get(template, variables.get("custom_message", ""))
+    for key, value in variables.items():
+        message_body = message_body.replace(f"{{{key}}}", str(value))
+    return message_body
+
+
 async def send_whatsapp(
     to_phone: str,
     template: str,
@@ -85,9 +92,7 @@ async def send_whatsapp(
     agent_id: Optional[str] = None,
 ):
     """Send WhatsApp message via configured provider and log activity."""
-    message_body = WHATSAPP_TEMPLATES.get(template, variables.get("custom_message", ""))
-    for key, value in variables.items():
-        message_body = message_body.replace(f"{{{key}}}", str(value))
+    message_body = render_whatsapp_message(template, variables)
 
     sent, error = await send_whatsapp_text(to_phone=to_phone, message_body=message_body)
 

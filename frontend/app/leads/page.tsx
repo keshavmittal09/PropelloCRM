@@ -15,12 +15,20 @@ const STAGES: LeadStage[] = ['new', 'contacted', 'site_visit_scheduled', 'site_v
 const SCORES: LeadScore[] = ['hot', 'warm', 'cold']
 const SOURCES = ['priya_ai', 'website', 'facebook_ads', 'google_ads', '99acres', 'magicbricks', 'walk_in', 'referral', 'email_campaign', 'manual', 'campaign']
 const PAGE_SIZE = 25
+const BULK_WHATSAPP_TEMPLATES = [
+  { key: 'follow_up', label: 'Follow-up message' },
+  { key: 'site_visit_confirmation', label: 'Visit confirmation' },
+  { key: 'new_listing_alert', label: 'New listing alert' },
+  { key: 'general_followup', label: 'General follow-up' },
+]
 
 export default function LeadsPage() {
   const router = useRouter()
   const qc = useQueryClient()
   const agent = useAuthStore((s) => s.agent)
   const isAdmin = agent?.role === 'admin'
+  const isManager = agent?.role === 'manager'
+  const canBulkSelect = isAdmin || isManager
 
   const [search, setSearch] = useState('')
   const [stage, setStage] = useState('')
@@ -31,6 +39,10 @@ export default function LeadsPage() {
   const [showNewLead, setShowNewLead] = useState(false)
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([])
   const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [showBulkWhatsApp, setShowBulkWhatsApp] = useState(false)
+  const [bulkMessage, setBulkMessage] = useState('')
+  const [bulkTemplate, setBulkTemplate] = useState('follow_up')
+  const [bulkSending, setBulkSending] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -109,6 +121,39 @@ export default function LeadsPage() {
     }
   }
 
+  const handleBulkWhatsApp = async () => {
+    if (!canBulkSelect) {
+      toast.error('Not authorized to send bulk WhatsApp')
+      return
+    }
+    if (!selectedLeadIds.length) {
+      toast.error('Select at least one lead')
+      return
+    }
+    if (!bulkMessage.trim()) {
+      toast.error('Message is required')
+      return
+    }
+
+    setBulkSending(true)
+    try {
+      const result = await leadsApi.bulkWhatsApp({
+        lead_ids: selectedLeadIds,
+        message: bulkMessage.trim(),
+        template: bulkTemplate || undefined,
+      })
+      const scheduled = result?.scheduled ?? result?.accepted ?? 0
+      toast.success(`Queued ${scheduled} WhatsApp message(s)`) 
+      setShowBulkWhatsApp(false)
+      setBulkMessage('')
+      qc.invalidateQueries({ queryKey: ['timeline'] })
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to send bulk WhatsApp')
+    } finally {
+      setBulkSending(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
@@ -122,6 +167,14 @@ export default function LeadsPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            {canBulkSelect && selectedLeadIds.length > 0 && (
+              <button
+                onClick={() => setShowBulkWhatsApp(true)}
+                className="px-4 py-2 border border-green-200 rounded-xl text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100"
+              >
+                WhatsApp selected ({selectedLeadIds.length})
+              </button>
+            )}
             {isAdmin && selectedLeadIds.length > 0 && (
               <button
                 onClick={handleBulkDelete}
@@ -191,7 +244,7 @@ export default function LeadsPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {isAdmin && (
+                      {canBulkSelect && (
                         <th className="text-left text-xs font-semibold text-gray-500 px-4 py-3 w-10">
                           <input
                             type="checkbox"
@@ -214,7 +267,7 @@ export default function LeadsPage() {
                           if ((e.target as HTMLElement).closest('input[type="checkbox"]')) return
                           router.push(`/leads/${lead.id}`)
                         }}>
-                        {isAdmin && (
+                        {canBulkSelect && (
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
@@ -309,6 +362,56 @@ export default function LeadsPage() {
             </div>
           )}
         </div>
+
+        {showBulkWhatsApp && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-semibold text-gray-900">Bulk WhatsApp</h3>
+                <button onClick={() => setShowBulkWhatsApp(false)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">Sends the same message to all selected leads.</p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Template (optional)</label>
+                  <select
+                    value={bulkTemplate}
+                    onChange={(e) => setBulkTemplate(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  >
+                    {BULK_WHATSAPP_TEMPLATES.map((t) => (
+                      <option key={t.key} value={t.key}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Message *</label>
+                  <textarea
+                    value={bulkMessage}
+                    onChange={(e) => setBulkMessage(e.target.value)}
+                    rows={4}
+                    placeholder="Type the message to send to all selected leads..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setShowBulkWhatsApp(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkWhatsApp}
+                  disabled={bulkSending}
+                  className="flex-1 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 hover:bg-green-700"
+                >
+                  {bulkSending ? 'Sending...' : 'Send WhatsApp'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showNewLead && <NewLeadModal onClose={() => setShowNewLead(false)} onCreated={() => { setShowNewLead(false); qc.invalidateQueries({ queryKey: ['leads'] }); qc.invalidateQueries({ queryKey: ['leads-paginated'] }) }} />}
       </main>

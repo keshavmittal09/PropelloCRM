@@ -369,6 +369,12 @@ class WhatsAppSend(BaseModel):
     custom_message: Optional[str] = None
 
 
+class BulkWhatsAppTrigger(BaseModel):
+    lead_ids: list[str]
+    message: str = Field(min_length=1, max_length=4096)
+    template: Optional[str] = None
+
+
 class LeadNotifyRequest(BaseModel):
     channels: list[str] = Field(default_factory=lambda: ["whatsapp"])
     message: str = Field(min_length=1, max_length=2000)

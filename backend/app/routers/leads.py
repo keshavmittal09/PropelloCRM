@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, asc, desc, delete
 from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 from app.core.dependencies import get_db, get_current_user
@@ -20,10 +21,11 @@ from app.schemas.schemas import (
     MasterProfileUpdate,
 )
 from app.services.lead_service import process_inbound_lead, change_lead_stage, log_activity, create_auto_task, create_notification
-from app.services.services import find_matching_properties, send_whatsapp
+from app.services.services import find_matching_properties, send_whatsapp, render_whatsapp_message
+from app.services import whatsapp_integration as wa_integration
 from app.services.memory_service import build_memory_brief
 from app.services.email_service import send_email
-from app.schemas.schemas import WhatsAppSend, PropertyResponse, LeadNotifyRequest
+from app.schemas.schemas import WhatsAppSend, PropertyResponse, LeadNotifyRequest, BulkWhatsAppTrigger
 
 router = APIRouter()
 
@@ -522,17 +524,52 @@ async def send_whatsapp_message(
     _ensure_lead_scope(current_user, lead)
     contact = await db.get(Contact, lead.contact_id)
 
-    result = await send_whatsapp(
-        to_phone=contact.phone,
+    variables = {
+        "name": contact.name,
+        "agent_name": current_user.name,
+        "custom_message": data.custom_message or "",
+    }
+    message_body = render_whatsapp_message(data.template, variables).strip()
+    if not message_body:
+        raise HTTPException(status_code=400, detail="Template resolved to empty message")
+
+    call_id = f"manual-{lead_id}-{uuid4().hex[:12]}"
+    result = await wa_integration.handle_trigger(
+        db,
+        phone=contact.phone,
+        call_id=call_id,
+        message=message_body,
+        lead_id_hint=lead_id,
         template=data.template,
-        variables={"name": contact.name, "agent_name": current_user.name, "custom_message": data.custom_message or ""},
-        db=db,
-        lead_id=lead_id,
-        contact_id=lead.contact_id,
-        agent_id=current_user.id,
+        extra_meta={"triggered_by": current_user.id},
     )
     await db.commit()
-    return result
+    sent = result.get("status") in {"ok", "queued", "skipped"}
+    return {"sent": sent, "message": message_body, "error": result.get("detail")}
+
+
+@router.post("/bulk-whatsapp")
+async def bulk_whatsapp_message(
+    data: BulkWhatsAppTrigger,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    if current_user.role not in {"admin", "manager"}:
+        raise HTTPException(status_code=403, detail="Not authorized to send bulk WhatsApp")
+    if not data.lead_ids:
+        raise HTTPException(status_code=400, detail="lead_ids are required")
+
+    call_id = f"bulk-{uuid4().hex[:12]}"
+    stats = await wa_integration.schedule_bulk_trigger(
+        db,
+        call_id=call_id,
+        message=data.message,
+        template=data.template,
+        lead_ids=data.lead_ids,
+        phones=None,
+        extra_meta={"triggered_by": current_user.id},
+    )
+    return {"status": "queued", "call_id": call_id, **stats}
 
 
 @router.post("/{lead_id}/notify")
