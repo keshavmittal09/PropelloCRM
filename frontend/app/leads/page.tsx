@@ -35,6 +35,8 @@ export default function LeadsPage() {
   const [score, setScore] = useState('')
   const [source, setSource] = useState('')
   const [campaignId, setCampaignId] = useState('')
+  const [batchIngestId, setBatchIngestId] = useState('')
+  const [batchIngestOptions, setBatchIngestOptions] = useState<Array<{ id: string; batch_name: string; total_records: number }>>([])
   const [page, setPage] = useState(1)
   const [showNewLead, setShowNewLead] = useState(false)
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([])
@@ -45,22 +47,37 @@ export default function LeadsPage() {
   const [bulkSending, setBulkSending] = useState(false)
 
   useEffect(() => {
+    // Load batch ingest options
+    const loadBatchIngestOptions = async () => {
+      try {
+        const response = await fetch('/api/leads/filters/batch-ingests')
+        const data = await response.json()
+        setBatchIngestOptions(data)
+      } catch (err) {
+        console.error('Failed to load batch ingest options', err)
+      }
+    }
+    loadBatchIngestOptions()
+
+    // Parse URL params
     const params = new URLSearchParams(window.location.search)
     setStage(params.get('stage') ?? '')
     setScore(params.get('lead_score') ?? '')
     setSource(params.get('source') ?? '')
     setCampaignId(params.get('campaign_id') ?? '')
+    setBatchIngestId(params.get('batch_ingest_id') ?? '')
   }, [])
 
   useEffect(() => {
     setPage(1)
-  }, [stage, score, source, campaignId, search])
+  }, [stage, score, source, campaignId, batchIngestId, search])
 
   const { data: leadsPage, isLoading } = useLeadsPaginated({
     ...(stage && { stage }),
     ...(score && { lead_score: score }),
     ...(source && { source }),
     ...(campaignId && { campaign_id: campaignId }),
+    ...(batchIngestId && { batch_ingest_id: batchIngestId }),
     ...(search && { search }),
     page,
     page_size: PAGE_SIZE,
@@ -219,8 +236,18 @@ export default function LeadsPage() {
             {SOURCES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
           </select>
 
-          {(stage || score || source || search || campaignId) && (
-            <button onClick={() => { setStage(''); setScore(''); setSource(''); setCampaignId(''); setSearch('') }}
+          <select value={batchIngestId} onChange={e => setBatchIngestId(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            <option value="">All batches</option>
+            {batchIngestOptions.map(batch => (
+              <option key={batch.id} value={batch.id}>
+                {batch.batch_name} ({batch.total_records})
+              </option>
+            ))}
+          </select>
+
+          {(stage || score || source || search || campaignId || batchIngestId) && (
+            <button onClick={() => { setStage(''); setScore(''); setSource(''); setCampaignId(''); setBatchIngestId(''); setSearch('') }}
               className="px-3 py-2 text-sm text-gray-500 hover:text-red-600 border border-gray-200 rounded-lg hover:border-red-200">
               Clear filters
             </button>
