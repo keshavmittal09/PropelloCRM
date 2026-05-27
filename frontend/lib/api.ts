@@ -92,6 +92,8 @@ export const leadsApi = {
   },
   listPaginated: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; campaign_id?: string; search?: string; page?: number; page_size?: number }) =>
     api.get<LeadPaginatedResponse>('/api/leads/paginated', { params }).then(r => r.data),
+  getBatchIngestOptions: () =>
+    api.get<Array<{ id: string; batch_name: string; total_records: number }>>('/api/leads/filters/batch-ingests').then(r => r.data),
   board: () => api.get<KanbanBoard>('/api/leads/board').then(r => r.data),
   get: (id: string) => api.get<Lead>(`/api/leads/${id}`).then(r => r.data),
   create: (data: Record<string, unknown>) => api.post<Lead>('/api/leads', data).then(r => r.data),

@@ -5,7 +5,7 @@ import { useLeadsPaginated } from '@/hooks/useQueries'
 import Sidebar from '@/components/shared/Sidebar'
 import { ScoreBadge, SourceTag, DaysInStage } from '@/components/shared/Badges'
 import { formatBudget, formatDate, stageConfig } from '@/lib/utils'
-import { leadsApi } from '@/lib/api'
+import { campaignsApi, leadsApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { LeadStage, LeadScore } from '@/lib/types'
@@ -36,6 +36,7 @@ export default function LeadsPage() {
   const [source, setSource] = useState('')
   const [campaignId, setCampaignId] = useState('')
   const [batchIngestId, setBatchIngestId] = useState('')
+  const [campaignOptions, setCampaignOptions] = useState<Array<{ id: string; name: string }>>([])
   const [batchIngestOptions, setBatchIngestOptions] = useState<Array<{ id: string; batch_name: string; total_records: number }>>([])
   const [page, setPage] = useState(1)
   const [showNewLead, setShowNewLead] = useState(false)
@@ -50,14 +51,24 @@ export default function LeadsPage() {
     // Load batch ingest options
     const loadBatchIngestOptions = async () => {
       try {
-        const response = await fetch('/api/leads/filters/batch-ingests')
-        const data = await response.json()
+        const data = await leadsApi.getBatchIngestOptions()
         setBatchIngestOptions(data)
       } catch (err) {
         console.error('Failed to load batch ingest options', err)
+        toast.error('Failed to load batch options')
+      }
+    }
+    const loadCampaignOptions = async () => {
+      try {
+        const data = await campaignsApi.getCampaigns(0, 200)
+        setCampaignOptions(data)
+      } catch (err) {
+        console.error('Failed to load campaign options', err)
+        toast.error('Failed to load campaigns')
       }
     }
     loadBatchIngestOptions()
+    loadCampaignOptions()
 
     // Parse URL params
     const params = new URLSearchParams(window.location.search)
@@ -234,6 +245,16 @@ export default function LeadsPage() {
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
             <option value="">All sources</option>
             {SOURCES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+          </select>
+
+          <select value={campaignId} onChange={e => setCampaignId(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            <option value="">All campaigns</option>
+            {campaignOptions.map(campaign => (
+              <option key={campaign.id} value={campaign.id}>
+                {campaign.name}
+              </option>
+            ))}
           </select>
 
           <select value={batchIngestId} onChange={e => setBatchIngestId(e.target.value)}
