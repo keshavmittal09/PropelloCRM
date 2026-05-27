@@ -138,12 +138,16 @@ async def list_leads_paginated(
     lead_score: Optional[str] = Query(None),
     assigned_to: Optional[str] = Query(None),
     campaign_id: Optional[str] = Query(None),
+    batch_ingest_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
+    from app.models.bulk_task_ingest import BulkTaskRecord
+    from sqlalchemy.orm import selectinload
+
     filters = []
 
     if stage:
@@ -156,6 +160,11 @@ async def list_leads_paginated(
         filters.append(Lead.assigned_to == assigned_to)
     if campaign_id:
         filters.append(Lead.campaign_id == campaign_id)
+    if batch_ingest_id:
+        # Filter leads that are part of a specific bulk task ingest
+        filters.append(Lead.id.in_(
+            select(BulkTaskRecord.lead_id).where(BulkTaskRecord.ingest_id == batch_ingest_id)
+        ))
 
     if current_user.role in ["agent", "call_agent"]:
         filters.append(Lead.assigned_to == current_user.id)
@@ -192,6 +201,26 @@ async def list_leads_paginated(
         page_size=page_size,
         total_pages=(total + page_size - 1) // page_size if total else 1,
     )
+
+
+@router.get("/filters/batch-ingests", response_model=list[dict])
+async def get_batch_ingest_options(db: AsyncSession = Depends(get_db)):
+    """Get list of available batch ingests for filtering leads."""
+    from app.models.bulk_task_ingest import BulkTaskIngest
+
+    query = select(BulkTaskIngest).order_by(BulkTaskIngest.created_at.desc())
+    result = await db.execute(query)
+    ingests = result.scalars().all()
+
+    return [
+        {
+            "id": ingest.id,
+            "batch_name": ingest.batch_name,
+            "total_records": ingest.total_records,
+            "created_leads": ingest.created_leads,
+        }
+        for ingest in ingests
+    ]
 
 
 @router.get("/board", response_model=dict)

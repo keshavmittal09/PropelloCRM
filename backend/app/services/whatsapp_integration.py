@@ -580,8 +580,13 @@ async def sync_timeline_event(
     lead.last_interaction_at = now
     if direction == "inbound":
         lead.last_contacted_at = now
+        # Auto-move to 'contacted' stage if still in 'new'
+        if lead.stage == "new":
+            lead.stage = "contacted"
     if summary:
         lead.last_remark = summary[:200]
+    if ai_score is not None:
+        lead.lead_score = ai_score  # Update score from bot's evaluation
     if profile_patch:
         lead.master_profile = _merge_profile(lead.master_profile, profile_patch)
 
