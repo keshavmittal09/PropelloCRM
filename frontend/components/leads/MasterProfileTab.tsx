@@ -101,11 +101,11 @@ export function MasterProfileTab({ leadId }: Props) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 overflow-y-auto max-h-[calc(100vh-300px)]">
       {/* Lead Information (Manual) */}
       <div className="space-y-4">
         <SectionHeader title="Lead Information" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {MANUAL_FIELDS.map(field => (
             <EditableField
               key={field.key}
@@ -133,7 +133,7 @@ export function MasterProfileTab({ leadId }: Props) {
       {/* AI Analysis */}
       <div className="space-y-4">
         <SectionHeader title="AI Analysis" badge="AI" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {AI_FIELDS.map(field => (
             <ProfileCard
               key={field.key}
@@ -174,7 +174,7 @@ export function MasterProfileTab({ leadId }: Props) {
         <SectionHeader title="Pipeline & Activity" />
         
         {/* Pipeline Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           {COMPUTED_FIELDS.map(field => (
             <ProfileCard
               key={field.key}
@@ -322,15 +322,15 @@ function EditableField({
   onCancel: () => void
 }) {
   return (
-    <div className="rounded-xl px-4 py-3 border bg-white border-[#e8ddcf] group relative">
+    <div className="rounded-xl px-4 py-3 border bg-white border-[#e8ddcf]">
       <span className="text-xs text-[#96897c] block mb-1">{label}</span>
       {isEditing ? (
-        <div className="flex gap-2">
+        <div className="space-y-2">
           {options ? (
             <select
               value={editValue}
               onChange={e => onEditChange(e.target.value)}
-              className="flex-1 bg-white border border-[#e1d3c2] rounded-lg text-sm px-2 py-1 focus:outline-none focus:border-[#c86f43]"
+              className="w-full bg-white border border-[#e1d3c2] rounded-lg text-sm px-2 py-1 focus:outline-none focus:border-[#c86f43]"
             >
               <option value="">Select...</option>
               {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -340,22 +340,24 @@ function EditableField({
               type={type || 'text'}
               value={editValue}
               onChange={e => onEditChange(e.target.value)}
-              className="flex-1 bg-white border border-[#e1d3c2] rounded-lg text-sm px-2 py-1 focus:outline-none focus:border-[#c86f43]"
+              className="w-full bg-white border border-[#e1d3c2] rounded-lg text-sm px-2 py-1 focus:outline-none focus:border-[#c86f43]"
             />
           )}
-          <button onClick={onSave} className="text-xs font-bold text-emerald-600 hover:text-emerald-700 px-2 py-1 bg-emerald-50 rounded-lg">✓</button>
-          <button onClick={onCancel} className="text-xs font-bold text-gray-500 hover:text-gray-700 px-2 py-1 bg-gray-50 rounded-lg">✕</button>
+          <div className="flex gap-2">
+            <button onClick={onSave} className="flex-1 text-xs font-bold text-emerald-600 hover:text-emerald-700 px-2 py-1 bg-emerald-50 rounded-lg border border-emerald-200">Save</button>
+            <button onClick={onCancel} className="flex-1 text-xs font-bold text-gray-500 hover:text-gray-700 px-2 py-1 bg-gray-50 rounded-lg border border-gray-200">Cancel</button>
+          </div>
         </div>
       ) : (
-        <div className="flex justify-between items-center">
+        <div className="space-y-2">
           <p className={`text-sm font-medium ${value ? 'text-[#2b241e]' : 'text-gray-400'}`}>
             {value ?? 'Not set'}
           </p>
           <button
             onClick={onStartEdit}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-[#c86f43] font-medium"
+            className="w-full text-xs text-[#c86f43] font-medium py-1 bg-[#faf5f0] rounded-lg border border-[#e8ddcf] hover:bg-[#f5ede5] transition-colors"
           >
-            Edit
+            ✏️ Edit
           </button>
         </div>
       )}

@@ -383,7 +383,7 @@ export default function LeadDetailPage() {
               ))}
             </div>
 
-            <div className="crm-surface rounded-2xl p-5 min-h-[400px] crm-density-tight">
+            <div className="crm-surface rounded-2xl p-5 min-h-[400px] max-h-[calc(100vh-200px)] overflow-auto crm-density-tight">
               {panel === 'timeline' && <LeadTimeline activities={activities ?? []} />}
               {panel === 'tasks' && <TaskList tasks={tasks ?? []} onCompleteTask={(task) => setCompletingTask(task)} />}
               {panel === 'properties' && <PropertyMatchPanel leadId={id} />}
