@@ -41,6 +41,9 @@ async def trigger(payload: WhatsAppTriggerRequest, db: AsyncSession = Depends(ge
             message=payload.message,
             lead_id_hint=payload.lead_id,
             template=payload.template,
+            template_name=payload.template_name,
+            template_params=payload.template_params,
+            template_language=payload.template_language,
             extra_meta=payload.meta,
         )
         await db.commit()
@@ -64,6 +67,9 @@ async def bulk_trigger(
             call_id=payload.call_id,
             message=payload.message,
             template=payload.template,
+            template_name=payload.template_name,
+            template_params=payload.template_params,
+            template_language=payload.template_language,
             lead_ids=payload.lead_ids,
             phones=payload.phones,
             extra_meta=payload.meta,

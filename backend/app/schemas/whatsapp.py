@@ -10,23 +10,35 @@ from pydantic import BaseModel, Field
 # ─── Requests ────────────────────────────────────────────────────────────────
 
 class WhatsAppTriggerRequest(BaseModel):
-    """R1: Single trigger CRM → bot."""
+    """R1: Single trigger CRM → bot.
+
+    Either `message` (for contacts with 24h window) or `template_name` (for new contacts).
+    """
     phone: str = Field(..., min_length=4, description="Lead phone, any common format")
     call_id: str = Field(..., min_length=1, description="Idempotency key per trigger")
-    message: str = Field(..., min_length=1, max_length=4096)
+    message: Optional[str] = Field(default=None, min_length=1, max_length=4096, description="Free-form message (requires 24h window)")
     lead_id: Optional[str] = None
     template: Optional[str] = None
+    template_name: Optional[str] = Field(default=None, description="WhatsApp template name (for new contacts)")
+    template_params: Optional[list[str]] = Field(default=None, description="Template variable values in order")
+    template_language: Optional[str] = Field(default="en", description="Template language code")
     meta: Optional[dict[str, Any]] = None
 
 
 class WhatsAppBulkTriggerRequest(BaseModel):
-    """R2: Bulk trigger CRM → bot."""
+    """R2: Bulk trigger CRM → bot.
+
+    For new leads, use `template_name`. For existing contacts (24h+ window), use `message`.
+    """
     call_id: str = Field(..., min_length=1)
     template: Optional[str] = None
     message: Optional[str] = Field(
         default=None,
-        description="Template body; phone-specific personalization handled by bot",
+        description="Free-form message (requires 24h window); phone-specific personalization handled by bot",
     )
+    template_name: Optional[str] = Field(default=None, description="WhatsApp template name (for new contacts)")
+    template_params: Optional[list[str]] = Field(default=None, description="Template variable values in order")
+    template_language: Optional[str] = Field(default="en", description="Template language code")
     lead_ids: Optional[list[str]] = None
     phones: Optional[list[str]] = None
     meta: Optional[dict[str, Any]] = None

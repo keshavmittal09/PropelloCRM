@@ -220,12 +220,20 @@ async def handle_trigger(
     *,
     phone: str,
     call_id: str,
-    message: str,
+    message: Optional[str] = None,
     lead_id_hint: Optional[str] = None,
     template: Optional[str] = None,
+    template_name: Optional[str] = None,
+    template_params: Optional[list[str]] = None,
+    template_language: Optional[str] = None,
     extra_meta: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Implements R1. Logs trigger activity, calls bot, returns ack payload."""
+    """Implements R1. Logs trigger activity, calls bot, returns ack payload.
+
+    Supports two modes:
+    - Free-form: message (for contacts with 24h window)
+    - Template: template_name + optional template_params (for new contacts)
+    """
     e164 = to_e164(phone)
     extra_meta = extra_meta or {}
 
@@ -259,13 +267,24 @@ async def handle_trigger(
         )
         return {"status": "skipped", "detail": "duplicate_within_dedupe_window", "lead_id": lead.id}
 
+    # Build activity metadata
+    meta_payload = {"call_id": call_id, "template": template, **extra_meta}
+    if template_name:
+        meta_payload["template_name"] = template_name
+        if template_params:
+            meta_payload["template_params"] = template_params
+        if template_language:
+            meta_payload["template_language"] = template_language
+    if message:
+        meta_payload["message"] = message
+
     activity = _build_activity(
         lead_id=lead.id,
         contact_id=contact.id if contact else None,
         activity_type="whatsapp_triggered",
-        title=f"WhatsApp trigger ({template or 'custom'})",
-        description=message[:500],
-        meta={"call_id": call_id, "template": template, "message": message, **extra_meta},
+        title=f"WhatsApp trigger ({template_name or template or 'custom'})",
+        description=(message or f"Template: {template_name}")[:500],
+        meta=meta_payload,
     )
     db.add(activity)
     lead.last_interaction_at = datetime.utcnow()
@@ -275,6 +294,9 @@ async def handle_trigger(
         message=message,
         call_id=call_id,
         template=template,
+        template_name=template_name,
+        template_params=template_params,
+        template_language=template_language,
     )
 
     await _log_dispatch(
@@ -301,14 +323,18 @@ async def schedule_bulk_trigger(
     db: AsyncSession,
     *,
     call_id: str,
-    message: Optional[str],
-    template: Optional[str],
-    lead_ids: Optional[list[str]],
-    phones: Optional[list[str]],
+    message: Optional[str] = None,
+    template: Optional[str] = None,
+    template_name: Optional[str] = None,
+    template_params: Optional[list[str]] = None,
+    template_language: Optional[str] = None,
+    lead_ids: Optional[list[str]] = None,
+    phones: Optional[list[str]] = None,
     extra_meta: Optional[dict[str, Any]] = None,
 ) -> dict[str, int]:
     """Resolve targets, log trigger activities, and spawn an async sender task.
 
+    Supports either message (for 24h+ window) or template_name (for new contacts).
     Sends are throttled by ``WHATSAPP_BULK_THROTTLE_SECONDS`` (default 1s).
     Failures are logged but never raised; the bot must not be blocked.
     """
@@ -384,6 +410,9 @@ async def schedule_bulk_trigger(
                 call_id=call_id,
                 message=message,
                 template=template,
+                template_name=template_name,
+                template_params=template_params,
+                template_language=template_language,
             )
         )
 
@@ -399,8 +428,11 @@ async def _bulk_sender_loop(
     *,
     accepted: list[tuple[str, str, str]],
     call_id: str,
-    message: Optional[str],
-    template: Optional[str],
+    message: Optional[str] = None,
+    template: Optional[str] = None,
+    template_name: Optional[str] = None,
+    template_params: Optional[list[str]] = None,
+    template_language: Optional[str] = None,
 ) -> None:
     """Background task: calls the bot once per lead with 1-msg/sec throttle."""
     delay = max(0, int(settings.WHATSAPP_BULK_THROTTLE_SECONDS))
@@ -410,9 +442,12 @@ async def _bulk_sender_loop(
         try:
             status, error = await _call_bot_send(
                 phone=phone_e164,
-                message=message or "",
+                message=message,
                 call_id=call_id,
                 template=template,
+                template_name=template_name,
+                template_params=template_params,
+                template_language=template_language,
             )
         except Exception as e:  # never raise out of a background task
             status, error = "error", str(e)
@@ -645,9 +680,21 @@ async def handle_escalation(
 # ─── Bot HTTP client ───────────────────────────────────────────────────────
 
 async def _call_bot_send(
-    *, phone: str, message: str, call_id: str, template: Optional[str]
+    *,
+    phone: str,
+    call_id: str,
+    message: Optional[str] = None,
+    template: Optional[str] = None,
+    template_name: Optional[str] = None,
+    template_params: Optional[list[str]] = None,
+    template_language: Optional[str] = None,
 ) -> tuple[str, Optional[str]]:
-    """POST to the WhatsApp bot's send endpoint. Returns (status, error_message)."""
+    """POST to the WhatsApp bot's send endpoint. Returns (status, error_message).
+
+    Supports two modes:
+    - Free-form: phone + message (for contacts with 24h window)
+    - Template: phone + template_name + optional template_params (for new contacts)
+    """
     base = (settings.WHATSAPP_BOT_BASE_URL or "").strip().rstrip("/")
     if not base:
         return "skipped", "bot_base_url_not_configured"
@@ -655,10 +702,25 @@ async def _call_bot_send(
     url = f"{base}/api/send"
     payload = {
         "phone": phone,
-        "message": message,
         "call_id": call_id,
-        "template": template,
     }
+
+    # Add either message or template
+    if template_name:
+        payload["template_name"] = template_name
+        if template_params:
+            payload["template_params"] = template_params
+        if template_language:
+            payload["template_language"] = template_language
+    elif message:
+        payload["message"] = message
+    else:
+        return "error", "neither_message_nor_template_provided"
+
+    # Add optional analytics tag
+    if template:
+        payload["template"] = template
+
     headers = {"X-Webhook-Secret": settings.WHATSAPP_WEBHOOK_SECRET}
     try:
         async with httpx.AsyncClient(timeout=settings.WHATSAPP_BOT_TIMEOUT_SECONDS) as client:
