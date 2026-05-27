@@ -813,6 +813,19 @@ async def get_master_profile(
                     "key_quote": cd_lead.key_quote,
                 }
 
+    # Prefer manual overrides for AI fields when present in master_profile
+    ai_override_keys = {
+        "config_preference",
+        "budget_range",
+        "site_visit_intent",
+        "primary_language",
+        "objection_type",
+        "intent_level",
+        "ai_summary",
+        "key_quote",
+    }
+    ai_overrides = {key: profile[key] for key in ai_override_keys if key in profile}
+
     # Compute stats
     task_result = await db.execute(select(Task).where(Task.lead_id == lead_id))
     all_tasks = task_result.scalars().all()
@@ -832,8 +845,9 @@ async def get_master_profile(
     days_in_pipeline = (datetime.utcnow() - lead.created_at).days if lead.created_at else 0
 
     return {
-        # AI fields
+        # AI fields (campaign AI), overridden by manual edits when present
         **ai_data,
+        **ai_overrides,
         # Manual fields from stored profile
         "full_name": profile.get("full_name", contact.name if contact else None),
         "email": profile.get("email", contact.email if contact else None),
