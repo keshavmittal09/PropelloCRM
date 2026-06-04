@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     END_OF_DAY_SUMMARY_HOUR: int = 22
     END_OF_DAY_SUMMARY_MINUTE: int = 0
 
+    # WhatsApp Campaign Agent (Railway)
+    WHATSAPP_CAMPAIGN_URL: str = "https://whatsapp-agent-production-3525.up.railway.app/api/send"
+    WHATSAPP_CAMPAIGN_SECRET: str = ""
+
     # Supabase
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
