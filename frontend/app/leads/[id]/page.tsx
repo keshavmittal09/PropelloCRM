@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useLead, useLeadTimeline, useAllTasks } from '@/hooks/useQueries'
 import Sidebar from '@/components/shared/Sidebar'
-import { LeadTimeline, AddNoteBox, QuickCallLog, WhatsAppSender, PropertyMatchPanel, TaskList } from '@/components/leads/LeadComponents'
+import { LeadTimeline, AddNoteBox, QuickCallLog, WhatsAppSender, CampaignWhatsAppSender, PropertyMatchPanel, TaskList } from '@/components/leads/LeadComponents'
 import { ScheduleVisitModal } from '@/components/leads/ScheduleVisitModal'
 import { EditLeadModal } from '@/components/leads/EditLeadModal'
 import { ScoreBadge, SourceTag, DaysInStage } from '@/components/shared/Badges'
@@ -33,6 +33,7 @@ export default function LeadDetailPage() {
   const [panel, setPanel] = useState<Panel>('profile')
   const [showCallLog, setShowCallLog] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
+  const [showCampaignWA, setShowCampaignWA] = useState(false)
   const [showVisitModal, setShowVisitModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [showLeadNotifyModal, setShowLeadNotifyModal] = useState(false)
@@ -222,9 +223,13 @@ export default function LeadDetailPage() {
                 className="px-4 py-2 border border-[#e1d3c2] bg-[#fffdfa] rounded-xl text-sm font-medium hover:bg-[#f8eee3] transition-colors text-[#52473d]">
                 📞 Log call
               </button>
-              <button onClick={() => { setShowWhatsApp(!showWhatsApp); setShowCallLog(false) }}
+              <button onClick={() => { setShowWhatsApp(!showWhatsApp); setShowCallLog(false); setShowCampaignWA(false) }}
                 className="px-4 py-2 border border-green-200 bg-green-50 text-green-700 rounded-xl text-sm font-medium hover:bg-green-100 transition-colors">
                 💬 WhatsApp
+              </button>
+              <button onClick={() => { setShowCampaignWA(!showCampaignWA); setShowWhatsApp(false); setShowCallLog(false) }}
+                className="px-4 py-2 border border-green-300 bg-green-100 text-green-800 rounded-xl text-sm font-medium hover:bg-green-200 transition-colors">
+                🚀 Campaign WA
               </button>
               <button onClick={() => setShowVisitModal(true)}
                 className="px-4 py-2 border border-[#e1d3c2] bg-[#fffdfa] rounded-xl text-sm font-medium hover:bg-[#f8eee3] transition-colors text-[#52473d]">
@@ -253,6 +258,7 @@ export default function LeadDetailPage() {
             {/* Quick action panels */}
             {showCallLog && <QuickCallLog leadId={id} onClose={() => setShowCallLog(false)} />}
             {showWhatsApp && <WhatsAppSender leadId={id} onClose={() => setShowWhatsApp(false)} />}
+            {showCampaignWA && <CampaignWhatsAppSender leadId={id} onClose={() => setShowCampaignWA(false)} />}
             {showVisitModal && <ScheduleVisitModal leadId={id} onClose={() => setShowVisitModal(false)} />}
             {showEditModal && <EditLeadModal lead={lead} onClose={() => setShowEditModal(false)} />}
             {showLeadNotifyModal && (

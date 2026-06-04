@@ -6,6 +6,8 @@ from sqlalchemy.orm import selectinload
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel
+import uuid
+import httpx
 from app.core.dependencies import get_db, get_current_user
 from app.core.config import settings
 from app.models.agent import Agent
@@ -494,6 +496,44 @@ async def send_whatsapp_message(
     )
     await db.commit()
     return result
+
+
+class CampaignTriggerRequest(BaseModel):
+    message: str
+    campaign: str = "Day 1"
+
+
+@router.post("/{lead_id}/campaign-trigger")
+async def campaign_whatsapp_trigger(
+    lead_id: str,
+    data: CampaignTriggerRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    lead = await db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    _ensure_lead_scope(current_user, lead)
+    contact = await db.get(Contact, lead.contact_id)
+    if not contact or not contact.phone:
+        raise HTTPException(status_code=400, detail="Lead has no phone number")
+
+    payload = {
+        "phone": contact.phone,
+        "name": contact.name,
+        "message": data.message,
+        "call_id": str(uuid.uuid4()),
+        "campaign": data.campaign,
+    }
+    headers = {
+        "X-Webhook-Secret": settings.WHATSAPP_CAMPAIGN_SECRET,
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post(settings.WHATSAPP_CAMPAIGN_URL, json=payload, headers=headers)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Campaign agent error: {resp.text}")
+    return resp.json()
 
 
 @router.post("/{lead_id}/notify")

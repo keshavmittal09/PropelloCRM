@@ -99,6 +99,8 @@ export const leadsApi = {
     api.post<Activity>(`/api/leads/${id}/call-log`, data).then(r => r.data),
   sendWhatsApp: (id: string, template: string, custom_message?: string) =>
     api.post(`/api/leads/${id}/whatsapp`, { template, lead_id: id, custom_message }).then(r => r.data),
+  campaignTrigger: (id: string, message: string, campaign: string) =>
+    api.post(`/api/leads/${id}/campaign-trigger`, { message, campaign }).then(r => r.data),
   notify: (id: string, payload: LeadNotifyPayload) =>
     api.post(`/api/leads/${id}/notify`, payload).then(r => r.data),
   propertyMatches: (id: string) => api.get<Property[]>(`/api/leads/${id}/property-matches`).then(r => r.data),
