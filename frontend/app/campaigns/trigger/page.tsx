@@ -23,6 +23,7 @@ export default function TriggerCampaignPage() {
   // shared
   const [templates, setTemplates] = useState<WaTemplate[]>([])
   const [templatesError, setTemplatesError] = useState(false)
+  const [templatesErrorMsg, setTemplatesErrorMsg] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<WaTemplate | null>(null)
   const [customMessage, setCustomMessage] = useState('')
   const [language, setLanguage] = useState('English')
@@ -49,7 +50,10 @@ export default function TriggerCampaignPage() {
     campaignsApi.getCampaigns().then(setCampaigns).catch(() => toast.error('Failed to load campaigns'))
     campaignsApi.getWhatsAppTemplates()
       .then(setTemplates)
-      .catch(() => setTemplatesError(true))
+      .catch((e: any) => {
+        setTemplatesError(true)
+        setTemplatesErrorMsg(e?.response?.data?.detail || e?.message || 'Could not load templates')
+      })
   }, [])
 
   const message = selectedTemplate ? selectedTemplate.body : customMessage
@@ -177,7 +181,7 @@ export default function TriggerCampaignPage() {
             </div>
 
             {templatesError ? (
-              <p className="text-xs text-amber-600 mb-2">WATI not configured — enter a custom message below.</p>
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">⚠ {templatesErrorMsg || 'Failed to load templates'}</p>
             ) : templates.length === 0 ? (
               <p className="text-sm text-[#9d9185]">Loading templates…</p>
             ) : (

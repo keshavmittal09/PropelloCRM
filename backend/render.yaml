@@ -27,3 +27,15 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WABA_ID
+        sync: false
+      - key: WHATSAPP_CAMPAIGN_SECRET
+        sync: false
+      - key: WHATSAPP_CAMPAIGN_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
