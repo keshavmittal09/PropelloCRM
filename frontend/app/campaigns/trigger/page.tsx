@@ -15,6 +15,11 @@ type Mode = 'campaign' | 'phones'
 
 const LANGUAGES = ['English', 'Hindi', 'en', 'hi', 'en_US', 'en_GB']
 
+// Hardcoded approved templates — add more template names here as needed
+const FALLBACK_TEMPLATES: WaTemplate[] = [
+  { id: 'krishna_group', name: 'krishna_group', body: 'Hi {{1}}, Thank you for your interest in Krishna Group properties. Our team will reach out to you shortly with more details.', status: 'APPROVED', language: 'en' },
+]
+
 export default function TriggerCampaignPage() {
   const router = useRouter()
   const { agent } = useAuthStore()
@@ -23,8 +28,6 @@ export default function TriggerCampaignPage() {
   // shared
   const [templates, setTemplates] = useState<WaTemplate[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(true)
-  const [templatesError, setTemplatesError] = useState(false)
-  const [templatesErrorMsg, setTemplatesErrorMsg] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<WaTemplate | null>(null)
   const [customMessage, setCustomMessage] = useState('')
   const [language, setLanguage] = useState('English')
@@ -50,11 +53,13 @@ export default function TriggerCampaignPage() {
   useEffect(() => {
     campaignsApi.getCampaigns().then(setCampaigns).catch(() => toast.error('Failed to load campaigns'))
     campaignsApi.getWhatsAppTemplates()
-      .then(data => { setTemplates(data); setTemplatesLoading(false) })
-      .catch((e: any) => {
-        setTemplatesError(true)
+      .then(data => {
+        setTemplates(data.length > 0 ? data : FALLBACK_TEMPLATES)
         setTemplatesLoading(false)
-        setTemplatesErrorMsg(e?.response?.data?.detail || e?.message || 'Could not load templates')
+      })
+      .catch(() => {
+        setTemplates(FALLBACK_TEMPLATES)
+        setTemplatesLoading(false)
       })
   }, [])
 
@@ -182,9 +187,7 @@ export default function TriggerCampaignPage() {
               <p className="text-xs text-amber-700">WhatsApp Rule: Free-form messages only deliver within 24h of user messaging you. For NEW numbers → use approved templates.</p>
             </div>
 
-            {templatesError ? (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">⚠ {templatesErrorMsg || 'Failed to load templates'}</p>
-            ) : templatesLoading ? (
+            {templatesLoading ? (
               <p className="text-sm text-[#9d9185]">Loading templates…</p>
             ) : templates.length === 0 ? (
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">No templates found. Check WHATSAPP_TOKEN and WABA_ID on Render, or write a custom message below.</p>
