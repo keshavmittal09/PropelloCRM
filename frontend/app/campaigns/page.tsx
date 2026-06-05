@@ -115,6 +115,12 @@ export default function CampaignsPage() {
           >
             Open Campaign Dashboard Hub
           </button>
+          <button
+            onClick={() => router.push('/campaigns/trigger')}
+            className="px-4 py-1.5 rounded-full border border-green-300 bg-green-50 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors"
+          >
+            🚀 Trigger Campaign
+          </button>
         </div>
 
         {!preview && !result && (
