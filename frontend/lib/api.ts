@@ -236,6 +236,10 @@ export const campaignsApi = {
     api.delete(`/api/campaigns/${campaignId}/project`).then(r => r.data),
   deleteCampaign: (campaignId: string) =>
     api.delete<{ status: string; campaign_id: string; campaign_name: string }>(`/api/campaigns/${campaignId}`).then(r => r.data),
+  getWhatsAppTemplates: () =>
+    api.get<{ id: string; name: string; body: string; status: string; language: string }[]>('/api/campaigns/whatsapp-templates').then(r => r.data),
+  triggerCampaignWhatsApp: (campaignId: string, payload: { message: string; template_name?: string; campaign_tag?: string }) =>
+    api.post<{ total: number; sent: number; failed: number; skipped: number; results: { lead_id: string; phone?: string; status: string; reason?: string }[] }>(`/api/campaigns/${campaignId}/trigger-whatsapp`, payload).then(r => r.data),
 }
 
 // ─── CAMPAIGN DASHBOARD (UNIFIED) ─────────────────────────────────────────

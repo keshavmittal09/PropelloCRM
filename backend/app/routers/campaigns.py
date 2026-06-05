@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import uuid
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 
 logger = logging.getLogger(__name__)
@@ -17,6 +20,7 @@ from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
 from app.models.agent import Agent
 from app.models.campaign import Campaign, Project
+from app.models.contact import Contact
 from app.models.lead import Lead
 from app.models.models import Activity
 from app.schemas.schemas import (
@@ -614,3 +618,92 @@ async def delete_campaign(
         "leads_deleted": len(linked_leads),
         "activities_deleted": len(campaign_activities),
     }
+
+
+# ─── WHATSAPP TEMPLATES (from WATI) ──────────────────────────────────────────
+@router.get("/whatsapp-templates")
+async def get_whatsapp_templates(current_user: Agent = Depends(get_current_user)):
+    _ensure_campaign_access(current_user)
+    if not settings.WATI_API_KEY or not settings.WATI_BASE_URL:
+        raise HTTPException(status_code=503, detail="WATI not configured")
+    url = f"{settings.WATI_BASE_URL.rstrip('/')}/api/v1/getMessageTemplates"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {settings.WATI_API_KEY}"})
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"WATI error: {resp.text}")
+    data = resp.json()
+    templates = data.get("messageTemplates") or data.get("templates") or []
+    return [
+        {
+            "id": t.get("id", t.get("elementName", "")),
+            "name": t.get("elementName") or t.get("name", ""),
+            "body": t.get("body", ""),
+            "status": t.get("status", ""),
+            "language": t.get("language", ""),
+        }
+        for t in templates
+        if t.get("status", "").upper() in ("APPROVED", "approved", "ACTIVE", "active", "")
+    ]
+
+
+# ─── BULK CAMPAIGN WHATSAPP TRIGGER ──────────────────────────────────────────
+class CampaignWhatsAppTriggerRequest(BaseModel):
+    message: str
+    template_name: str = ""
+    campaign_tag: str = ""
+
+
+@router.post("/{campaign_id}/trigger-whatsapp")
+async def trigger_campaign_whatsapp(
+    campaign_id: str,
+    data: CampaignWhatsAppTriggerRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    _ensure_campaign_access(current_user)
+    campaign = await db.get(Campaign, campaign_id)
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    lead_result = await db.execute(
+        select(Lead).where(Lead.campaign_id == campaign_id)
+    )
+    leads = lead_result.scalars().all()
+    if not leads:
+        raise HTTPException(status_code=400, detail="No leads in this campaign")
+
+    contact_ids = [l.contact_id for l in leads]
+    contact_result = await db.execute(select(Contact).where(Contact.id.in_(contact_ids)))
+    contacts = {c.id: c for c in contact_result.scalars().all()}
+
+    campaign_tag = data.campaign_tag or campaign.name
+
+    async def send_one(lead: Lead):
+        contact = contacts.get(lead.contact_id)
+        if not contact or not contact.phone:
+            return {"lead_id": lead.id, "status": "skipped", "reason": "no phone"}
+        payload = {
+            "phone": contact.phone,
+            "name": contact.name,
+            "message": data.message,
+            "call_id": str(uuid.uuid4()),
+            "campaign": campaign_tag,
+        }
+        headers = {
+            "X-Webhook-Secret": settings.WHATSAPP_CAMPAIGN_SECRET,
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(settings.WHATSAPP_CAMPAIGN_URL, json=payload, headers=headers)
+            if resp.status_code == 200:
+                return {"lead_id": lead.id, "phone": contact.phone, "status": "sent"}
+            return {"lead_id": lead.id, "phone": contact.phone, "status": "failed", "reason": resp.text}
+        except Exception as e:
+            return {"lead_id": lead.id, "phone": contact.phone, "status": "failed", "reason": str(e)}
+
+    results = await asyncio.gather(*[send_one(l) for l in leads])
+    sent = sum(1 for r in results if r["status"] == "sent")
+    failed = sum(1 for r in results if r["status"] == "failed")
+    skipped = sum(1 for r in results if r["status"] == "skipped")
+    return {"total": len(leads), "sent": sent, "failed": failed, "skipped": skipped, "results": results}
