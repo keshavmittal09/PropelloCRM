@@ -22,7 +22,7 @@ const FALLBACK_TEMPLATES: WaTemplate[] = [
 
 export default function TriggerCampaignPage() {
   const router = useRouter()
-  const { agent } = useAuthStore()
+  const { agent, token } = useAuthStore()
   const [mode, setMode] = useState<Mode>('campaign')
 
   // shared
@@ -77,15 +77,22 @@ export default function TriggerCampaignPage() {
     if (!selectedCampaign || !message.trim()) return
     setLoading(true); setResult(null)
     try {
-      const res = await campaignsApi.triggerCampaignWhatsApp(selectedCampaign.id, {
-        message: message.trim(),
-        template_name: selectedTemplate?.name ?? '',
-        campaign_tag: campaignTag.trim() || selectedCampaign.name,
+      const res = await fetch('/api/campaign-trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaign_id: selectedCampaign.id,
+          message: message.trim(),
+          campaign_tag: campaignTag.trim() || selectedCampaign.name,
+          token,
+        }),
       })
-      setResult(res)
-      toast.success(`Campaign sent! ${res.sent}/${res.total} delivered`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to send')
+      setResult(data)
+      toast.success(`Campaign sent! ${data.sent}/${data.total} delivered`)
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? 'Failed to trigger campaign')
+      toast.error(e?.message ?? 'Failed to trigger campaign')
     } finally { setLoading(false) }
   }
 
