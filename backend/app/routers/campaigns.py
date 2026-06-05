@@ -560,45 +560,57 @@ async def get_whatsapp_templates(current_user: Agent = Depends(get_current_user)
     # Prefer Meta Graph API (uses WHATSAPP_TOKEN + WABA_ID from Railway)
     if settings.WHATSAPP_TOKEN and settings.WABA_ID:
         url = f"https://graph.facebook.com/v19.0/{settings.WABA_ID}/message_templates"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url, params={"limit": 100}, headers={"Authorization": f"Bearer {settings.WHATSAPP_TOKEN}"})
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                url,
+                params={"limit": 250, "fields": "name,status,language,components,category"},
+                headers={"Authorization": f"Bearer {settings.WHATSAPP_TOKEN}"},
+            )
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail=f"Meta API error: {resp.text}")
         templates = resp.json().get("data", [])
-        return [
-            {
+        EXCLUDED = {"REJECTED", "DELETED", "PAUSED", "DISABLED"}
+        result = []
+        for t in templates:
+            status = t.get("status", "").upper()
+            if status in EXCLUDED:
+                continue
+            body = next(
+                (c.get("text", "") for c in t.get("components", []) if c.get("type") == "BODY"),
+                "",
+            )
+            result.append({
                 "id": t.get("name", ""),
                 "name": t.get("name", ""),
-                "body": next((c.get("text", "") for c in t.get("components", []) if c.get("type") == "BODY"), ""),
-                "status": t.get("status", ""),
+                "body": body,
+                "status": status,
                 "language": t.get("language", ""),
-            }
-            for t in templates
-            if t.get("status", "").upper() == "APPROVED"
-        ]
+            })
+        return result
 
     # Fallback: WATI
     if settings.WATI_API_KEY and settings.WATI_BASE_URL:
         url = f"{settings.WATI_BASE_URL.rstrip('/')}/api/v1/getMessageTemplates"
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(url, headers={"Authorization": f"Bearer {settings.WATI_API_KEY}"})
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail=f"WATI error: {resp.text}")
         data = resp.json()
         templates = data.get("messageTemplates") or data.get("templates") or []
+        EXCLUDED = {"REJECTED", "DELETED", "PAUSED", "DISABLED"}
         return [
             {
                 "id": t.get("id", t.get("elementName", "")),
                 "name": t.get("elementName") or t.get("name", ""),
                 "body": t.get("body", ""),
-                "status": t.get("status", ""),
+                "status": (t.get("status") or "").upper(),
                 "language": t.get("language", ""),
             }
             for t in templates
-            if t.get("status", "").upper() in ("APPROVED", "ACTIVE")
+            if (t.get("status") or "").upper() not in EXCLUDED
         ]
 
-    raise HTTPException(status_code=503, detail="WhatsApp not configured. Add WHATSAPP_TOKEN + WABA_ID to env.")
+    raise HTTPException(status_code=503, detail="WhatsApp not configured. Add WHATSAPP_TOKEN + WABA_ID to env vars on Render.")
 
 
 # ─── BROADCAST TO SPECIFIC PHONES ─────────────────────────────────────────────
