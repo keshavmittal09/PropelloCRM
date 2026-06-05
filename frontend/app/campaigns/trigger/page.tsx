@@ -17,7 +17,7 @@ const LANGUAGES = ['English', 'Hindi', 'en', 'hi', 'en_US', 'en_GB']
 
 // Hardcoded approved templates — add more template names here as needed
 const FALLBACK_TEMPLATES: WaTemplate[] = [
-  { id: 'krishna_group', name: 'krishna_group', body: 'Hi {{1}}, Thank you for your interest in Krishna Group properties. Our team will reach out to you shortly with more details.', status: 'APPROVED', language: 'en' },
+  { id: 'krishna_group', name: 'krishna_group', body: 'Hey, Niharika this side from Krishna Group. Hamari call par baat Hui thi kuch din pehle, ussi ke regarding WhatsApp par project details share kar rahi hu', status: 'APPROVED', language: 'en' },
 ]
 
 export default function TriggerCampaignPage() {
