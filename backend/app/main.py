@@ -15,6 +15,7 @@ from app.routers.campaign_dashboard import router as campaign_dashboard_router
 from app.routers.campaigns import router as campaigns_router
 from app.routers.projects import router as projects_router
 from app.routers.priya_bridge import router as priya_router
+from app.routers.whatsapp_chats import router as whatsapp_chats_router
 from app.routers.me import router as me_router
 from app.routers.routers import (
     contacts_router,
@@ -110,6 +111,7 @@ app.include_router(visits_router,        prefix="/api/visits",        tags=["Sit
 app.include_router(analytics_router,     prefix="/api/analytics",     tags=["Analytics"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["Notifications"])
 app.include_router(me_router,            prefix="/api/me",            tags=["My Data"])
+app.include_router(whatsapp_chats_router, prefix="/api/whatsapp",     tags=["WhatsApp Chats"])
 
 
 @app.post("/api/performance/recompute")

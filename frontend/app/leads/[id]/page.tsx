@@ -10,6 +10,7 @@ import { ScoreBadge, SourceTag, DaysInStage } from '@/components/shared/Badges'
 import { DuplicateAlert } from '@/components/shared/DuplicateAlert'
 import { formatBudget, formatDate, stageConfig } from '@/lib/utils'
 import { leadsApi, tasksApi } from '@/lib/api'
+import WhatsAppChatsPanel from '@/components/leads/WhatsAppChatsPanel'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { MasterProfileTab } from '@/components/leads/MasterProfileTab'
@@ -20,7 +21,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { Task } from '@/lib/types'
 
-type Panel = 'profile' | 'timeline' | 'tasks' | 'properties' | 'memory'
+type Panel = 'profile' | 'timeline' | 'tasks' | 'properties' | 'memory' | 'chats'
 const STAGE_OPTIONS = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture'] as const
 
 export default function LeadDetailPage() {
@@ -374,10 +375,10 @@ export default function LeadDetailPage() {
           <div className="xl:col-span-2">
             {/* Tabs */}
             <div className="flex gap-1 mb-4 bg-[#f3e9dd] p-1 rounded-xl w-fit border border-[#e7dac9]">
-              {(['timeline', 'tasks', 'properties', 'profile', 'memory'] as Panel[]).map(p => (
+              {(['timeline', 'chats', 'tasks', 'properties', 'profile', 'memory'] as Panel[]).map(p => (
                 <button key={p} onClick={() => setPanel(p)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${panel === p ? 'bg-white text-[#2b241e] shadow-sm' : 'text-[#7b7166] hover:text-[#4f453b]'}`}>
-                  {p === 'timeline' ? 'Timeline' : p === 'tasks' ? 'Tasks' : p === 'properties' ? 'Matching listings' : p === 'profile' ? 'Master Profile' : 'Priya memory'}
+                  {p === 'timeline' ? 'Timeline' : p === 'chats' ? '💬 WA Chats' : p === 'tasks' ? 'Tasks' : p === 'properties' ? 'Matching listings' : p === 'profile' ? 'Master Profile' : 'Priya memory'}
                 </button>
               ))}
             </div>
@@ -387,6 +388,7 @@ export default function LeadDetailPage() {
               {panel === 'tasks' && <TaskList tasks={tasks ?? []} onCompleteTask={(task) => setCompletingTask(task)} />}
               {panel === 'properties' && <PropertyMatchPanel leadId={id} />}
               {panel === 'profile' && <MasterProfileTab leadId={id} />}
+              {panel === 'chats' && <WhatsAppChatsPanel leadId={id} />}
               {panel === 'memory' && (
                 <div>
                   <p className="text-xs font-semibold text-purple-700 mb-3">Priya AI memory brief</p>

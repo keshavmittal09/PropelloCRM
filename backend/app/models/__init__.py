@@ -5,6 +5,7 @@ from app.models.lead import Lead
 from app.models.models import Property, Activity, Task, SiteVisit, Notification
 from app.models.followup import FollowUp
 from app.models.notification_dispatch import NotificationDispatchLog, NotificationLog
+from app.models.whatsapp import WhatsAppMessage
 
 __all__ = [
 	"Agent",
@@ -20,4 +21,5 @@ __all__ = [
 	"FollowUp",
 	"NotificationDispatchLog",
 	"NotificationLog",
+	"WhatsAppMessage",
 ]
