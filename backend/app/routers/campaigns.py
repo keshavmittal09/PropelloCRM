@@ -552,6 +552,86 @@ async def trigger_ai_analysis(
     return result
 
 
+# ─── WHATSAPP TEMPLATES (from WATI) — must be before /{campaign_id} ──────────
+@router.get("/whatsapp-templates")
+async def get_whatsapp_templates(current_user: Agent = Depends(get_current_user)):
+    _ensure_campaign_access(current_user)
+    if not settings.WATI_API_KEY or not settings.WATI_BASE_URL:
+        raise HTTPException(status_code=503, detail="WATI not configured")
+    url = f"{settings.WATI_BASE_URL.rstrip('/')}/api/v1/getMessageTemplates"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(url, headers={"Authorization": f"Bearer {settings.WATI_API_KEY}"})
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"WATI error: {resp.text}")
+    data = resp.json()
+    templates = data.get("messageTemplates") or data.get("templates") or []
+    return [
+        {
+            "id": t.get("id", t.get("elementName", "")),
+            "name": t.get("elementName") or t.get("name", ""),
+            "body": t.get("body", ""),
+            "status": t.get("status", ""),
+            "language": t.get("language", ""),
+        }
+        for t in templates
+        if t.get("status", "").upper() in ("APPROVED", "ACTIVE", "")
+    ]
+
+
+# ─── BROADCAST TO SPECIFIC PHONES ─────────────────────────────────────────────
+class BroadcastPhonesRequest(BaseModel):
+    phones: list[str]
+    message: str
+    template_name: str = ""
+    language: str = "en"
+    variable_name: str = ""
+    campaign_tag: str = "Broadcast"
+
+
+@router.post("/broadcast-phones")
+async def broadcast_to_phones(
+    data: BroadcastPhonesRequest,
+    current_user: Agent = Depends(get_current_user),
+):
+    _ensure_campaign_access(current_user)
+    if not data.phones:
+        raise HTTPException(status_code=400, detail="No phone numbers provided")
+
+    def normalise(p: str) -> str:
+        p = p.strip().replace(" ", "").replace("-", "").replace("+", "")
+        if len(p) == 10:
+            return f"91{p}"
+        return p
+
+    phones = [normalise(p) for p in data.phones if p.strip()]
+
+    async def send_one(phone: str):
+        payload = {
+            "phone": phone,
+            "name": data.variable_name or phone,
+            "message": data.message,
+            "call_id": str(uuid.uuid4()),
+            "campaign": data.campaign_tag,
+        }
+        headers = {
+            "X-Webhook-Secret": settings.WHATSAPP_CAMPAIGN_SECRET,
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(settings.WHATSAPP_CAMPAIGN_URL, json=payload, headers=headers)
+            if resp.status_code == 200:
+                return {"phone": phone, "status": "sent"}
+            return {"phone": phone, "status": "failed", "reason": resp.text}
+        except Exception as e:
+            return {"phone": phone, "status": "failed", "reason": str(e)}
+
+    results = await asyncio.gather(*[send_one(p) for p in phones])
+    sent = sum(1 for r in results if r["status"] == "sent")
+    failed = sum(1 for r in results if r["status"] == "failed")
+    return {"total": len(phones), "sent": sent, "failed": failed, "results": results}
+
+
 @router.get("/{campaign_id}", response_model=CampaignDetailResponse)
 async def get_campaign_detail(
     campaign_id: str,
@@ -618,32 +698,6 @@ async def delete_campaign(
         "leads_deleted": len(linked_leads),
         "activities_deleted": len(campaign_activities),
     }
-
-
-# ─── WHATSAPP TEMPLATES (from WATI) ──────────────────────────────────────────
-@router.get("/whatsapp-templates")
-async def get_whatsapp_templates(current_user: Agent = Depends(get_current_user)):
-    _ensure_campaign_access(current_user)
-    if not settings.WATI_API_KEY or not settings.WATI_BASE_URL:
-        raise HTTPException(status_code=503, detail="WATI not configured")
-    url = f"{settings.WATI_BASE_URL.rstrip('/')}/api/v1/getMessageTemplates"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url, headers={"Authorization": f"Bearer {settings.WATI_API_KEY}"})
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"WATI error: {resp.text}")
-    data = resp.json()
-    templates = data.get("messageTemplates") or data.get("templates") or []
-    return [
-        {
-            "id": t.get("id", t.get("elementName", "")),
-            "name": t.get("elementName") or t.get("name", ""),
-            "body": t.get("body", ""),
-            "status": t.get("status", ""),
-            "language": t.get("language", ""),
-        }
-        for t in templates
-        if t.get("status", "").upper() in ("APPROVED", "approved", "ACTIVE", "active", "")
-    ]
 
 
 # ─── BULK CAMPAIGN WHATSAPP TRIGGER ──────────────────────────────────────────
