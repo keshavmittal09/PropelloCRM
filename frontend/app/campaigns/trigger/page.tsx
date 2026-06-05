@@ -22,6 +22,7 @@ export default function TriggerCampaignPage() {
 
   // shared
   const [templates, setTemplates] = useState<WaTemplate[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(true)
   const [templatesError, setTemplatesError] = useState(false)
   const [templatesErrorMsg, setTemplatesErrorMsg] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<WaTemplate | null>(null)
@@ -49,9 +50,10 @@ export default function TriggerCampaignPage() {
   useEffect(() => {
     campaignsApi.getCampaigns().then(setCampaigns).catch(() => toast.error('Failed to load campaigns'))
     campaignsApi.getWhatsAppTemplates()
-      .then(setTemplates)
+      .then(data => { setTemplates(data); setTemplatesLoading(false) })
       .catch((e: any) => {
         setTemplatesError(true)
+        setTemplatesLoading(false)
         setTemplatesErrorMsg(e?.response?.data?.detail || e?.message || 'Could not load templates')
       })
   }, [])
@@ -182,8 +184,10 @@ export default function TriggerCampaignPage() {
 
             {templatesError ? (
               <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">⚠ {templatesErrorMsg || 'Failed to load templates'}</p>
-            ) : templates.length === 0 ? (
+            ) : templatesLoading ? (
               <p className="text-sm text-[#9d9185]">Loading templates…</p>
+            ) : templates.length === 0 ? (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2">No templates found. Check WHATSAPP_TOKEN and WABA_ID on Render, or write a custom message below.</p>
             ) : (
               <>
                 <div className="flex gap-3 mb-3">
