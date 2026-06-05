@@ -93,18 +93,17 @@ export default function TriggerCampaignPage() {
     if (!parsedPhones.length || !message.trim()) return
     setLoading(true); setResult(null)
     try {
-      const res = await campaignsApi.broadcastPhones({
-        phones: parsedPhones,
-        message: message.trim(),
-        template_name: selectedTemplate?.name ?? '',
-        language,
-        variable_name: variableName,
-        campaign_tag: broadcastTag,
+      const res = await fetch('/api/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phones: parsedPhones, message: message.trim(), variable_name: variableName, campaign_tag: broadcastTag }),
       })
-      setResult(res)
-      toast.success(`Sent! ${res.sent}/${res.total} delivered`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to send')
+      setResult(data)
+      toast.success(`Sent! ${data.sent}/${data.total} delivered`)
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? 'Failed to send')
+      toast.error(e?.message ?? 'Failed to send')
     } finally { setLoading(false) }
   }
 
