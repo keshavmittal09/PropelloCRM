@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     WHATSAPP_CAMPAIGN_URL: str = "https://whatsapp-agent-production-3525.up.railway.app/api/send"
     WHATSAPP_CAMPAIGN_SECRET: str = ""
 
+    # Meta WhatsApp Business API (for fetching approved templates)
+    WHATSAPP_TOKEN: str = ""
+    WABA_ID: str = ""
+
     # Supabase
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
