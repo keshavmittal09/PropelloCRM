@@ -112,3 +112,21 @@ async def init_db():
             """))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_agent_id ON performance_snapshots (agent_id)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_snapshot_date ON performance_snapshots (snapshot_date)"))
+
+            # WhatsApp chat history
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS whatsapp_messages (
+                    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+                    phone VARCHAR NOT NULL,
+                    contact_id VARCHAR REFERENCES contacts(id) ON DELETE SET NULL,
+                    lead_id VARCHAR REFERENCES leads(id) ON DELETE SET NULL,
+                    direction VARCHAR(10) NOT NULL DEFAULT 'inbound',
+                    message TEXT NOT NULL,
+                    wa_message_id VARCHAR UNIQUE,
+                    sender_name VARCHAR,
+                    timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_phone ON whatsapp_messages (phone)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_lead_id ON whatsapp_messages (lead_id)"))
