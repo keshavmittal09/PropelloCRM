@@ -95,6 +95,11 @@ async def global_exception_handler(request: Request, exc: Exception) -> Response
     )
 
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 # Register all routers (AFTER CORS middleware)
 app.include_router(auth_router,          prefix="/api/auth",          tags=["Auth"])
 app.include_router(leads_router,         prefix="/api/leads",         tags=["Leads"])
