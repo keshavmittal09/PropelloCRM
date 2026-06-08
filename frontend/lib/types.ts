@@ -197,9 +197,16 @@ export interface AnalyticsSummary {
   total_leads: number
   new_leads_today: number
   hot_leads: number
+  warm_leads: number
+  cold_leads: number
+  assigned_leads: number
   won_this_month: number
   lost_this_month: number
+  converted_leads: number
   pipeline_value: number
+  ai_calls_completed: number
+  whatsapp_sent: number
+  conversion_rate: number
 }
 
 export interface FunnelStage {
