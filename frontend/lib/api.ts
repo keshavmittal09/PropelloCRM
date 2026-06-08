@@ -105,6 +105,10 @@ export const leadsApi = {
     api.post<Activity>(`/api/leads/${id}/call-log`, data).then(r => r.data),
   sendWhatsApp: (id: string, template: string, custom_message?: string) =>
     api.post(`/api/leads/${id}/whatsapp`, { template, lead_id: id, custom_message }).then(r => r.data),
+  campaignTrigger: (id: string, message: string, campaign: string) =>
+    api.post(`/api/leads/${id}/campaign-trigger`, { message, campaign }).then(r => r.data),
+  getWhatsAppChats: (id: string) =>
+    api.get<{ id: string; direction: string; message: string; sender_name: string | null; timestamp: string }[]>(`/api/whatsapp/lead/${id}`).then(r => r.data),
   notify: (id: string, payload: LeadNotifyPayload) =>
     api.post(`/api/leads/${id}/notify`, payload).then(r => r.data),
   propertyMatches: (id: string) => api.get<Property[]>(`/api/leads/${id}/property-matches`).then(r => r.data),
@@ -240,6 +244,12 @@ export const campaignsApi = {
     api.delete(`/api/campaigns/${campaignId}/project`).then(r => r.data),
   deleteCampaign: (campaignId: string) =>
     api.delete<{ status: string; campaign_id: string; campaign_name: string }>(`/api/campaigns/${campaignId}`).then(r => r.data),
+  getWhatsAppTemplates: () =>
+    api.get<{ id: string; name: string; body: string; status: string; language: string }[]>('/api/campaigns/whatsapp-templates').then(r => r.data),
+  triggerCampaignWhatsApp: (campaignId: string, payload: { message: string; template_name?: string; campaign_tag?: string }) =>
+    api.post<{ total: number; sent: number; failed: number; skipped: number; results: { lead_id: string; phone?: string; status: string; reason?: string }[] }>(`/api/campaigns/${campaignId}/trigger-whatsapp`, payload).then(r => r.data),
+  broadcastPhones: (payload: { phones: string[]; message: string; template_name?: string; language?: string; variable_name?: string; campaign_tag?: string }) =>
+    api.post<{ total: number; sent: number; failed: number; results: { phone: string; status: string; reason?: string }[] }>('/api/campaigns/broadcast-phones', payload).then(r => r.data),
 }
 
 // ─── CAMPAIGN DASHBOARD (UNIFIED) ─────────────────────────────────────────
