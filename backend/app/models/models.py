@@ -49,7 +49,10 @@ class Activity(Base):
         SAEnum("call", "whatsapp", "email", "site_visit", "note",
                "stage_change", "priya_call", "property_shown",
                "task_completed", "lead_created", "campaign_call",
-               "task_completion_remark", name="activity_type")
+               "task_completion_remark", "ai_call_completed",
+               "ai_analysis_generated", "classified", "retry_scheduled",
+               "whatsapp_auto_sent", "assignment_update", "priority_change",
+               name="activity_type")
     )
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

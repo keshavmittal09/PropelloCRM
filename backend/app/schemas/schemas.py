@@ -217,6 +217,21 @@ class LeadResponse(BaseModel):
     last_call_topics: Optional[List[str]] = None
     last_call_interest: Optional[str] = None
     master_profile: Optional[Any] = None
+    # AI Call Analysis fields
+    call_score: Optional[int] = None
+    call_sentiment: Optional[str] = None
+    intent_level: Optional[str] = None
+    interest_level: Optional[str] = None
+    ai_recommended_action: Optional[str] = None
+    last_call_transcript: Optional[str] = None
+    last_call_summary: Optional[str] = None
+    # WhatsApp & retry tracking
+    whatsapp_status: str = "not_sent"
+    retry_count: int = 0
+    last_ai_call_date: Optional[datetime] = None
+    next_call_date: Optional[datetime] = None
+    max_retries_reached: bool = False
+    next_followup_date: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     contact: Optional[ContactResponse] = None

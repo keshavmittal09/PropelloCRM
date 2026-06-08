@@ -62,6 +62,22 @@ class Lead(Base):
     last_call_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     last_call_topics: Mapped[list | None] = mapped_column(JSON, nullable=True)
     last_call_interest: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # AI Call Analysis fields (stored after each AI call analysis)
+    call_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0-100 numeric score
+    call_sentiment: Mapped[str | None] = mapped_column(String(20), nullable=True)  # positive/neutral/negative
+    intent_level: Mapped[str | None] = mapped_column(String(20), nullable=True)  # high/medium/low
+    interest_level: Mapped[str | None] = mapped_column(String(20), nullable=True)  # high/medium/low
+    ai_recommended_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_call_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_call_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # WhatsApp tracking
+    whatsapp_status: Mapped[str] = mapped_column(String(20), default="not_sent")  # not_sent/sent/delivered/read/replied
+    # Cold lead retry tracking
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_ai_call_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_call_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    max_retries_reached: Mapped[bool] = mapped_column(Boolean, default=False)
+    next_followup_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Legacy/computed fields
     master_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     stage_changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

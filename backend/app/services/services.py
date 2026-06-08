@@ -195,11 +195,22 @@ async def get_summary(db: AsyncSession, days: int = 30) -> dict:
     hot = await db.execute(
         select(func.count(Lead.id)).where(Lead.lead_score == "hot", Lead.stage.notin_(["won", "lost"]))
     )
+    warm = await db.execute(
+        select(func.count(Lead.id)).where(Lead.lead_score == "warm", Lead.stage.notin_(["won", "lost"]))
+    )
+    cold = await db.execute(
+        select(func.count(Lead.id)).where(Lead.lead_score == "cold", Lead.stage.notin_(["won", "lost"]))
+    )
+    assigned = await db.execute(
+        select(func.count(Lead.id)).where(
+            Lead.assigned_to.isnot(None),
+            Lead.stage.notin_(["won", "lost"]),
+        )
+    )
 
     won = await db.execute(
         select(func.count(Lead.id)).where(Lead.stage == "won", Lead.updated_at >= from_date)
     )
-
     lost = await db.execute(
         select(func.count(Lead.id)).where(Lead.stage == "lost", Lead.updated_at >= from_date)
     )
@@ -210,13 +221,44 @@ async def get_summary(db: AsyncSession, days: int = 30) -> dict:
         .where(Lead.budget_max.isnot(None))
     )
 
+    # AI calls completed (activities of type ai_call_completed or priya_call or campaign_call)
+    ai_calls = await db.execute(
+        select(func.count(Activity.id)).where(
+            Activity.type.in_(["ai_call_completed", "priya_call", "campaign_call"]),
+            Activity.performed_at >= from_date,
+        )
+    )
+
+    # WhatsApp sent (activities of type whatsapp or whatsapp_auto_sent)
+    whatsapp_sent = await db.execute(
+        select(func.count(Activity.id)).where(
+            Activity.type.in_(["whatsapp", "whatsapp_auto_sent"]),
+            Activity.performed_at >= from_date,
+        )
+    )
+
+    # Conversion rate
+    total_in_period = await db.execute(
+        select(func.count(Lead.id)).where(Lead.created_at >= from_date)
+    )
+    won_in_period = won.scalar() or 0
+    total_in_period_count = total_in_period.scalar() or 0
+    conversion_rate = round((won_in_period / total_in_period_count * 100), 1) if total_in_period_count > 0 else 0.0
+
     return {
         "total_leads": total_count or 0,
         "new_leads_today": new_today.scalar() or 0,
         "hot_leads": hot.scalar() or 0,
-        "won_this_month": won.scalar() or 0,
+        "warm_leads": warm.scalar() or 0,
+        "cold_leads": cold.scalar() or 0,
+        "assigned_leads": assigned.scalar() or 0,
+        "won_this_month": won_in_period,
         "lost_this_month": lost.scalar() or 0,
+        "converted_leads": won_in_period,
         "pipeline_value": float(pipeline_value.scalar() or 0),
+        "ai_calls_completed": ai_calls.scalar() or 0,
+        "whatsapp_sent": whatsapp_sent.scalar() or 0,
+        "conversion_rate": conversion_rate,
     }
 
 

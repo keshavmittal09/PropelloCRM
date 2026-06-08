@@ -3,11 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, asc, desc
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel
-import uuid
-import httpx
 from app.core.dependencies import get_db, get_current_user
 from app.core.config import settings
 from app.models.agent import Agent
@@ -70,63 +68,32 @@ async def inbound_lead(
     return InboundLeadResponse(**result)
 
 
-@router.get("", response_model=list[LeadResponse])
-async def list_leads(
-    stage: Optional[str] = Query(None),
-    source: Optional[str] = Query(None),
-    lead_score: Optional[str] = Query(None),
-    assigned_to: Optional[str] = Query(None),
-    campaign_id: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    skip: int = Query(0),
-    limit: int = Query(50),
-    db: AsyncSession = Depends(get_db),
-    current_user: Agent = Depends(get_current_user),
+def _apply_lead_filters(query, filters_list):
+    """Apply a list of filter expressions to a SQLAlchemy query."""
+    if filters_list:
+        query = query.where(*filters_list)
+    return query
+
+
+def _build_lead_filters(
+    stage: Optional[str],
+    source: Optional[str],
+    lead_score: Optional[str],
+    assigned_to: Optional[str],
+    campaign_id: Optional[str],
+    sentiment: Optional[str],
+    whatsapp_status: Optional[str],
+    assigned: Optional[str],
+    retry: Optional[str],
+    min_score: Optional[int],
+    max_score: Optional[int],
+    date_filter: Optional[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+    current_user_role: str,
+    current_user_id: str,
 ):
-    query = (
-        select(Lead)
-        .options(selectinload(Lead.contact), selectinload(Lead.assigned_agent))
-        .order_by(Lead.updated_at.desc())
-    )
-
-    if stage:
-        query = query.where(Lead.stage == stage)
-    if source:
-        query = query.where(Lead.source == source)
-    if lead_score:
-        query = query.where(Lead.lead_score == lead_score)
-    if assigned_to:
-        query = query.where(Lead.assigned_to == assigned_to)
-    if campaign_id:
-        query = query.where(Lead.campaign_id == campaign_id)
-
-    # Agents only see their own leads
-    if current_user.role in ["agent", "call_agent"]:
-        query = query.where(Lead.assigned_to == current_user.id)
-
-    if search:
-        query = query.join(Contact).where(
-            or_(Contact.name.ilike(f"%{search}%"), Contact.phone.ilike(f"%{search}%"))
-        )
-
-    query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
-    return [LeadResponse.model_validate(l) for l in result.scalars().all()]
-
-
-@router.get("/paginated", response_model=LeadPageResponse)
-async def list_leads_paginated(
-    stage: Optional[str] = Query(None),
-    source: Optional[str] = Query(None),
-    lead_score: Optional[str] = Query(None),
-    assigned_to: Optional[str] = Query(None),
-    campaign_id: Optional[str] = Query(None),
-    search: Optional[str] = Query(None),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(25, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-    current_user: Agent = Depends(get_current_user),
-):
+    """Build the full list of SQLAlchemy filter expressions from query params."""
     filters = []
 
     if stage:
@@ -140,8 +107,140 @@ async def list_leads_paginated(
     if campaign_id:
         filters.append(Lead.campaign_id == campaign_id)
 
-    if current_user.role in ["agent", "call_agent"]:
-        filters.append(Lead.assigned_to == current_user.id)
+    # New filters
+    if sentiment:
+        filters.append(Lead.call_sentiment == sentiment)
+    if whatsapp_status:
+        filters.append(Lead.whatsapp_status == whatsapp_status)
+    if assigned == "assigned":
+        filters.append(Lead.assigned_to.isnot(None))
+    elif assigned == "unassigned":
+        filters.append(Lead.assigned_to.is_(None))
+    if retry == "retry_1":
+        filters.append(Lead.retry_count == 1)
+    elif retry == "retry_2":
+        filters.append(Lead.retry_count == 2)
+    elif retry == "retry_3":
+        filters.append(Lead.retry_count == 3)
+    elif retry == "max_reached":
+        filters.append(Lead.max_retries_reached == True)
+    if min_score is not None:
+        filters.append(Lead.call_score >= min_score)
+    if max_score is not None:
+        filters.append(Lead.call_score <= max_score)
+
+    # Date filters
+    now = datetime.utcnow()
+    if date_filter == "today":
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        filters.append(Lead.created_at >= day_start)
+    elif date_filter == "yesterday":
+        day_start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        filters.append(Lead.created_at >= day_start, Lead.created_at < day_end)
+    elif date_filter == "this_week":
+        week_start = now - timedelta(days=now.weekday())
+        filters.append(Lead.created_at >= week_start.replace(hour=0, minute=0, second=0, microsecond=0))
+    elif date_filter == "this_month":
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        filters.append(Lead.created_at >= month_start)
+    elif date_filter == "custom":
+        if date_from:
+            try:
+                filters.append(Lead.created_at >= datetime.fromisoformat(date_from))
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                filters.append(Lead.created_at <= datetime.fromisoformat(date_to))
+            except ValueError:
+                pass
+
+    # Role-based scoping
+    if current_user_role in ["agent", "call_agent"]:
+        filters.append(Lead.assigned_to == current_user_id)
+
+    return filters
+
+
+@router.get("", response_model=list[LeadResponse])
+async def list_leads(
+    stage: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    lead_score: Optional[str] = Query(None),
+    assigned_to: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
+    sentiment: Optional[str] = Query(None),
+    whatsapp_status: Optional[str] = Query(None),
+    assigned: Optional[str] = Query(None),
+    retry: Optional[str] = Query(None),
+    min_score: Optional[int] = Query(None, ge=0, le=100),
+    max_score: Optional[int] = Query(None, ge=0, le=100),
+    date_filter: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    skip: int = Query(0),
+    limit: int = Query(50),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    filters = _build_lead_filters(
+        stage, source, lead_score, assigned_to, campaign_id,
+        sentiment, whatsapp_status, assigned, retry,
+        min_score, max_score, date_filter, date_from, date_to,
+        current_user.role, current_user.id,
+    )
+
+    query = (
+        select(Lead)
+        .options(selectinload(Lead.contact), selectinload(Lead.assigned_agent))
+        .order_by(Lead.updated_at.desc())
+    )
+
+    if search:
+        query = query.join(Contact).where(
+            or_(Contact.name.ilike(f"%{search}%"), Contact.phone.ilike(f"%{search}%"))
+        )
+        if filters:
+            query = query.where(*filters)
+    else:
+        if filters:
+            query = query.where(*filters)
+
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    return [LeadResponse.model_validate(l) for l in result.scalars().all()]
+
+
+@router.get("/paginated", response_model=LeadPageResponse)
+async def list_leads_paginated(
+    stage: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    lead_score: Optional[str] = Query(None),
+    assigned_to: Optional[str] = Query(None),
+    campaign_id: Optional[str] = Query(None),
+    sentiment: Optional[str] = Query(None),
+    whatsapp_status: Optional[str] = Query(None),
+    assigned: Optional[str] = Query(None),
+    retry: Optional[str] = Query(None),
+    min_score: Optional[int] = Query(None, ge=0, le=100),
+    max_score: Optional[int] = Query(None, ge=0, le=100),
+    date_filter: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    filters = _build_lead_filters(
+        stage, source, lead_score, assigned_to, campaign_id,
+        sentiment, whatsapp_status, assigned, retry,
+        min_score, max_score, date_filter, date_from, date_to,
+        current_user.role, current_user.id,
+    )
 
     base_query = select(Lead)
     count_query = select(func.count(Lead.id))
@@ -496,44 +595,6 @@ async def send_whatsapp_message(
     )
     await db.commit()
     return result
-
-
-class CampaignTriggerRequest(BaseModel):
-    message: str
-    campaign: str = "Day 1"
-
-
-@router.post("/{lead_id}/campaign-trigger")
-async def campaign_whatsapp_trigger(
-    lead_id: str,
-    data: CampaignTriggerRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: Agent = Depends(get_current_user),
-):
-    lead = await db.get(Lead, lead_id)
-    if not lead:
-        raise HTTPException(status_code=404, detail="Lead not found")
-    _ensure_lead_scope(current_user, lead)
-    contact = await db.get(Contact, lead.contact_id)
-    if not contact or not contact.phone:
-        raise HTTPException(status_code=400, detail="Lead has no phone number")
-
-    payload = {
-        "phone": contact.phone,
-        "name": contact.name,
-        "message": data.message,
-        "call_id": str(uuid.uuid4()),
-        "campaign": data.campaign,
-    }
-    headers = {
-        "X-Webhook-Secret": settings.WHATSAPP_CAMPAIGN_SECRET,
-        "Content-Type": "application/json",
-    }
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(settings.WHATSAPP_CAMPAIGN_URL, json=payload, headers=headers)
-    if resp.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Campaign agent error: {resp.text}")
-    return resp.json()
 
 
 @router.post("/{lead_id}/notify")

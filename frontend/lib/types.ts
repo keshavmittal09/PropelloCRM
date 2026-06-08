@@ -3,7 +3,10 @@ export type LeadStage = 'new' | 'contacted' | 'site_visit_scheduled' | 'site_vis
 export type LeadScore = 'hot' | 'warm' | 'cold'
 export type LeadSource = 'priya_ai' | 'website' | 'facebook_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'walk_in' | 'referral' | 'email_campaign' | 'manual' | 'campaign'
 export type TaskStatus = 'pending' | 'done' | 'overdue' | 'cancelled'
-export type ActivityType = 'call' | 'whatsapp' | 'email' | 'site_visit' | 'note' | 'stage_change' | 'priya_call' | 'property_shown' | 'task_completed' | 'lead_created' | 'campaign_call' | 'task_completion_remark'
+export type ActivityType = 'call' | 'whatsapp' | 'email' | 'site_visit' | 'note' | 'stage_change' | 'priya_call' | 'property_shown' | 'task_completed' | 'lead_created' | 'campaign_call' | 'task_completion_remark' | 'ai_call_completed' | 'ai_analysis_generated' | 'classified' | 'retry_scheduled' | 'whatsapp_auto_sent' | 'assignment_update' | 'priority_change'
+export type CallSentiment = 'positive' | 'neutral' | 'negative'
+export type IntentLevel = 'high' | 'medium' | 'low'
+export type WhatsAppStatus = 'not_sent' | 'sent' | 'delivered' | 'read' | 'replied'
 
 export interface Agent {
   id: string
@@ -66,6 +69,21 @@ export interface Lead {
   last_call_topics?: string[] | null
   last_call_interest?: string | null
   master_profile?: Record<string, unknown> | null
+  // AI Call Analysis fields
+  call_score?: number | null
+  call_sentiment?: CallSentiment | null
+  intent_level?: IntentLevel | null
+  interest_level?: IntentLevel | null
+  ai_recommended_action?: string | null
+  last_call_transcript?: string | null
+  last_call_summary?: string | null
+  // WhatsApp & retry tracking
+  whatsapp_status?: WhatsAppStatus
+  retry_count?: number
+  last_ai_call_date?: string | null
+  next_call_date?: string | null
+  max_retries_reached?: boolean
+  next_followup_date?: string | null
   contact?: Contact
   assigned_agent?: Agent
 }

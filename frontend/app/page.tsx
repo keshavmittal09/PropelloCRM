@@ -13,9 +13,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { Agent, Task } from '@/lib/types'
 
-function StatCard({ label, value, sub, color = 'text-gray-900' }: { label: string; value: string | number; sub?: string; color?: string }) {
+function StatCard({ label, value, sub, color = 'text-gray-900', onClick }: { label: string; value: string | number; sub?: string; color?: string; onClick?: () => void }) {
   return (
-    <div className="crm-surface crm-card-hover rounded-3xl p-6">
+    <div
+      className={`crm-surface crm-card-hover rounded-3xl p-6 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={onClick}
+    >
       <p className="text-[11px] tracking-[0.16em] text-[#887d72] font-semibold uppercase mb-1">{label}</p>
       <p className={`text-4xl font-semibold tracking-tight ${color}`}>{value}</p>
       {sub && <p className="text-[11px] font-medium text-[#9d9185] mt-2 tracking-[0.12em]">{sub}</p>}
@@ -63,14 +66,54 @@ export default function Dashboard() {
           <p className="text-[#756c63] font-medium tracking-wide text-sm mt-2">Here is your live real estate pipeline overview.</p>
         </div>
 
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-5 mb-10">
-          <StatCard label="Total leads" value={summary?.total_leads ?? '—'} />
-          <StatCard label="New today" value={summary?.new_leads_today ?? '—'} />
-          <StatCard label="Hot leads" value={summary?.hot_leads ?? '—'} />
-          <StatCard label="Won (30d)" value={summary?.won_this_month ?? '—'} />
-          <StatCard label="Lost (30d)" value={summary?.lost_this_month ?? '—'} color="text-gray-400" />
-          <StatCard label="Pipeline value" value={formatCurrency(summary?.pipeline_value ?? 0)} sub="ACTIVE LEADS" />
+        {/* Primary Stats grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-5">
+          <StatCard label="Total Leads" value={summary?.total_leads ?? '—'}
+            onClick={() => router.push('/leads')} />
+          <StatCard label="New Today" value={summary?.new_leads_today ?? '—'}
+            onClick={() => router.push('/leads?date_filter=today')} />
+          <StatCard label="Pipeline Value" value={formatCurrency(summary?.pipeline_value ?? 0)} sub="ACTIVE LEADS" />
+          <StatCard label="Converted (30d)" value={summary?.converted_leads ?? '—'} color="text-emerald-600"
+            onClick={() => router.push('/leads?stage=won')} />
+          <StatCard label="Conversion Rate" value={`${summary?.conversion_rate ?? 0}%`} sub="30-DAY RATE" color="text-indigo-600" />
+        </div>
+
+        {/* Lead Category Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
+          <div className="rounded-3xl p-5 bg-red-50 border border-red-100 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/leads?lead_score=hot')}>
+            <p className="text-[11px] tracking-[0.16em] text-red-500 font-semibold uppercase mb-1">Hot Leads</p>
+            <p className="text-4xl font-semibold tracking-tight text-red-600">{summary?.hot_leads ?? '—'}</p>
+            <p className="text-[11px] font-medium text-red-400 mt-2 tracking-[0.12em]">SCORE 80–100</p>
+          </div>
+          <div className="rounded-3xl p-5 bg-yellow-50 border border-yellow-100 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/leads?lead_score=warm')}>
+            <p className="text-[11px] tracking-[0.16em] text-yellow-600 font-semibold uppercase mb-1">Warm Leads</p>
+            <p className="text-4xl font-semibold tracking-tight text-yellow-700">{summary?.warm_leads ?? '—'}</p>
+            <p className="text-[11px] font-medium text-yellow-500 mt-2 tracking-[0.12em]">SCORE 50–79</p>
+          </div>
+          <div className="rounded-3xl p-5 bg-blue-50 border border-blue-100 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/leads?lead_score=cold')}>
+            <p className="text-[11px] tracking-[0.16em] text-blue-500 font-semibold uppercase mb-1">Cold Leads</p>
+            <p className="text-4xl font-semibold tracking-tight text-blue-600">{summary?.cold_leads ?? '—'}</p>
+            <p className="text-[11px] font-medium text-blue-400 mt-2 tracking-[0.12em]">SCORE 0–49</p>
+          </div>
+          <div className="rounded-3xl p-5 bg-gray-50 border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/leads?assigned=assigned')}>
+            <p className="text-[11px] tracking-[0.16em] text-gray-500 font-semibold uppercase mb-1">Assigned</p>
+            <p className="text-4xl font-semibold tracking-tight text-gray-700">{summary?.assigned_leads ?? '—'}</p>
+            <p className="text-[11px] font-medium text-gray-400 mt-2 tracking-[0.12em]">ACTIVE LEADS</p>
+          </div>
+        </div>
+
+        {/* AI & WhatsApp Stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+          <StatCard label="AI Calls (30d)" value={summary?.ai_calls_completed ?? '—'} sub="PRIYA + CAMPAIGN" color="text-violet-600" />
+          <StatCard label="WhatsApp Sent (30d)" value={summary?.whatsapp_sent ?? '—'} sub="AUTO + MANUAL" color="text-green-600" />
+          <StatCard label="Won (30d)" value={summary?.won_this_month ?? '—'} color="text-emerald-700"
+            onClick={() => router.push('/leads?stage=won')} />
+          <StatCard label="Lost (30d)" value={summary?.lost_this_month ?? '—'} color="text-gray-400"
+            onClick={() => router.push('/leads?stage=lost')} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -159,6 +202,12 @@ export default function Dashboard() {
           </button>
           <button onClick={() => router.push('/leads?lead_score=hot')} className="px-6 py-3 bg-[#fffaf5] text-[#2d261f] border border-[#e7d5c0] rounded-full text-sm font-semibold hover:border-[#d7bea4] transition-all shadow-sm">
             View Hot Leads
+          </button>
+          <button onClick={() => router.push('/leads?lead_score=cold&retry=retry_1')} className="px-6 py-3 bg-[#fffaf5] text-[#2d261f] border border-[#e7d5c0] rounded-full text-sm font-semibold hover:border-[#d7bea4] transition-all shadow-sm">
+            Cold Retries
+          </button>
+          <button onClick={() => router.push('/leads?whatsapp_status=not_sent&lead_score=hot')} className="px-6 py-3 bg-[#fffaf5] text-[#2d261f] border border-[#e7d5c0] rounded-full text-sm font-semibold hover:border-[#d7bea4] transition-all shadow-sm">
+            Hot — No WhatsApp
           </button>
           <button onClick={() => router.push('/analytics')} className="px-6 py-3 bg-[#fffaf5] text-[#2d261f] border border-[#e7d5c0] rounded-full text-sm font-semibold hover:border-[#d7bea4] transition-all shadow-sm">
             Analytics
