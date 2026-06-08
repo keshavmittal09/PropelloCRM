@@ -337,6 +337,62 @@ export function WhatsAppSender({ leadId, onClose }: { leadId: string; onClose: (
 }
 
 
+// ─── CAMPAIGN WHATSAPP SENDER ─────────────────────────────────────────────────
+export function CampaignWhatsAppSender({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+  const [message, setMessage] = useState('')
+  const [campaign, setCampaign] = useState('Day 1')
+  const [loading, setLoading] = useState(false)
+
+  const send = async () => {
+    if (!message.trim()) return
+    setLoading(true)
+    try {
+      await leadsApi.campaignTrigger(leadId, message, campaign)
+      toast.success('Campaign WhatsApp sent!')
+      onClose()
+    } catch {
+      toast.error('Failed to send campaign message')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="border border-green-100 rounded-3xl p-5 bg-[#f6fef9] shadow-sm">
+      <p className="text-[15px] font-semibold tracking-tight text-[#1d1d1f] mb-4">Campaign WhatsApp</p>
+      <div className="space-y-3 mb-4">
+        <div>
+          <label className="text-[11px] font-semibold text-[#887d72] uppercase tracking-widest mb-1 block">Campaign Tag</label>
+          <input
+            value={campaign}
+            onChange={e => setCampaign(e.target.value)}
+            placeholder="e.g. Day 1, Follow-up"
+            className="w-full px-4 py-2.5 border border-gray-200/80 rounded-xl text-[13px] bg-white focus:outline-none focus:border-green-400"
+          />
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold text-[#887d72] uppercase tracking-widest mb-1 block">Message</label>
+          <textarea
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            rows={3}
+            placeholder="Hi Rahul ji, following up on Krishna Aura..."
+            className="w-full px-4 py-2.5 border border-gray-200/80 rounded-xl text-[13px] bg-white focus:outline-none focus:border-green-400 resize-none"
+          />
+        </div>
+      </div>
+      <div className="flex gap-2.5">
+        <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200/80 rounded-full text-sm font-semibold text-[#86868b] hover:text-[#1d1d1f] hover:bg-white transition-all bg-white">Cancel</button>
+        <button onClick={send} disabled={!message.trim() || loading}
+          className="flex-1 py-2.5 bg-green-600 text-white rounded-full text-sm font-semibold disabled:opacity-50 hover:bg-green-700 transition-all shadow-sm">
+          {loading ? 'Sending...' : 'Send Campaign'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
 // ─── PROPERTY MATCH PANEL ─────────────────────────────────────────────────────
 export function PropertyMatchPanel({ leadId }: { leadId: string }) {
   const { data: properties, isLoading } = usePropertyMatches(leadId)
