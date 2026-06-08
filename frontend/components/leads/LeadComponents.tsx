@@ -39,6 +39,19 @@ export default function LostReasonModal({ onConfirm, onCancel }: { onConfirm: (r
 }
 
 
+// ─── ACTIVITY TYPE STYLE MAP ─────────────────────────────────────────────────
+const AI_ACTIVITY_TYPES = new Set(['ai_call_completed', 'ai_analysis_generated', 'classified', 'retry_scheduled', 'whatsapp_auto_sent'])
+
+const activityBgColor: Record<string, string> = {
+  ai_analysis_generated: 'border-violet-100 bg-violet-50/30',
+  classified: 'border-amber-100 bg-amber-50/30',
+  retry_scheduled: 'border-orange-100 bg-orange-50/30',
+  whatsapp_auto_sent: 'border-green-100 bg-green-50/30',
+  ai_call_completed: 'border-violet-100 bg-violet-50/30',
+  assignment_update: 'border-blue-100 bg-blue-50/30',
+  campaign_call: 'border-indigo-100 bg-indigo-50/30',
+}
+
 // ─── LEAD TIMELINE ────────────────────────────────────────────────────────────
 export function LeadTimeline({ activities }: { activities: Activity[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -59,8 +72,100 @@ export function LeadTimeline({ activities }: { activities: Activity[] }) {
               <p className="text-sm font-medium text-gray-900">{act.title}</p>
               <span className="text-xs text-gray-400 flex-shrink-0">{timeAgo(act.performed_at)}</span>
             </div>
+
+            {/* AI Analysis Generated */}
+            {act.type === 'ai_analysis_generated' && (
+              <div className={`mt-2 border rounded-xl p-3 ${activityBgColor[act.type]}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-600 text-white">AI Analysis</span>
+                  {(act.meta as any)?.score && (
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                      (act.meta as any).score === 'hot' ? 'bg-red-100 text-red-700' :
+                      (act.meta as any).score === 'warm' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-blue-100 text-blue-700'
+                    }`}>
+                      {String((act.meta as any).score).toUpperCase()} · {(act.meta as any)?.numeric_score ?? '—'}/100
+                    </span>
+                  )}
+                  {(act.meta as any)?.sentiment && (
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${
+                      (act.meta as any).sentiment === 'positive' ? 'bg-green-100 text-green-700' :
+                      (act.meta as any).sentiment === 'negative' ? 'bg-red-100 text-red-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {(act.meta as any).sentiment}
+                    </span>
+                  )}
+                  {(act.meta as any)?.intent_level && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                      Intent: {(act.meta as any).intent_level}
+                    </span>
+                  )}
+                </div>
+                {act.description && <p className="text-sm text-gray-700 mt-2">{act.description}</p>}
+                {(act.meta as any)?.risk_flags?.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] text-red-500 font-medium">Risk flags:</p>
+                    <ul className="text-xs text-red-600 mt-0.5 list-disc pl-4">
+                      {((act.meta as any).risk_flags as string[]).map((f, idx) => <li key={idx}>{f}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Classified (Hot/Warm/Cold) */}
+            {act.type === 'classified' && (
+              <div className={`mt-2 border rounded-xl p-3 ${activityBgColor[act.type]}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500 text-white">Classification</span>
+                  {(act.meta as any)?.classification && (
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${
+                      (act.meta as any).classification === 'hot' ? 'bg-red-100 text-red-700' :
+                      (act.meta as any).classification === 'warm' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-blue-100 text-blue-700'
+                    }`}>
+                      {String((act.meta as any).classification).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                {act.description && <p className="text-sm text-gray-700 mt-2">{act.description}</p>}
+              </div>
+            )}
+
+            {/* Retry Scheduled */}
+            {act.type === 'retry_scheduled' && (
+              <div className={`mt-2 border rounded-xl p-3 ${activityBgColor[act.type]}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-orange-500 text-white">Cold Retry</span>
+                  {(act.meta as any)?.retry_number && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                      Retry #{(act.meta as any).retry_number} · {(act.meta as any).delay_days}d delay
+                    </span>
+                  )}
+                </div>
+                {act.description && <p className="text-sm text-gray-700 mt-2">{act.description}</p>}
+              </div>
+            )}
+
+            {/* WhatsApp Auto-sent */}
+            {act.type === 'whatsapp_auto_sent' && (
+              <div className={`mt-2 border rounded-xl p-3 ${activityBgColor[act.type]}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-600 text-white">Auto WhatsApp</span>
+                  {(act.meta as any)?.template && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-700">
+                      Template: {(act.meta as any).template}
+                    </span>
+                  )}
+                </div>
+                {act.description && <p className="text-sm text-gray-600 mt-2 text-xs">{act.description}</p>}
+              </div>
+            )}
+
+            {/* Campaign Call (existing, preserved) */}
             {act.type === 'campaign_call' && (
-              <div className="mt-2 border border-indigo-100 rounded-xl bg-indigo-50/30 p-3">
+              <div className={`mt-2 border rounded-xl p-3 ${activityBgColor[act.type]}`}>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-600 text-white">Campaign Call</span>
                   {act.call_eval_tag && (
@@ -74,15 +179,12 @@ export function LeadTimeline({ activities }: { activities: Activity[] }) {
                     </span>
                   )}
                 </div>
-
                 {(act.call_summary || act.description) && (
                   <p className="text-sm text-gray-700 mt-2">{act.call_summary || act.description}</p>
                 )}
-
                 {act.recording_url && (
                   <audio controls src={act.recording_url} className="w-full mt-2 h-8" />
                 )}
-
                 {act.transcript && (
                   <div className="mt-2">
                     <button
@@ -100,7 +202,11 @@ export function LeadTimeline({ activities }: { activities: Activity[] }) {
                 )}
               </div>
             )}
-            {act.type !== 'campaign_call' && act.description && <p className="text-sm text-gray-600 mt-0.5">{act.description}</p>}
+
+            {/* Generic description for non-special types */}
+            {!AI_ACTIVITY_TYPES.has(act.type) && act.type !== 'campaign_call' && act.type !== 'classified' && act.description && (
+              <p className="text-sm text-gray-600 mt-0.5">{act.description}</p>
+            )}
             {act.outcome && <span className="text-xs text-indigo-600 font-medium">{act.outcome}</span>}
             {act.performed_by_agent && <p className="text-xs text-gray-400 mt-0.5">by {act.performed_by_agent.name}</p>}
           </div>
@@ -224,62 +330,6 @@ export function WhatsAppSender({ leadId, onClose }: { leadId: string; onClose: (
         <button onClick={send} disabled={!template || loading}
           className="flex-1 py-2.5 bg-[#1d1d1f] text-white rounded-full text-sm font-semibold disabled:opacity-50 hover:bg-black transition-all shadow-sm">
           {loading ? 'Sending...' : 'Send'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-
-// ─── CAMPAIGN WHATSAPP SENDER ─────────────────────────────────────────────────
-export function CampaignWhatsAppSender({ leadId, onClose }: { leadId: string; onClose: () => void }) {
-  const [message, setMessage] = useState('')
-  const [campaign, setCampaign] = useState('Day 1')
-  const [loading, setLoading] = useState(false)
-
-  const send = async () => {
-    if (!message.trim()) return
-    setLoading(true)
-    try {
-      await leadsApi.campaignTrigger(leadId, message, campaign)
-      toast.success('Campaign WhatsApp sent!')
-      onClose()
-    } catch {
-      toast.error('Failed to send campaign message')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="border border-green-100 rounded-3xl p-5 bg-[#f6fef9] shadow-sm">
-      <p className="text-[15px] font-semibold tracking-tight text-[#1d1d1f] mb-4">Campaign WhatsApp</p>
-      <div className="space-y-3 mb-4">
-        <div>
-          <label className="text-[11px] font-semibold text-[#887d72] uppercase tracking-widest mb-1 block">Campaign Tag</label>
-          <input
-            value={campaign}
-            onChange={e => setCampaign(e.target.value)}
-            placeholder="e.g. Day 1, Follow-up"
-            className="w-full px-4 py-2.5 border border-gray-200/80 rounded-xl text-[13px] bg-white focus:outline-none focus:border-green-400"
-          />
-        </div>
-        <div>
-          <label className="text-[11px] font-semibold text-[#887d72] uppercase tracking-widest mb-1 block">Message</label>
-          <textarea
-            value={message}
-            onChange={e => setMessage(e.target.value)}
-            rows={3}
-            placeholder="Hi Rahul ji, following up on Krishna Aura..."
-            className="w-full px-4 py-2.5 border border-gray-200/80 rounded-xl text-[13px] bg-white focus:outline-none focus:border-green-400 resize-none"
-          />
-        </div>
-      </div>
-      <div className="flex gap-2.5">
-        <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200/80 rounded-full text-sm font-semibold text-[#86868b] hover:text-[#1d1d1f] hover:bg-white transition-all bg-white">Cancel</button>
-        <button onClick={send} disabled={!message.trim() || loading}
-          className="flex-1 py-2.5 bg-green-600 text-white rounded-full text-sm font-semibold disabled:opacity-50 hover:bg-green-700 transition-all shadow-sm">
-          {loading ? 'Sending...' : 'Send Campaign'}
         </button>
       </div>
     </div>

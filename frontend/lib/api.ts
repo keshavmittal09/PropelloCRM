@@ -83,7 +83,13 @@ export const meApi = {
 export const leadsApi = {
   list: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; search?: string; skip?: number; limit?: number }) =>
     api.get<Lead[]>('/api/leads', { params }).then(r => r.data),
-  listPaginated: (params?: { stage?: string; source?: string; lead_score?: string; assigned_to?: string; campaign_id?: string; search?: string; page?: number; page_size?: number }) =>
+  listPaginated: (params?: {
+    stage?: string; source?: string; lead_score?: string; assigned_to?: string;
+    campaign_id?: string; search?: string; page?: number; page_size?: number;
+    sentiment?: string; whatsapp_status?: string; assigned?: string; retry?: string;
+    min_score?: number; max_score?: number;
+    date_filter?: string; date_from?: string; date_to?: string;
+  }) =>
     api.get<LeadPaginatedResponse>('/api/leads/paginated', { params }).then(r => r.data),
   board: () => api.get<KanbanBoard>('/api/leads/board').then(r => r.data),
   get: (id: string) => api.get<Lead>(`/api/leads/${id}`).then(r => r.data),

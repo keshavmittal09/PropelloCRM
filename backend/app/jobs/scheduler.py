@@ -153,6 +153,23 @@ async def ai_batch_rescore():
             logger.error(f"Error in ai_batch_rescore: {e}")
 
 
+async def process_cold_retries():
+    """
+    Runs every hour.
+    Finds COLD leads whose retry callback is due and re-runs AI analysis.
+    If interest detected: converts to WARM/HOT and triggers automation.
+    After max retries: marks lead as Lost.
+    """
+    async with AsyncSessionLocal() as db:
+        try:
+            from app.services.ai_workflow_service import execute_cold_retries
+            count = await execute_cold_retries(db)
+            if count > 0:
+                logger.info(f"Cold retry job: processed {count} leads")
+        except Exception as e:
+            logger.error(f"Error in process_cold_retries: {e}")
+
+
 async def send_morning_digest():
     """
     Runs every morning at 9 AM IST (3:30 UTC).
@@ -247,6 +264,9 @@ def start_scheduler():
 
     # Every 6 hours — AI batch rescore
     scheduler.add_job(ai_batch_rescore, IntervalTrigger(hours=6))
+
+    # Every hour — cold lead retry callbacks
+    scheduler.add_job(process_cold_retries, IntervalTrigger(hours=1))
 
     # Daily at noon UTC — dormant lead detection
     scheduler.add_job(detect_dormant_leads, CronTrigger(hour=12, minute=0))

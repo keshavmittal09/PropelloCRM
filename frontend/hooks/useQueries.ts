@@ -12,6 +12,15 @@ export const useLeadsPaginated = (params?: {
   lead_score?: string
   assigned_to?: string
   campaign_id?: string
+  sentiment?: string
+  whatsapp_status?: string
+  assigned?: string
+  retry?: string
+  min_score?: number
+  max_score?: number
+  date_filter?: string
+  date_from?: string
+  date_to?: string
   search?: string
   page?: number
   page_size?: number

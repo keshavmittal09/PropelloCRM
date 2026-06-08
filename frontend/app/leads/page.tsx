@@ -13,7 +13,37 @@ import type { LeadStage, LeadScore } from '@/lib/types'
 const STAGES: LeadStage[] = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture']
 const SCORES: LeadScore[] = ['hot', 'warm', 'cold']
 const SOURCES = ['priya_ai', 'website', 'facebook_ads', 'google_ads', '99acres', 'magicbricks', 'walk_in', 'referral', 'email_campaign', 'manual', 'campaign']
+const SENTIMENTS = ['positive', 'neutral', 'negative']
+const WA_STATUSES = ['not_sent', 'sent', 'delivered', 'read', 'replied']
+const SCORE_RANGES = [
+  { label: '0–20', min: 0, max: 20 },
+  { label: '21–40', min: 21, max: 40 },
+  { label: '41–60', min: 41, max: 60 },
+  { label: '61–80', min: 61, max: 80 },
+  { label: '81–100', min: 81, max: 100 },
+]
+const DATE_FILTERS = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'this_week', label: 'This Week' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'custom', label: 'Custom Range' },
+]
 const PAGE_SIZE = 25
+
+const sentimentColor = (s: string | null | undefined) => {
+  if (s === 'positive') return 'text-green-600 bg-green-50'
+  if (s === 'negative') return 'text-red-600 bg-red-50'
+  return 'text-gray-500 bg-gray-50'
+}
+
+const waStatusColor = (s: string | undefined) => {
+  if (s === 'replied') return 'text-green-700 bg-green-100'
+  if (s === 'read') return 'text-blue-700 bg-blue-100'
+  if (s === 'delivered') return 'text-indigo-600 bg-indigo-50'
+  if (s === 'sent') return 'text-yellow-700 bg-yellow-100'
+  return 'text-gray-400 bg-gray-50'
+}
 
 export default function LeadsPage() {
   const router = useRouter()
@@ -24,8 +54,17 @@ export default function LeadsPage() {
   const [score, setScore] = useState('')
   const [source, setSource] = useState('')
   const [campaignId, setCampaignId] = useState('')
+  const [sentiment, setSentiment] = useState('')
+  const [waStatus, setWaStatus] = useState('')
+  const [assigned, setAssigned] = useState('')
+  const [retry, setRetry] = useState('')
+  const [scoreRange, setScoreRange] = useState<{ min?: number; max?: number }>({})
+  const [dateFilter, setDateFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const [showNewLead, setShowNewLead] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -35,9 +74,7 @@ export default function LeadsPage() {
     setCampaignId(params.get('campaign_id') ?? '')
   }, [])
 
-  useEffect(() => {
-    setPage(1)
-  }, [stage, score, source, campaignId, search])
+  useEffect(() => { setPage(1) }, [stage, score, source, campaignId, search, sentiment, waStatus, assigned, retry, scoreRange, dateFilter, dateFrom, dateTo])
 
   const { data: leadsPage, isLoading } = useLeadsPaginated({
     ...(stage && { stage }),
@@ -45,6 +82,15 @@ export default function LeadsPage() {
     ...(source && { source }),
     ...(campaignId && { campaign_id: campaignId }),
     ...(search && { search }),
+    ...(sentiment && { sentiment }),
+    ...(waStatus && { whatsapp_status: waStatus }),
+    ...(assigned && { assigned }),
+    ...(retry && { retry }),
+    ...(scoreRange.min !== undefined && { min_score: scoreRange.min }),
+    ...(scoreRange.max !== undefined && { max_score: scoreRange.max }),
+    ...(dateFilter && { date_filter: dateFilter }),
+    ...(dateFilter === 'custom' && dateFrom && { date_from: dateFrom }),
+    ...(dateFilter === 'custom' && dateTo && { date_to: dateTo }),
     page,
     page_size: PAGE_SIZE,
   })
@@ -57,6 +103,14 @@ export default function LeadsPage() {
   const startPage = Math.max(1, Math.min(page - 2, totalPages - 4))
   const endPage = Math.min(totalPages, startPage + 4)
 
+  const hasActiveFilters = !!(stage || score || source || search || campaignId || sentiment || waStatus || assigned || retry || scoreRange.min !== undefined || dateFilter)
+
+  const clearFilters = () => {
+    setStage(''); setScore(''); setSource(''); setCampaignId(''); setSearch('')
+    setSentiment(''); setWaStatus(''); setAssigned(''); setRetry('')
+    setScoreRange({}); setDateFilter(''); setDateFrom(''); setDateTo('')
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
@@ -66,7 +120,7 @@ export default function LeadsPage() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">All Leads</h2>
             <p className="text-sm text-gray-500 mt-0.5">
-              {totalLeads} leads found {totalLeads > 0 ? `· Showing ${visibleStart}-${visibleEnd}` : ''}
+              {totalLeads} leads found {totalLeads > 0 ? `· Showing ${visibleStart}–${visibleEnd}` : ''}
             </p>
           </div>
           <div className="flex gap-2">
@@ -81,37 +135,133 @@ export default function LeadsPage() {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="px-8 py-4 bg-white border-b border-gray-100 flex gap-3 flex-wrap">
+        {/* Primary Filters */}
+        <div className="px-8 py-4 bg-white border-b border-gray-100 flex gap-3 flex-wrap items-center">
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by name or phone..."
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-56" />
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 w-52" />
 
           <select value={stage} onChange={e => setStage(e.target.value)}
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
             <option value="">All stages</option>
-            {STAGES.map(s => <option key={s} value={s}>{stageConfig[s].label}</option>)}
+            {STAGES.map(s => <option key={s} value={s}>{stageConfig[s]?.label ?? s}</option>)}
           </select>
 
           <select value={score} onChange={e => setScore(e.target.value)}
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-            <option value="">All scores</option>
+            <option value="">All categories</option>
             {SCORES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
           </select>
 
           <select value={source} onChange={e => setSource(e.target.value)}
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
             <option value="">All sources</option>
-            {SOURCES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+            {SOURCES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
 
-          {(stage || score || source || search || campaignId) && (
-            <button onClick={() => { setStage(''); setScore(''); setSource(''); setCampaignId(''); setSearch('') }}
+          <button
+            onClick={() => setShowAdvanced(v => !v)}
+            className={`px-3 py-2 text-sm border rounded-lg font-medium transition-colors ${showAdvanced ? 'border-indigo-500 text-indigo-600 bg-indigo-50' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {showAdvanced ? 'Hide filters ▲' : 'More filters ▼'}
+          </button>
+
+          {hasActiveFilters && (
+            <button onClick={clearFilters}
               className="px-3 py-2 text-sm text-gray-500 hover:text-red-600 border border-gray-200 rounded-lg hover:border-red-200">
-              Clear filters
+              Clear all
             </button>
           )}
         </div>
+
+        {/* Advanced Filters */}
+        {showAdvanced && (
+          <div className="px-8 py-4 bg-indigo-50/40 border-b border-gray-100 flex gap-3 flex-wrap items-end">
+            {/* Sentiment */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Sentiment</p>
+              <select value={sentiment} onChange={e => setSentiment(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="">Any</option>
+                {SENTIMENTS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+              </select>
+            </div>
+
+            {/* WhatsApp */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">WhatsApp Status</p>
+              <select value={waStatus} onChange={e => setWaStatus(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="">Any</option>
+                {WA_STATUSES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+              </select>
+            </div>
+
+            {/* Assignment */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Assignment</p>
+              <select value={assigned} onChange={e => setAssigned(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="">All</option>
+                <option value="assigned">Assigned</option>
+                <option value="unassigned">Unassigned</option>
+              </select>
+            </div>
+
+            {/* Retry */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Retry Status</p>
+              <select value={retry} onChange={e => setRetry(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="">All</option>
+                <option value="retry_1">Retry 1</option>
+                <option value="retry_2">Retry 2</option>
+                <option value="retry_3">Retry 3</option>
+                <option value="max_reached">Max Retry Reached</option>
+              </select>
+            </div>
+
+            {/* Score Range */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">AI Score Range</p>
+              <select
+                value={scoreRange.min !== undefined ? `${scoreRange.min}-${scoreRange.max}` : ''}
+                onChange={e => {
+                  if (!e.target.value) { setScoreRange({}); return }
+                  const found = SCORE_RANGES.find(r => `${r.min}-${r.max}` === e.target.value)
+                  if (found) setScoreRange({ min: found.min, max: found.max })
+                }}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="">Any score</option>
+                {SCORE_RANGES.map(r => <option key={r.label} value={`${r.min}-${r.max}`}>{r.label}</option>)}
+              </select>
+            </div>
+
+            {/* Date Filter */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-1">Date</p>
+              <select value={dateFilter} onChange={e => { setDateFilter(e.target.value); setDateFrom(''); setDateTo('') }}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                <option value="">Any time</option>
+                {DATE_FILTERS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+              </select>
+            </div>
+
+            {dateFilter === 'custom' && (
+              <>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">From</p>
+                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">To</p>
+                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Table */}
         <div className="px-8 py-6">
@@ -126,12 +276,12 @@ export default function LeadsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                <table className="w-full">
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden overflow-x-auto">
+                <table className="w-full min-w-[1100px]">
                   <thead>
-                    <tr className="border-b border-gray-100">
-                      {['Contact', 'Score', 'Stage', 'Budget', 'Source', 'Days', 'Agent', 'Created'].map(h => (
-                        <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3">{h}</th>
+                    <tr className="border-b border-gray-100 bg-gray-50/60">
+                      {['Contact', 'Category', 'AI Score', 'Sentiment', 'Stage', 'Budget', 'Source', 'WhatsApp', 'Retry', 'Days', 'Agent', 'Next Follow-up'].map(h => (
+                        <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -140,93 +290,124 @@ export default function LeadsPage() {
                       <tr key={lead.id}
                         className="border-b border-gray-50 hover:bg-indigo-50/30 cursor-pointer transition-colors"
                         onClick={() => router.push(`/leads/${lead.id}`)}>
+
+                        {/* Contact */}
                         <td className="px-4 py-3">
                           <p className="text-sm font-semibold text-gray-900">{lead.contact?.name}</p>
                           <p className="text-xs text-gray-400">{lead.contact?.phone}</p>
                         </td>
+
+                        {/* Category (Hot/Warm/Cold) */}
                         <td className="px-4 py-3"><ScoreBadge score={lead.lead_score} /></td>
+
+                        {/* AI Score (0-100) */}
+                        <td className="px-4 py-3">
+                          {lead.call_score != null ? (
+                            <div className="flex items-center gap-1.5">
+                              <div className="w-16 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${lead.call_score >= 80 ? 'bg-red-500' : lead.call_score >= 50 ? 'bg-yellow-400' : 'bg-blue-400'}`}
+                                  style={{ width: `${lead.call_score}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-medium text-gray-700">{lead.call_score}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
+                        </td>
+
+                        {/* Sentiment */}
+                        <td className="px-4 py-3">
+                          {lead.call_sentiment ? (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sentimentColor(lead.call_sentiment)}`}>
+                              {lead.call_sentiment}
+                            </span>
+                          ) : <span className="text-xs text-gray-300">—</span>}
+                        </td>
+
+                        {/* Stage */}
                         <td className="px-4 py-3">
                           <span className="flex items-center gap-1.5 text-sm text-gray-700">
-                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: stageConfig[lead.stage].color }} />
-                            {stageConfig[lead.stage].label}
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: stageConfig[lead.stage]?.color }} />
+                            {stageConfig[lead.stage]?.label ?? lead.stage}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{formatBudget(lead.budget_min, lead.budget_max)}</td>
+
+                        <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatBudget(lead.budget_min, lead.budget_max)}</td>
                         <td className="px-4 py-3"><SourceTag source={lead.source} /></td>
+
+                        {/* WhatsApp Status */}
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${waStatusColor(lead.whatsapp_status)}`}>
+                            {(lead.whatsapp_status ?? 'not_sent').replace('_', ' ')}
+                          </span>
+                        </td>
+
+                        {/* Retry */}
+                        <td className="px-4 py-3">
+                          {(lead.retry_count ?? 0) > 0 ? (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${lead.max_retries_reached ? 'bg-red-100 text-red-700' : 'bg-orange-50 text-orange-600'}`}>
+                              {lead.max_retries_reached ? 'Max reached' : `Retry ${lead.retry_count}`}
+                            </span>
+                          ) : <span className="text-xs text-gray-300">—</span>}
+                        </td>
+
                         <td className="px-4 py-3"><DaysInStage days={lead.days_in_stage} /></td>
                         <td className="px-4 py-3 text-sm text-gray-500">{lead.assigned_agent?.name?.split(' ')[0] ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-gray-400">{formatDate(lead.created_at)}</td>
+
+                        {/* Next Follow-up */}
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                          {lead.next_followup_date ? formatDate(lead.next_followup_date) : (lead.next_call_date ? `📞 ${formatDate(lead.next_call_date)}` : '—')}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
+              {/* Pagination */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
-                <p className="text-xs text-gray-500">
-                  Page {page} of {totalPages}
-                </p>
+                <p className="text-xs text-gray-500">Page {page} of {totalPages}</p>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page <= 1}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50"
-                  >
-                    Prev
-                  </button>
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50">Prev</button>
 
                   {startPage > 1 && (
                     <>
-                      <button
-                        onClick={() => setPage(1)}
-                        className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm"
-                      >
-                        1
-                      </button>
+                      <button onClick={() => setPage(1)} className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm">1</button>
                       {startPage > 2 && <span className="px-1 text-gray-400">...</span>}
                     </>
                   )}
 
-                  {Array.from({ length: endPage - startPage + 1 }, (_, idx) => startPage + idx).map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      onClick={() => setPage(pageNum)}
-                      className={`px-3 py-1.5 rounded-lg border text-sm ${
-                        pageNum === page
-                          ? 'border-indigo-600 bg-indigo-600 text-white'
-                          : 'border-gray-200 bg-white text-gray-700'
-                      }`}
-                    >
-                      {pageNum}
+                  {Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i).map(n => (
+                    <button key={n} onClick={() => setPage(n)}
+                      className={`px-3 py-1.5 rounded-lg border text-sm ${n === page ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-700'}`}>
+                      {n}
                     </button>
                   ))}
 
                   {endPage < totalPages && (
                     <>
                       {endPage < totalPages - 1 && <span className="px-1 text-gray-400">...</span>}
-                      <button
-                        onClick={() => setPage(totalPages)}
-                        className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm"
-                      >
-                        {totalPages}
-                      </button>
+                      <button onClick={() => setPage(totalPages)} className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm">{totalPages}</button>
                     </>
                   )}
 
-                  <button
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page >= totalPages}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50"
-                  >
-                    Next
-                  </button>
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50">Next</button>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {showNewLead && <NewLeadModal onClose={() => setShowNewLead(false)} onCreated={() => { setShowNewLead(false); qc.invalidateQueries({ queryKey: ['leads'] }); qc.invalidateQueries({ queryKey: ['leads-paginated'] }) }} />}
+        {showNewLead && (
+          <NewLeadModal
+            onClose={() => setShowNewLead(false)}
+            onCreated={() => { setShowNewLead(false); qc.invalidateQueries({ queryKey: ['leads'] }); qc.invalidateQueries({ queryKey: ['leads-paginated'] }) }}
+          />
+        )}
       </main>
     </div>
   )

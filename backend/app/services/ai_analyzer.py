@@ -1,8 +1,10 @@
 """
 AI Lead Analysis Engine
 -----------------------
-Uses Groq's LLM (same one Priya uses) to intelligently analyze leads.
-Generates: score, recommended action, priority, engagement summary, risk flags.
+Uses Groq's LLM to intelligently analyze leads after every AI call.
+Generates: numeric score (0-100), classification (hot/warm/cold), sentiment,
+intent_level, interest_level, recommended_action, and risk flags.
+Triggers HOT/WARM automation or COLD retry scheduling automatically.
 """
 from datetime import datetime
 from typing import Optional, List
@@ -22,7 +24,11 @@ ANALYSIS_SYSTEM_PROMPT = """You are an expert real estate CRM lead analyst. Anal
 
 {
   "score": "hot" | "warm" | "cold",
+  "numeric_score": 0-100,
   "score_reasoning": "1-2 sentence explanation of why this score",
+  "sentiment": "positive" | "neutral" | "negative",
+  "intent_level": "high" | "medium" | "low",
+  "interest_level": "high" | "medium" | "low",
   "recommended_action": "Specific next action the sales agent should take",
   "priority": "high" | "normal" | "low",
   "engagement_summary": "1-line human-readable assessment of this lead",
@@ -31,10 +37,25 @@ ANALYSIS_SYSTEM_PROMPT = """You are an expert real estate CRM lead analyst. Anal
   "suggested_followup_channel": "whatsapp" | "call" | "email" | "site_visit"
 }
 
-Scoring rules:
-- HOT: Budget confirmed ≥50L, timeline immediate/1 month, has responded to calls, or has scheduled/done site visit
-- WARM: Has budget info but longer timeline, or has engaged but not yet committed
-- COLD: No budget info, no timeline, exploring only, or no response to outreach
+Classification rules:
+- HOT (score 80-100): High buying intent, requests pricing/demo, ready to speak with sales, confirmed budget ≥50L, timeline immediate/1 month
+- WARM (score 50-79): Interested but needs follow-up, has budget info but longer timeline, engaged but not committed
+- COLD (score 0-49): No current interest, no budget info, no timeline, exploring only, or no response to outreach
+
+Sentiment rules:
+- positive: Enthusiastic, asking questions, requesting info, positive language
+- neutral: Matter-of-fact, cautious, non-committal
+- negative: Reluctant, objections, not interested, rude or DND signals
+
+Intent level:
+- high: Actively looking, specific requirements, urgency, has timeline
+- medium: Interested but vague, exploring
+- low: Casual inquiry, no urgency, no specific needs
+
+Interest level:
+- high: Engaged in conversation, asked about price/features/visit
+- medium: Responded but passive
+- low: Minimal engagement, short responses, no follow-up questions
 
 Risk flags to check:
 - No activity for 3+ days on a hot/warm lead
@@ -78,7 +99,7 @@ async def _call_groq(system_prompt: str, user_content: str, expect_json: bool = 
                 {"role": "user", "content": user_content},
             ],
             "temperature": 0.3,
-            "max_tokens": 500,
+            "max_tokens": 600,
         }
         if expect_json:
             payload["response_format"] = {"type": "json_object"}
@@ -109,6 +130,7 @@ def _build_lead_context(lead: Lead, contact: Contact, activities: list) -> str:
     lines.append(f"Source: {lead.source} | Stage: {lead.stage} | Current Score: {lead.lead_score}")
     lines.append(f"Days in current stage: {lead.days_in_stage}")
     lines.append(f"Total calls: {lead.call_count}")
+    lines.append(f"Retry count: {lead.retry_count}")
 
     if lead.budget_min or lead.budget_max:
         bmin = f"₹{lead.budget_min/100000:.0f}L" if lead.budget_min else "N/A"
@@ -131,6 +153,12 @@ def _build_lead_context(lead: Lead, contact: Contact, activities: list) -> str:
     if lead.lost_reason:
         lines.append(f"Lost reason: {lead.lost_reason}")
 
+    if lead.last_call_summary:
+        lines.append(f"\nLast call summary: {lead.last_call_summary}")
+
+    if lead.last_call_interest:
+        lines.append(f"Last call interest signal: {lead.last_call_interest}")
+
     if contact.personal_notes:
         lines.append(f"\nPersonal notes: {contact.personal_notes}")
 
@@ -138,16 +166,37 @@ def _build_lead_context(lead: Lead, contact: Contact, activities: list) -> str:
         lines.append(f"\nRECENT ACTIVITY LOG ({len(activities)} entries):")
         for act in activities[:8]:
             date_str = act.performed_at.strftime("%b %d %H:%M")
-            lines.append(f"  [{date_str}] {act.type}: {act.title}" + (f" → {act.outcome}" if act.outcome else ""))
+            transcript_snippet = ""
+            if act.transcript:
+                transcript_snippet = f" | Transcript snippet: {act.transcript[:200]}"
+            lines.append(
+                f"  [{date_str}] {act.type}: {act.title}"
+                + (f" → {act.outcome}" if act.outcome else "")
+                + transcript_snippet
+            )
 
     return "\n".join(lines)
 
 
-async def analyze_lead(db: AsyncSession, lead: Lead, contact: Contact) -> Optional[dict]:
+async def analyze_lead(
+    db: AsyncSession,
+    lead: Lead,
+    contact: Contact,
+    transcript: Optional[str] = None,
+    call_summary: Optional[str] = None,
+    trigger_automation: bool = True,
+) -> Optional[dict]:
     """
-    Run AI analysis on a single lead.
+    Run AI analysis on a single lead after an AI call.
+    Stores enriched fields on the lead, logs activity, and triggers automation.
     Returns the structured analysis dict or None if AI is unavailable.
     """
+    # Store transcript/summary on lead if provided
+    if transcript:
+        lead.last_call_transcript = transcript
+    if call_summary:
+        lead.last_call_summary = call_summary
+
     # Fetch recent activities
     result = await db.execute(
         select(Activity)
@@ -175,17 +224,66 @@ async def analyze_lead(db: AsyncSession, lead: Lead, contact: Contact) -> Option
 
         analysis = json.loads(cleaned)
 
-        # Apply the AI's recommendations back to the lead
-        if analysis.get("score") in ("hot", "warm", "cold"):
-            lead.lead_score = analysis["score"]
+        # ── Apply AI recommendations to lead ─────────────────────────────────
+        score = analysis.get("score")
+        if score in ("hot", "warm", "cold"):
+            lead.lead_score = score
         if analysis.get("priority") in ("high", "normal", "low"):
             lead.priority = analysis["priority"]
 
+        # Store new enriched fields
+        numeric_score = analysis.get("numeric_score")
+        if numeric_score is not None:
+            lead.call_score = int(min(max(numeric_score, 0), 100))
+
+        lead.call_sentiment = analysis.get("sentiment")
+        lead.intent_level = analysis.get("intent_level")
+        lead.interest_level = analysis.get("interest_level")
+        lead.ai_recommended_action = analysis.get("recommended_action")
+        lead.last_ai_call_date = datetime.utcnow()
         lead.ai_analysis = analysis
         lead.ai_analyzed_at = datetime.utcnow()
+
         await db.flush()
 
-        logger.info(f"AI analyzed lead {lead.id}: score={analysis.get('score')}, priority={analysis.get('priority')}")
+        # ── Log AI analysis activity ──────────────────────────────────────────
+        analysis_activity = Activity(
+            lead_id=lead.id,
+            contact_id=lead.contact_id,
+            type="ai_analysis_generated",
+            title=f"AI analysis: {score.upper()} (score {lead.call_score}/100)",
+            description=(
+                f"Sentiment: {lead.call_sentiment} | "
+                f"Intent: {lead.intent_level} | "
+                f"Interest: {lead.interest_level} | "
+                f"Action: {lead.ai_recommended_action}"
+            ),
+            performed_at=datetime.utcnow(),
+            meta={
+                "score": score,
+                "numeric_score": lead.call_score,
+                "sentiment": lead.call_sentiment,
+                "intent_level": lead.intent_level,
+                "interest_level": lead.interest_level,
+                "recommended_action": lead.ai_recommended_action,
+                "risk_flags": analysis.get("risk_flags", []),
+            },
+        )
+        db.add(analysis_activity)
+
+        logger.info(f"AI analyzed lead {lead.id}: score={score}, numeric={lead.call_score}, sentiment={lead.call_sentiment}")
+
+        # ── Trigger post-analysis automation ─────────────────────────────────
+        if trigger_automation:
+            try:
+                from app.services.ai_workflow_service import handle_hot_warm_automation, schedule_cold_retry
+                if score in ("hot", "warm"):
+                    await handle_hot_warm_automation(db, lead, contact, analysis)
+                elif score == "cold":
+                    await schedule_cold_retry(db, lead)
+            except Exception as e:
+                logger.error(f"Workflow automation failed for lead {lead.id}: {e}")
+
         return analysis
 
     except (json.JSONDecodeError, KeyError) as e:
@@ -213,7 +311,8 @@ async def batch_analyze(db: AsyncSession, limit: int = 50) -> int:
     for lead in leads:
         contact = await db.get(Contact, lead.contact_id)
         if contact:
-            analysis = await analyze_lead(db, lead, contact)
+            # Don't trigger automation during batch rescore to avoid spam
+            analysis = await analyze_lead(db, lead, contact, trigger_automation=False)
             if analysis:
                 count += 1
 
