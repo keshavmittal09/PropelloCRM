@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useLead, useLeadTimeline, useAllTasks } from '@/hooks/useQueries'
 import Sidebar from '@/components/shared/Sidebar'
-import { LeadTimeline, AddNoteBox, QuickCallLog, WhatsAppSender, CampaignWhatsAppSender, PropertyMatchPanel, TaskList } from '@/components/leads/LeadComponents'
+import { LeadTimeline, AddNoteBox, WhatsAppSender, PropertyMatchPanel, TaskList } from '@/components/leads/LeadComponents'
 import { ScheduleVisitModal } from '@/components/leads/ScheduleVisitModal'
 import { EditLeadModal } from '@/components/leads/EditLeadModal'
 import { ScoreBadge, SourceTag, DaysInStage } from '@/components/shared/Badges'
@@ -21,7 +21,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { Task } from '@/lib/types'
 
-type Panel = 'profile' | 'timeline' | 'tasks' | 'properties' | 'memory' | 'chats'
+type Panel = 'profile' | 'timeline' | 'tasks' | 'properties' | 'chats'
 const STAGE_OPTIONS = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture'] as const
 
 export default function LeadDetailPage() {
@@ -32,12 +32,9 @@ export default function LeadDetailPage() {
   const { data: activities } = useLeadTimeline(id)
   const { data: tasks } = useAllTasks({ lead_id: id })
   const [panel, setPanel] = useState<Panel>('profile')
-  const [showCallLog, setShowCallLog] = useState(false)
   const [showWhatsApp, setShowWhatsApp] = useState(false)
-  const [showCampaignWA, setShowCampaignWA] = useState(false)
   const [showVisitModal, setShowVisitModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
-  const [showLeadNotifyModal, setShowLeadNotifyModal] = useState(false)
   const [nextStage, setNextStage] = useState(lead?.stage ?? 'new')
   const [lostReason, setLostReason] = useState('')
   const [savingStage, setSavingStage] = useState(false)
@@ -220,25 +217,13 @@ export default function LeadDetailPage() {
             </div>
             {/* Action buttons */}
             <div className="flex gap-2 flex-wrap">
-              <button onClick={() => { setShowCallLog(!showCallLog); setShowWhatsApp(false) }}
-                className="px-4 py-2 border border-[#e1d3c2] bg-[#fffdfa] rounded-xl text-sm font-medium hover:bg-[#f8eee3] transition-colors text-[#52473d]">
-                📞 Log call
-              </button>
-              <button onClick={() => { setShowWhatsApp(!showWhatsApp); setShowCallLog(false); setShowCampaignWA(false) }}
+              <button onClick={() => setShowWhatsApp(!showWhatsApp)}
                 className="px-4 py-2 border border-green-200 bg-green-50 text-green-700 rounded-xl text-sm font-medium hover:bg-green-100 transition-colors">
                 💬 WhatsApp
-              </button>
-              <button onClick={() => { setShowCampaignWA(!showCampaignWA); setShowWhatsApp(false); setShowCallLog(false) }}
-                className="px-4 py-2 border border-green-300 bg-green-100 text-green-800 rounded-xl text-sm font-medium hover:bg-green-200 transition-colors">
-                🚀 Campaign WA
               </button>
               <button onClick={() => setShowVisitModal(true)}
                 className="px-4 py-2 border border-[#e1d3c2] bg-[#fffdfa] rounded-xl text-sm font-medium hover:bg-[#f8eee3] transition-colors text-[#52473d]">
                 🏠 Schedule visit
-              </button>
-              <button onClick={() => setShowLeadNotifyModal(true)}
-                className="px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors">
-                🔔 Notify lead
               </button>
               <button
                 onClick={handleDeleteLead}
@@ -257,22 +242,9 @@ export default function LeadDetailPage() {
           {/* Left: lead info */}
           <div className="xl:col-span-1 space-y-4">
             {/* Quick action panels */}
-            {showCallLog && <QuickCallLog leadId={id} onClose={() => setShowCallLog(false)} />}
             {showWhatsApp && <WhatsAppSender leadId={id} onClose={() => setShowWhatsApp(false)} />}
-            {showCampaignWA && <CampaignWhatsAppSender leadId={id} onClose={() => setShowCampaignWA(false)} />}
             {showVisitModal && <ScheduleVisitModal leadId={id} onClose={() => setShowVisitModal(false)} />}
             {showEditModal && <EditLeadModal lead={lead} onClose={() => setShowEditModal(false)} />}
-            {showLeadNotifyModal && (
-              <LeadNotifyModal
-                leadId={id}
-                leadName={lead.contact?.name ?? 'Lead'}
-                onClose={() => setShowLeadNotifyModal(false)}
-                onDone={() => {
-                  setShowLeadNotifyModal(false)
-                  qc.invalidateQueries({ queryKey: ['timeline', id] })
-                }}
-              />
-            )}
 
             {/* Lead details card */}
             <div className="crm-surface rounded-2xl p-5 space-y-3 crm-density-tight">
@@ -375,10 +347,10 @@ export default function LeadDetailPage() {
           <div className="xl:col-span-2">
             {/* Tabs */}
             <div className="flex gap-1 mb-4 bg-[#f3e9dd] p-1 rounded-xl w-fit border border-[#e7dac9]">
-              {(['timeline', 'chats', 'tasks', 'properties', 'profile', 'memory'] as Panel[]).map(p => (
+              {(['timeline', 'chats', 'tasks', 'properties', 'profile'] as Panel[]).map(p => (
                 <button key={p} onClick={() => setPanel(p)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${panel === p ? 'bg-white text-[#2b241e] shadow-sm' : 'text-[#7b7166] hover:text-[#4f453b]'}`}>
-                  {p === 'timeline' ? 'Timeline' : p === 'chats' ? '💬 WA Chats' : p === 'tasks' ? 'Tasks' : p === 'properties' ? 'Matching listings' : p === 'profile' ? 'Master Profile' : 'Priya memory'}
+                  {p === 'timeline' ? 'Timeline' : p === 'chats' ? '💬 WA Chats' : p === 'tasks' ? 'Tasks' : p === 'properties' ? 'Matching listings' : 'Master Profile'}
                 </button>
               ))}
             </div>
@@ -389,18 +361,6 @@ export default function LeadDetailPage() {
               {panel === 'properties' && <PropertyMatchPanel leadId={id} />}
               {panel === 'profile' && <MasterProfileTab leadId={id} />}
               {panel === 'chats' && <WhatsAppChatsPanel leadId={id} phone={lead?.contact?.phone} />}
-              {panel === 'memory' && (
-                <div>
-                  <p className="text-xs font-semibold text-purple-700 mb-3">Priya AI memory brief</p>
-                  {lead.priya_memory_brief ? (
-                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-gray-50 p-4 rounded-xl text-xs leading-relaxed">
-                      {lead.priya_memory_brief}
-                    </pre>
-                  ) : (
-                    <p className="text-sm text-gray-400">No memory brief yet — will be generated after first Priya call.</p>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </div>
