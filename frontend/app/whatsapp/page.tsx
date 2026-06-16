@@ -54,27 +54,29 @@ function BroadcastModal({ counts, onClose }: { counts: Record<string, number>; o
 
   const handleSend = async () => {
     if (!message.trim() && files.length === 0) return toast.error('Add a message or attachment')
+    const tooBig = files.find(f => f.size > 4 * 1024 * 1024)
+    if (tooBig) return toast.error(`"${tooBig.name}" exceeds 4 MB limit — compress it first`)
     setSending(true)
+
+    const safeJson = async (res: Response) => {
+      const raw = await res.text()
+      try { return JSON.parse(raw) } catch { throw new Error(res.ok ? 'Server error' : `HTTP ${res.status}`) }
+    }
+
     try {
-      // Fetch all phones for this tier
-      const { data } = await getWASupabase()
-        .from('leads')
-        .select('phone')
-        .eq('label', tier)
+      const { data } = await getWASupabase().from('leads').select('phone').eq('label', tier)
       const phones = (data ?? []).map((r: any) => r.phone).filter(Boolean)
       if (!phones.length) { toast.error('No leads in this tier'); setSending(false); return }
 
       if (files.length === 0) {
-        // Text-only: use fast broadcast route
         const res = await fetch('/api/broadcast', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phones, message: message.trim(), campaign_tag: `WA-${tier}` }),
         })
-        const json = await res.json()
-        setResult({ sent: json.sent, failed: json.failed })
+        const json = await safeJson(res)
+        setResult({ sent: json.sent ?? 0, failed: json.failed ?? 0 })
       } else {
-        // With files: send text first (if any), then each file
         let sent = 0; let failed = 0
         if (message.trim()) {
           const res = await fetch('/api/broadcast', {
@@ -82,8 +84,8 @@ function BroadcastModal({ counts, onClose }: { counts: Record<string, number>; o
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phones, message: message.trim(), campaign_tag: `WA-${tier}` }),
           })
-          const j = await res.json()
-          sent += j.sent; failed += j.failed
+          const j = await safeJson(res)
+          sent += j.sent ?? 0; failed += j.failed ?? 0
         }
         for (const file of files) {
           const fd = new FormData()
@@ -91,8 +93,8 @@ function BroadcastModal({ counts, onClose }: { counts: Record<string, number>; o
           fd.append('message', `📎 ${file.name}`)
           fd.append('file', file)
           const res = await fetch('/api/wa-media', { method: 'POST', body: fd })
-          const j = await res.json()
-          sent += j.sent; failed += j.failed
+          const j = await safeJson(res)
+          sent += j.sent ?? 0; failed += j.failed ?? 0
         }
         setResult({ sent, failed })
       }
@@ -246,6 +248,7 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
 
   const handleSend = async () => {
     if (!text.trim() && !file) return
+    if (file && file.size > 4 * 1024 * 1024) return toast.error('File too large — max 4 MB')
     setSending(true)
     try {
       const fd = new FormData()
@@ -253,7 +256,9 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
       if (text.trim()) fd.append('message', text.trim())
       if (file) fd.append('file', file)
       const res = await fetch('/api/wa-media', { method: 'POST', body: fd })
-      const json = await res.json()
+      const raw = await res.text()
+      let json: any
+      try { json = JSON.parse(raw) } catch { throw new Error(res.ok ? 'Server error' : `HTTP ${res.status}`) }
       if (json.sent > 0) {
         toast.success('Sent!')
         const newMsg: WAConversation = { id: Date.now(), phone: lead.phone, role: 'assistant', message: text.trim() || `📎 ${file?.name}`, score: null, created_at: new Date().toISOString() }
