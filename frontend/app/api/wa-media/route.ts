@@ -36,7 +36,15 @@ async function sendWA(phone: string, message: string, mediaUrl?: string): Promis
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': RAILWAY_SECRET },
       body: JSON.stringify(body),
     })
-    return res.ok ? { status: 'sent' } : { status: 'failed', reason: await res.text() }
+    const text = await res.text()
+    if (!res.ok) return { status: 'failed', reason: text }
+    try {
+      const json = JSON.parse(text)
+      if (json.error || json.success === false || json.status === 'error') {
+        return { status: 'failed', reason: json.error ?? json.message ?? text }
+      }
+    } catch { /* plain text 200 — treat as success */ }
+    return { status: 'sent' }
   } catch (e: any) {
     return { status: 'failed', reason: e?.message }
   }
