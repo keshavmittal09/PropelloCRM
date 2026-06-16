@@ -73,22 +73,22 @@ export async function POST(req: NextRequest) {
   if (!message && !file) return NextResponse.json({ error: 'message or file required' }, { status: 400 })
 
   let mediaUrl: string | null = null
-  let fileNote = ''
 
   if (file) {
     const bytes = new Uint8Array(await file.arrayBuffer())
     mediaUrl = await uploadToStorage(bytes, file.name, file.type)
-    // If storage upload fails, append the filename as a note in the message
-    if (!mediaUrl) {
-      fileNote = `\n\n📎 Attachment: ${file.name}`
-    }
   }
 
-  const finalMessage = message + fileNote
+  // Always embed the URL in the message text so recipient can tap to open it.
+  // WhatsApp shows URLs as tappable links regardless of media_url support.
+  const fileLabel = file ? `\n\n📎 *${file.name}*` : ''
+  const fileLink = mediaUrl ? `\n${mediaUrl}` : (file ? `\n(upload failed)` : '')
+  const finalMessage = (message + fileLabel + fileLink).trim() || '📎'
 
   const results = await Promise.all(
     phones.map(async (phone) => {
-      const r = await sendWA(phone, finalMessage || '📎', mediaUrl ?? undefined)
+      // Pass media_url so Railway attempts native WhatsApp media delivery too
+      const r = await sendWA(phone, finalMessage, mediaUrl ?? undefined)
       return { phone, ...r }
     })
   )
