@@ -388,7 +388,7 @@ export default function LeadDetailPage() {
               {panel === 'tasks' && <TaskList tasks={tasks ?? []} onCompleteTask={(task) => setCompletingTask(task)} />}
               {panel === 'properties' && <PropertyMatchPanel leadId={id} />}
               {panel === 'profile' && <MasterProfileTab leadId={id} />}
-              {panel === 'chats' && <WhatsAppChatsPanel leadId={id} />}
+              {panel === 'chats' && <WhatsAppChatsPanel leadId={id} phone={lead?.contact?.phone} />}
               {panel === 'memory' && (
                 <div>
                   <p className="text-xs font-semibold text-purple-700 mb-3">Priya AI memory brief</p>

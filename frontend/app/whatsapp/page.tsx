@@ -1,10 +1,17 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import Sidebar from '@/components/shared/Sidebar'
 import { getWASupabase, type WALead, type WAConversation } from '@/lib/waSupabase'
+import toast from 'react-hot-toast'
 
 type LabelFilter = 'ALL' | 'HOT' | 'WARM' | 'COLD'
 const PAGE_SIZE = 25
+
+const TEMPLATES: Record<string, string> = {
+  'Site Visit': 'Hi {name}, we would like to invite you for a site visit at our project. Please let us know your convenient time.',
+  'Offer Alert': 'Hi {name}, we have a special offer available for you. Limited units at discounted prices. Interested?',
+  'Follow Up': 'Hi {name}, just following up on your property inquiry. Are you still looking? We can help you find the right option.',
+}
 
 const labelStyle = (label: string) => {
   if (label === 'HOT') return 'border border-red-400 text-red-500 text-[11px] font-bold px-2 py-0.5 rounded'
@@ -34,9 +41,197 @@ function timeAgo(dateStr: string) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
+// ─── Broadcast Modal ──────────────────────────────────────────────────────────
+function BroadcastModal({ counts, onClose }: { counts: Record<string, number>; onClose: () => void }) {
+  const [tier, setTier] = useState<'HOT' | 'WARM' | 'COLD'>('HOT')
+  const [message, setMessage] = useState('')
+  const [files, setFiles] = useState<File[]>([])
+  const [sending, setSending] = useState(false)
+  const [result, setResult] = useState<{ sent: number; failed: number } | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const applyTemplate = (name: string) => setMessage(TEMPLATES[name] ?? '')
+
+  const handleSend = async () => {
+    if (!message.trim() && files.length === 0) return toast.error('Add a message or attachment')
+    setSending(true)
+    try {
+      // Fetch all phones for this tier
+      const { data } = await getWASupabase()
+        .from('leads')
+        .select('phone')
+        .eq('label', tier)
+      const phones = (data ?? []).map((r: any) => r.phone).filter(Boolean)
+      if (!phones.length) { toast.error('No leads in this tier'); setSending(false); return }
+
+      if (files.length === 0) {
+        // Text-only: use fast broadcast route
+        const res = await fetch('/api/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phones, message: message.trim(), campaign_tag: `WA-${tier}` }),
+        })
+        const json = await res.json()
+        setResult({ sent: json.sent, failed: json.failed })
+      } else {
+        // With files: send text first (if any), then each file
+        let sent = 0; let failed = 0
+        if (message.trim()) {
+          const res = await fetch('/api/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phones, message: message.trim(), campaign_tag: `WA-${tier}` }),
+          })
+          const j = await res.json()
+          sent += j.sent; failed += j.failed
+        }
+        for (const file of files) {
+          const fd = new FormData()
+          fd.append('phones', phones.join(','))
+          fd.append('message', `📎 ${file.name}`)
+          fd.append('file', file)
+          const res = await fetch('/api/wa-media', { method: 'POST', body: fd })
+          const j = await res.json()
+          sent += j.sent; failed += j.failed
+        }
+        setResult({ sent, failed })
+      }
+    } catch (e: any) {
+      toast.error(e?.message || 'Broadcast failed')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const tierLabel = (t: string) => `${t} (${counts[t] ?? 0})`
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[520px] mx-4" onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Broadcast Message</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Send WhatsApp to all leads in a tier</p>
+        </div>
+
+        {result ? (
+          <div className="px-6 py-8 text-center">
+            <p className="text-3xl mb-3">✅</p>
+            <p className="text-base font-semibold text-gray-800">Broadcast sent!</p>
+            <p className="text-sm text-gray-500 mt-1">{result.sent} sent · {result.failed} failed</p>
+            <button onClick={onClose} className="mt-4 px-6 py-2 bg-gray-900 text-white text-sm rounded-lg">Close</button>
+          </div>
+        ) : (
+          <div className="px-6 py-5 flex flex-col gap-5">
+            {/* Tier */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase mb-2">Target Tier</p>
+              <div className="flex gap-2">
+                {(['HOT', 'WARM', 'COLD'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTier(t)}
+                    className={`px-4 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+                      tier === t
+                        ? t === 'HOT' ? 'bg-red-50 border-red-300 text-red-600'
+                          : t === 'WARM' ? 'bg-orange-50 border-orange-300 text-orange-600'
+                          : 'bg-blue-50 border-blue-300 text-blue-600'
+                        : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                    }`}
+                  >
+                    {tierLabel(t)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Templates */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase mb-2">Templates</p>
+              <div className="flex gap-2 flex-wrap">
+                {Object.keys(TEMPLATES).map(name => (
+                  <button
+                    key={name}
+                    onClick={() => applyTemplate(name)}
+                    className="px-3 py-1.5 rounded-full border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Message */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase mb-2">
+                Message — goes to {counts[tier] ?? 0} leads
+              </p>
+              <textarea
+                rows={4}
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                placeholder="Type your message here…"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 resize-none"
+              />
+            </div>
+
+            {/* Attachments */}
+            <div>
+              <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase mb-2">
+                Attachments (optional — sent to every lead)
+              </p>
+              {files.length > 0 && (
+                <div className="flex flex-col gap-1 mb-2">
+                  {files.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg">
+                      <span>📎 {f.name}</span>
+                      <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} className="ml-auto text-gray-400 hover:text-red-400">✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50"
+              >
+                📎 Attach File
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx"
+                className="hidden"
+                onChange={e => setFiles(prev => [...prev, ...Array.from(e.target.files ?? [])])}
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-1 border-t border-gray-100">
+              <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+              <button
+                onClick={handleSend}
+                disabled={sending || (!message.trim() && files.length === 0)}
+                className="flex items-center gap-2 px-5 py-2 bg-gray-900 text-white text-sm font-semibold rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {sending ? 'Sending…' : `📤 Send Broadcast`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Chat Modal ───────────────────────────────────────────────────────────────
 function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
   const [chats, setChats] = useState<WAConversation[]>([])
   const [loading, setLoading] = useState(true)
+  const [text, setText] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [sending, setSending] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     getWASupabase()
@@ -44,18 +239,37 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
       .select('*')
       .eq('phone', lead.phone)
       .order('created_at', { ascending: true })
-      .then(({ data }) => {
-        setChats(data ?? [])
-        setLoading(false)
-      })
+      .then(({ data }) => { setChats(data ?? []); setLoading(false) })
   }, [lead.phone])
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chats])
+
+  const handleSend = async () => {
+    if (!text.trim() && !file) return
+    setSending(true)
+    try {
+      const fd = new FormData()
+      fd.append('phones', lead.phone)
+      if (text.trim()) fd.append('message', text.trim())
+      if (file) fd.append('file', file)
+      const res = await fetch('/api/wa-media', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (json.sent > 0) {
+        toast.success('Sent!')
+        const newMsg: WAConversation = { id: Date.now(), phone: lead.phone, role: 'assistant', message: text.trim() || `📎 ${file?.name}`, score: null, created_at: new Date().toISOString() }
+        setChats(prev => [...prev, newMsg])
+        setText(''); setFile(null)
+      } else {
+        toast.error('Failed: ' + (json.results?.[0]?.reason ?? 'unknown'))
+      }
+    } catch (e: any) { toast.error(e?.message) }
+    finally { setSending(false) }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-[580px] mx-4 max-h-[90vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[580px] mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
         <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
           <div>
             <div className="flex items-center gap-2">
@@ -67,6 +281,7 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
+        {/* Stats grid */}
         <div className="grid grid-cols-2 gap-3 px-6 py-4 border-b border-gray-100">
           {([
             ['SCORE', `${lead.score} / 10`],
@@ -91,16 +306,17 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
           </div>
         )}
 
-        <div className="px-6 pt-3 pb-1">
+        {/* Conversation */}
+        <div className="px-6 pt-3 pb-1 flex items-center justify-between">
           <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase">Conversation</p>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 pb-6 flex flex-col gap-2 min-h-0">
+        <div className="flex-1 overflow-y-auto px-6 pb-2 flex flex-col gap-2 min-h-0">
           {loading ? (
             <p className="text-sm text-gray-400 py-4">Loading chats…</p>
           ) : chats.length === 0 ? (
-            <div className="py-8 text-center">
+            <div className="py-6 text-center">
               <p className="text-2xl mb-2">💬</p>
-              <p className="text-sm text-gray-500">No conversation found</p>
+              <p className="text-sm text-gray-500">No conversation yet</p>
             </div>
           ) : chats.map(msg => {
             const isOut = msg.role === 'assistant'
@@ -116,23 +332,60 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
               </div>
             )
           })}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Send message */}
+        <div className="px-6 pb-5 pt-3 border-t border-gray-100 flex flex-col gap-2">
+          <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase">Send Message</p>
+          <textarea
+            rows={2}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="Type a follow-up message…"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 resize-none"
+          />
+          {file && (
+            <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg">
+              <span>📎 {file.name}</span>
+              <button onClick={() => setFile(null)} className="ml-auto text-gray-400 hover:text-red-400">✕</button>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-50"
+            >
+              📎 Attach File
+            </button>
+            <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.doc,.docx" className="hidden"
+              onChange={e => setFile(e.target.files?.[0] ?? null)} />
+            <button
+              onClick={handleSend}
+              disabled={sending || (!text.trim() && !file)}
+              className="ml-auto px-4 py-1.5 bg-gray-900 text-white text-xs font-semibold rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {sending ? 'Sending…' : 'Send'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function WhatsAppLeadsPage() {
   const [leads, setLeads] = useState<WALead[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [labelFilter, setLabelFilter] = useState<LabelFilter>('ALL')
   const [selected, setSelected] = useState<WALead | null>(null)
+  const [showBroadcast, setShowBroadcast] = useState(false)
   const [counts, setCounts] = useState({ HOT: 0, WARM: 0, COLD: 0, ALL: 0 })
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
 
-  // Use count API — never fetches rows, just counts. No 1000-row cap.
   const fetchCounts = useCallback(async () => {
     const db = getWASupabase()
     const [all, hot, warm, cold] = await Promise.all([
@@ -161,7 +414,6 @@ export default function WhatsAppLeadsPage() {
     setLoading(false)
   }, [labelFilter, search, page])
 
-  // Reset to page 1 when filters change
   useEffect(() => { setPage(1) }, [labelFilter, search])
   useEffect(() => { fetchLeads() }, [fetchLeads])
   useEffect(() => { fetchCounts() }, [fetchCounts])
@@ -182,17 +434,23 @@ export default function WhatsAppLeadsPage() {
       <main className="flex-1 overflow-auto">
         <div className="bg-white border-b border-gray-200 px-8 py-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <span>💬</span> WhatsApp Leads
-            </h1>
+            <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">💬 WhatsApp Leads</h1>
             <p className="text-sm text-gray-500 mt-0.5">{counts.ALL} total from WhatsApp bot</p>
           </div>
-          <button
-            onClick={() => { fetchLeads(); fetchCounts() }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
-          >
-            ↻ Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowBroadcast(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700"
+            >
+              📤 Broadcast
+            </button>
+            <button
+              onClick={() => { fetchLeads(); fetchCounts() }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              ↻ Refresh
+            </button>
+          </div>
         </div>
 
         <div className="px-8 py-6">
@@ -206,11 +464,7 @@ export default function WhatsAppLeadsPage() {
             />
             <div className="flex items-center gap-2">
               {filterTabs.map(t => (
-                <button
-                  key={t}
-                  onClick={() => setLabelFilter(t)}
-                  className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${tabColor(t)}`}
-                >
+                <button key={t} onClick={() => setLabelFilter(t)} className={`px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${tabColor(t)}`}>
                   {t} ({counts[t]})
                 </button>
               ))}
@@ -232,19 +486,13 @@ export default function WhatsAppLeadsPage() {
                 ) : leads.length === 0 ? (
                   <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-400">No leads found</td></tr>
                 ) : leads.map(lead => (
-                  <tr
-                    key={lead.id}
-                    onClick={() => setSelected(lead)}
-                    className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
+                  <tr key={lead.id} onClick={() => setSelected(lead)} className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="px-4 py-3 font-medium text-gray-900">{lead.name || 'Unknown'}</td>
                     <td className="px-4 py-3 text-gray-500 font-mono text-xs">{lead.phone}</td>
                     <td className="px-4 py-3 min-w-[140px]"><ScoreBar score={lead.score} /></td>
                     <td className="px-4 py-3"><span className={labelStyle(lead.label)}>{lead.label}</span></td>
                     <td className="px-4 py-3">
-                      {lead.campaign
-                        ? <span className="text-xs bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-full">{lead.campaign}</span>
-                        : <span className="text-gray-300">—</span>}
+                      {lead.campaign ? <span className="text-xs bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-full">{lead.campaign}</span> : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{lead.intent || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{lead.message_count}</td>
@@ -254,38 +502,28 @@ export default function WhatsAppLeadsPage() {
               </tbody>
             </table>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
                 <p className="text-xs text-gray-500">
                   Showing {total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
                 </p>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                    className="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed">
                     ← Prev
                   </button>
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     const start = Math.max(1, Math.min(page - 2, totalPages - 4))
                     const p = start + i
                     return p <= totalPages ? (
-                      <button
-                        key={p}
-                        onClick={() => setPage(p)}
-                        className={`px-3 py-1.5 text-xs rounded border ${page === p ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-600 hover:bg-white'}`}
-                      >
+                      <button key={p} onClick={() => setPage(p)}
+                        className={`px-3 py-1.5 text-xs rounded border ${page === p ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200 text-gray-600 hover:bg-white'}`}>
                         {p}
                       </button>
                     ) : null
                   })}
-                  <button
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                    className="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                    className="px-3 py-1.5 text-xs rounded border border-gray-200 text-gray-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed">
                     Next →
                   </button>
                 </div>
@@ -296,6 +534,7 @@ export default function WhatsAppLeadsPage() {
       </main>
 
       {selected && <ChatModal lead={selected} onClose={() => setSelected(null)} />}
+      {showBroadcast && <BroadcastModal counts={counts} onClose={() => setShowBroadcast(false)} />}
     </div>
   )
 }
