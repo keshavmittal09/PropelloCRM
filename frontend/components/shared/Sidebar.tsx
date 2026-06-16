@@ -10,6 +10,7 @@ const nav = [
   { href: '/',           label: 'Dashboard',    icon: '▦' },
   { href: '/leads/board',label: 'Pipeline',     icon: '⬛', roles: ['admin', 'manager'] as const },
   { href: '/leads',      label: 'All Leads',    icon: '☰' },
+  { href: '/whatsapp',   label: 'WhatsApp',     icon: '💬' },
   { href: '/tasks',      label: 'Tasks',        icon: '✓' },
   { href: '/campaigns',  label: 'Campaigns',   icon: '📣', roles: ['admin', 'manager'] as const },
   { href: '/campaigns/dashboard', label: 'Call Campaign Dashboard', icon: '📈', roles: ['admin', 'manager'] as const },
