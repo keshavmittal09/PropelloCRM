@@ -65,8 +65,7 @@ export default function Sidebar() {
             <div className="px-6 py-6 relative z-10">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-[28px] leading-none font-semibold tracking-tight text-[#f4ebe2]">Propello</h1>
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-[#b8a895] font-semibold mt-2">Real Estate Intelligence</p>
+                  <img src="https://whatsappagent-livid.vercel.app/propello-logo.png" alt="Propello" className="h-10 w-auto object-contain" />
                 </div>
                 <button
                   type="button"
@@ -121,8 +120,7 @@ export default function Sidebar() {
       </div>
       {/* Logo */}
       <div className="px-6 py-8 relative z-10">
-        <h1 className="text-[36px] leading-none font-semibold tracking-tight text-[#f4ebe2]">Propello</h1>
-        <p className="text-[11px] uppercase tracking-[0.2em] text-[#b8a895] font-semibold mt-2">Real Estate Intelligence</p>
+        <img src="https://whatsappagent-livid.vercel.app/propello-logo.png" alt="Propello" className="h-12 w-auto object-contain" />
       </div>
 
       {/* Nav */}
