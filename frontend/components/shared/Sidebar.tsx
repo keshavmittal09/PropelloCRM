@@ -65,7 +65,7 @@ export default function Sidebar() {
             <div className="px-6 py-6 relative z-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <img src="https://i.ibb.co/vvzbr7fN/Screenshot-2026-06-16-153601.png" alt="Propello" className="h-8 w-auto max-w-[120px] object-contain" style={{ mixBlendMode: 'screen' }} />
+                  <img src="/logo.png" alt="Propello" className="h-10 w-auto max-w-[140px] object-contain" />
                   <span className="text-[20px] font-semibold tracking-tight text-[#f4ebe2]">Propello AI</span>
                 </div>
                 <button
@@ -121,7 +121,7 @@ export default function Sidebar() {
       </div>
       {/* Logo */}
       <div className="px-6 py-8 relative z-10 flex items-center gap-2">
-        <img src="https://i.ibb.co/vvzbr7fN/Screenshot-2026-06-16-153601.png" alt="Propello" className="h-10 w-auto max-w-[140px] object-contain" style={{ mixBlendMode: 'screen' }} />
+        <img src="/logo.png" alt="Propello" className="h-12 w-auto max-w-[160px] object-contain" />
         <span className="text-[26px] font-semibold tracking-tight text-[#f4ebe2]">Propello AI</span>
       </div>
 
