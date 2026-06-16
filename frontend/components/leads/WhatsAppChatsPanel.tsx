@@ -71,6 +71,7 @@ export default function WhatsAppChatsPanel({ leadId, phone }: Props) {
   const handleSend = async () => {
     if (!phone) return toast.error('No phone number for this lead')
     if (!text.trim() && !file) return
+    if (file && file.size > 4 * 1024 * 1024) return toast.error('File too large — max 4 MB')
     setSending(true)
     try {
       const fd = new FormData()
@@ -78,7 +79,9 @@ export default function WhatsAppChatsPanel({ leadId, phone }: Props) {
       if (text.trim()) fd.append('message', text.trim())
       if (file) fd.append('file', file)
       const res = await fetch('/api/wa-media', { method: 'POST', body: fd })
-      const json = await res.json()
+      const raw = await res.text()
+      let json: any
+      try { json = JSON.parse(raw) } catch { throw new Error(res.ok ? 'Server error' : `HTTP ${res.status}`) }
       if (json.sent > 0) {
         toast.success('Message sent!')
         setText('')
