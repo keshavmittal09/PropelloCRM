@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import Sidebar from '@/components/shared/Sidebar'
-import { getWASupabase, type WALead, type WAConversation } from '@/lib/getWASupabase()'
+import { getWASupabase, type WALead, type WAConversation } from '@/lib/waSupabase'
 
 type LabelFilter = 'ALL' | 'HOT' | 'WARM' | 'COLD'
 
