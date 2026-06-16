@@ -64,8 +64,9 @@ export default function Sidebar() {
             </div>
             <div className="px-6 py-6 relative z-10">
               <div className="flex items-center justify-between">
-                <div>
-                  <img src="https://whatsappagent-livid.vercel.app/propello-logo.png" alt="Propello" className="h-10 w-auto object-contain" />
+                <div className="flex items-center gap-2">
+                  <img src="https://whatsappagent-livid.vercel.app/propello-logo.png" alt="Propello" className="h-8 w-8 object-contain" style={{ mixBlendMode: 'screen' }} />
+                  <span className="text-[20px] font-semibold tracking-tight text-[#f4ebe2]">Propello AI</span>
                 </div>
                 <button
                   type="button"
@@ -119,8 +120,9 @@ export default function Sidebar() {
         <div className="absolute bottom-0 -right-24 w-60 h-60 rounded-full bg-[#7c563f]/20 blur-3xl" />
       </div>
       {/* Logo */}
-      <div className="px-6 py-8 relative z-10">
-        <img src="https://whatsappagent-livid.vercel.app/propello-logo.png" alt="Propello" className="h-12 w-auto object-contain" />
+      <div className="px-6 py-8 relative z-10 flex items-center gap-2">
+        <img src="https://whatsappagent-livid.vercel.app/propello-logo.png" alt="Propello" className="h-9 w-9 object-contain" style={{ mixBlendMode: 'screen' }} />
+        <span className="text-[26px] font-semibold tracking-tight text-[#f4ebe2]">Propello AI</span>
       </div>
 
       {/* Nav */}
