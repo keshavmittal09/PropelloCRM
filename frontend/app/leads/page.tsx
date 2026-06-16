@@ -9,6 +9,18 @@ import { leadsApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { LeadStage, LeadScore } from '@/lib/types'
+import { getWASupabase } from '@/lib/waSupabase'
+
+function waPhone(p: string): string {
+  const d = p.replace(/\D/g, '')
+  return d.length === 10 ? `91${d}` : d
+}
+
+const WA_LABEL_STYLE: Record<string, string> = {
+  HOT: 'bg-red-100 text-red-700',
+  WARM: 'bg-yellow-100 text-yellow-700',
+  COLD: 'bg-blue-100 text-blue-700',
+}
 
 const STAGES: LeadStage[] = ['new', 'contacted', 'site_visit_scheduled', 'site_visit_done', 'negotiation', 'won', 'lost', 'nurture']
 const SCORES: LeadScore[] = ['hot', 'warm', 'cold']
@@ -76,7 +88,9 @@ export default function LeadsPage() {
 
   useEffect(() => { setPage(1) }, [stage, score, source, campaignId, search, sentiment, waStatus, assigned, retry, scoreRange, dateFilter, dateFrom, dateTo])
 
-  const { data: leadsPage, isLoading } = useLeadsPaginated({
+  const [waMap, setWaMap] = useState<Record<string, { label: string; score: number }>>({})
+
+  const { data: leadsPage, isLoading, isError, error } = useLeadsPaginated({
     ...(stage && { stage }),
     ...(score && { lead_score: score }),
     ...(source && { source }),
@@ -97,6 +111,26 @@ export default function LeadsPage() {
 
   const leads = leadsPage?.items ?? []
   const totalLeads = leadsPage?.total ?? 0
+
+  // Fetch WA bot labels for the current page's leads
+  useEffect(() => {
+    if (!leads.length) return
+    const phones = leads.map(l => l.contact?.phone).filter(Boolean) as string[]
+    if (!phones.length) return
+    const normalized = phones.map(waPhone)
+    try {
+      getWASupabase()
+        .from('leads')
+        .select('phone,label,score')
+        .in('phone', normalized)
+        .then(({ data }) => {
+          if (!data) return
+          const map: Record<string, { label: string; score: number }> = {}
+          data.forEach((r: any) => { map[r.phone] = { label: r.label, score: r.score } })
+          setWaMap(map)
+        })
+    } catch { /* WA Supabase not configured — skip */ }
+  }, [leads])
   const totalPages = Math.max(leadsPage?.total_pages ?? 1, 1)
   const visibleStart = totalLeads === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const visibleEnd = totalLeads === 0 ? 0 : Math.min(page * PAGE_SIZE, totalLeads)
@@ -263,6 +297,17 @@ export default function LeadsPage() {
           </div>
         )}
 
+        {/* API Error Banner */}
+        {isError && (
+          <div className="mx-8 mt-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 flex items-start gap-2">
+            <span className="text-base">⚠️</span>
+            <div>
+              <p className="font-semibold">Could not load leads — backend unreachable</p>
+              <p className="text-xs text-red-500 mt-0.5">{(error as any)?.message ?? 'Network error. Check that NEXT_PUBLIC_API_URL is set in Vercel and the backend on Render is running.'}</p>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="px-8 py-6">
           {isLoading ? (
@@ -280,7 +325,7 @@ export default function LeadsPage() {
                 <table className="w-full min-w-[1100px]">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/60">
-                      {['Contact', 'Category', 'AI Score', 'Sentiment', 'Stage', 'Budget', 'Source', 'WhatsApp', 'Retry', 'Days', 'Agent', 'Next Follow-up'].map(h => (
+                      {['Contact', 'Category', 'WA Bot', 'AI Score', 'Sentiment', 'Stage', 'Budget', 'Source', 'WhatsApp', 'Retry', 'Days', 'Agent', 'Next Follow-up'].map(h => (
                         <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -299,6 +344,16 @@ export default function LeadsPage() {
 
                         {/* Category (Hot/Warm/Cold) */}
                         <td className="px-4 py-3"><ScoreBadge score={lead.lead_score} /></td>
+
+                        {/* WA Bot label from WhatsApp Supabase */}
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const wa = waMap[waPhone(lead.contact?.phone ?? '')]
+                            return wa
+                              ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${WA_LABEL_STYLE[wa.label] ?? 'bg-gray-100 text-gray-600'}`}>{wa.label}</span>
+                              : <span className="text-xs text-gray-300">—</span>
+                          })()}
+                        </td>
 
                         {/* AI Score (0-100) */}
                         <td className="px-4 py-3">
