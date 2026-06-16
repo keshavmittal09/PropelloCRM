@@ -89,6 +89,21 @@ export default function LeadsPage() {
   useEffect(() => { setPage(1) }, [stage, score, source, campaignId, search, sentiment, waStatus, assigned, retry, scoreRange, dateFilter, dateFrom, dateTo])
 
   const [waMap, setWaMap] = useState<Record<string, { label: string; score: number }>>({})
+  const [waSearchResults, setWaSearchResults] = useState<any[]>([])
+
+  // Search WA Supabase when search term changes
+  useEffect(() => {
+    if (!search.trim()) { setWaSearchResults([]); return }
+    const q = search.trim()
+    try {
+      getWASupabase()
+        .from('leads')
+        .select('id,phone,name,score,label,intent,last_message,updated_at')
+        .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+        .limit(20)
+        .then(({ data }) => setWaSearchResults(data ?? []))
+    } catch { setWaSearchResults([]) }
+  }, [search])
 
   const { data: leadsPage, isLoading, isError, error } = useLeadsPaginated({
     ...(stage && { stage }),
@@ -452,6 +467,45 @@ export default function LeadsPage() {
                   <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
                     className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm disabled:opacity-50">Next</button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* WhatsApp Bot Leads — shown when search finds results in WA Supabase */}
+          {search.trim() && waSearchResults.length > 0 && (
+            <div className="mt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1 rounded-full">💬 WhatsApp Bot Leads ({waSearchResults.length})</span>
+                <span className="text-xs text-gray-400">These leads are in your WhatsApp bot but not yet in the CRM</span>
+              </div>
+              <div className="bg-white border border-green-100 rounded-2xl overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-green-50/50">
+                      {['Name', 'Phone', 'WA Label', 'Score', 'Intent', 'Last Message', 'Last Active'].map(h => (
+                        <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {waSearchResults.map(w => (
+                      <tr key={w.id} className="border-b border-gray-50 hover:bg-green-50/20 cursor-pointer"
+                        onClick={() => router.push(`/whatsapp?phone=${w.phone}`)}>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-semibold text-gray-900">{w.name}</p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{w.phone}</td>
+                        <td className="px-4 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${WA_LABEL_STYLE[w.label] ?? 'bg-gray-100 text-gray-600'}`}>{w.label}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{w.score} / 10</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{w.intent ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{w.last_message ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-400">{w.updated_at ? new Date(w.updated_at).toLocaleDateString('en-IN') : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
