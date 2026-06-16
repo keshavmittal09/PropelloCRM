@@ -67,15 +67,27 @@ export default function Dashboard() {
         </div>
 
         {/* Primary Stats grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
           <StatCard label="Total Leads" value={summary?.total_leads ?? '—'}
             onClick={() => router.push('/leads')} />
           <StatCard label="New Today" value={summary?.new_leads_today ?? '—'}
             onClick={() => router.push('/leads?date_filter=today')} />
-          <StatCard label="Pipeline Value" value={formatCurrency(summary?.pipeline_value ?? 0)} sub="ACTIVE LEADS" />
-          <StatCard label="Converted (30d)" value={summary?.converted_leads ?? '—'} color="text-emerald-600"
-            onClick={() => router.push('/leads?stage=won')} />
-          <StatCard label="Conversion Rate" value={`${summary?.conversion_rate ?? 0}%`} sub="30-DAY RATE" color="text-indigo-600" />
+          <div
+            className="crm-surface crm-card-hover rounded-3xl p-6 cursor-pointer hover:shadow-md transition-shadow col-span-2"
+            onClick={() => router.push('/leads?stage=won')}
+          >
+            <p className="text-[11px] tracking-[0.16em] text-[#887d72] font-semibold uppercase mb-3">Converted (30d)</p>
+            <div className="flex items-end gap-6">
+              <div>
+                <p className="text-4xl font-semibold tracking-tight text-emerald-600">{summary?.converted_leads ?? '—'}</p>
+                <p className="text-[11px] font-medium text-[#9d9185] mt-2 tracking-[0.12em]">TOTAL CONVERTED</p>
+              </div>
+              <div className="border-l border-[#e8ddd4] pl-6">
+                <p className="text-4xl font-semibold tracking-tight text-indigo-600">{summary?.conversion_rate ?? 0}%</p>
+                <p className="text-[11px] font-medium text-[#9d9185] mt-2 tracking-[0.12em]">30-DAY RATE</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Lead Category Cards */}
