@@ -19,8 +19,13 @@ async function uploadToStorage(fileBytes: Uint8Array, fileName: string, mimeType
     const path = `broadcasts/${randomUUID()}.${ext}`
     const { error } = await sb.storage.from('media').upload(path, fileBytes, { contentType: mimeType, upsert: false })
     if (error) return null
-    const { data } = sb.storage.from('media').getPublicUrl(path)
-    return data.publicUrl
+    // Use a signed URL (valid 24h) so WhatsApp can download the file
+    // regardless of whether the bucket is public or private
+    const { data: signed } = await sb.storage.from('media').createSignedUrl(path, 86400)
+    if (signed?.signedUrl) return signed.signedUrl
+    // Fallback to public URL if signing fails
+    const { data: pub } = sb.storage.from('media').getPublicUrl(path)
+    return pub.publicUrl
   } catch {
     return null
   }
@@ -84,11 +89,6 @@ export async function POST(req: NextRequest) {
   const results = await Promise.all(
     phones.map(async (phone) => {
       const r = await sendWA(phone, finalMessage || '📎', mediaUrl ?? undefined)
-      // If there is a media URL, also try sending the URL as a separate follow-up text
-      // so even if the Railway service doesn't support media_url, the link is visible.
-      if (mediaUrl && r.status === 'sent') {
-        await sendWA(phone, `📎 ${file!.name}: ${mediaUrl}`)
-      }
       return { phone, ...r }
     })
   )
