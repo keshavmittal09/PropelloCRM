@@ -113,6 +113,31 @@ async def init_db():
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_agent_id ON performance_snapshots (agent_id)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_performance_snapshots_snapshot_date ON performance_snapshots (snapshot_date)"))
 
+            # AI Call Analysis fields (PR #19 — AI workflow enhancement)
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS call_score INTEGER"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS call_sentiment VARCHAR(20)"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS intent_level VARCHAR(20)"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS interest_level VARCHAR(20)"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS ai_recommended_action TEXT"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_call_transcript TEXT"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_call_summary TEXT"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS whatsapp_status VARCHAR(20) DEFAULT 'not_sent'"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_ai_call_date TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_call_date TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS max_retries_reached BOOLEAN DEFAULT FALSE"))
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS next_followup_date TIMESTAMP"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_leads_next_call_date ON leads (next_call_date)"))
+
+            # New activity_type enum values (PR #19)
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'ai_call_completed'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'ai_analysis_generated'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'classified'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'retry_scheduled'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'whatsapp_auto_sent'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'assignment_update'"))
+            await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'priority_change'"))
+
             # WhatsApp chat history
             await conn.execute(text("""
                 CREATE TABLE IF NOT EXISTS whatsapp_messages (
