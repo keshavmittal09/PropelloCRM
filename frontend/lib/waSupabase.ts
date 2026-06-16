@@ -1,9 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-
-const url = process.env.NEXT_PUBLIC_WA_SUPABASE_URL!
-const key = process.env.NEXT_PUBLIC_WA_SUPABASE_KEY!
-
-export const waSupabase = createClient(url, key)
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 export interface WALead {
   id: number
@@ -32,4 +27,20 @@ export interface WAConversation {
   message: string
   score: number | null
   created_at: string
+}
+
+// Lazy singleton — created only when first accessed, not at module load time.
+// This prevents build failures when env vars are absent during Vercel SSG.
+let _client: SupabaseClient | null = null
+
+export function getWASupabase(): SupabaseClient {
+  if (!_client) {
+    const url = process.env.NEXT_PUBLIC_WA_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_WA_SUPABASE_KEY
+    if (!url || !key) {
+      throw new Error('WhatsApp Supabase env vars (NEXT_PUBLIC_WA_SUPABASE_URL / NEXT_PUBLIC_WA_SUPABASE_KEY) are not configured.')
+    }
+    _client = createClient(url, key)
+  }
+  return _client
 }

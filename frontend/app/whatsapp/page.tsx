@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
 import Sidebar from '@/components/shared/Sidebar'
-import { waSupabase, type WALead, type WAConversation } from '@/lib/waSupabase'
+import { getWASupabase, type WALead, type WAConversation } from '@/lib/getWASupabase()'
 
 type LabelFilter = 'ALL' | 'HOT' | 'WARM' | 'COLD'
 
@@ -38,7 +38,7 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    waSupabase
+    getWASupabase()
       .from('conversations')
       .select('*')
       .eq('phone', lead.phone)
@@ -147,7 +147,7 @@ export default function WhatsAppLeadsPage() {
 
   const fetchLeads = useCallback(async () => {
     setLoading(true)
-    let q = waSupabase.from('leads').select('*').order('score', { ascending: false })
+    let q = getWASupabase().from('leads').select('*').order('score', { ascending: false })
     if (labelFilter !== 'ALL') q = q.eq('label', labelFilter)
     if (search.trim()) q = q.or(`name.ilike.%${search}%,phone.ilike.%${search}%`)
     const { data } = await q
@@ -156,7 +156,7 @@ export default function WhatsAppLeadsPage() {
   }, [labelFilter, search])
 
   const fetchCounts = useCallback(async () => {
-    const { data } = await waSupabase.from('leads').select('label')
+    const { data } = await getWASupabase().from('leads').select('label')
     if (!data) return
     const c = { HOT: 0, WARM: 0, COLD: 0, ALL: data.length }
     data.forEach(r => { if (r.label in c) c[r.label as 'HOT' | 'WARM' | 'COLD']++ })
