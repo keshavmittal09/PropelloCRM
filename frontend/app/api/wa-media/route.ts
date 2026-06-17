@@ -30,7 +30,7 @@ async function uploadToSupabase(fileBytes: Uint8Array, fileName: string, mimeTyp
 // Fallback: upload to 0x0.st — free public file host, returns a permanent direct-download URL
 async function uploadToPublicHost(fileBytes: Uint8Array, fileName: string, mimeType: string): Promise<string | null> {
   try {
-    const blob = new Blob([fileBytes], { type: mimeType })
+    const blob = new Blob([Buffer.from(fileBytes)], { type: mimeType })
     const form = new FormData()
     form.append('file', blob, fileName)
     const res = await fetch('https://0x0.st', { method: 'POST', body: form })
