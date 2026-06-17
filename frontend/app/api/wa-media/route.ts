@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 
 const RAILWAY_URL = process.env.WHATSAPP_CAMPAIGN_URL || 'https://whatsapp-agent-production-3525.up.railway.app/api/send'
+// Native-media endpoint on the WhatsApp agent (sends a real document/image, not a link).
+const RAILWAY_MEDIA_URL = RAILWAY_URL.replace(/\/send\/?$/, '/send-media')
 const RAILWAY_SECRET = process.env.WHATSAPP_CAMPAIGN_SECRET || ''
 const WA_URL = process.env.NEXT_PUBLIC_WA_SUPABASE_URL || ''
 // Prefer a service-role key for uploads (bypasses storage RLS). Fall back to the publishable/anon key.
@@ -75,25 +77,22 @@ type MediaInfo = { url: string; filename: string; mimetype: string }
 async function sendWA(phone: string, message: string, media?: MediaInfo): Promise<{ status: string; reason?: string }> {
   phone = normalise(phone)
   try {
-    const body: Record<string, unknown> = { phone, name: phone, message, call_id: randomUUID(), campaign: 'Manual' }
+    // Choose endpoint + payload based on whether a file is attached.
+    // - File  → /api/send-media → Meta native document/image (a real attachment card)
+    // - Text  → /api/send       → free-form text message
+    let url: string
+    let body: Record<string, unknown>
     if (media) {
-      // Detect whether this is an image or a document so the WhatsApp agent
-      // can deliver it as a NATIVE attachment instead of a plain text link.
       const isImage = media.mimetype.startsWith('image/')
-      const mediaType = isImage ? 'image' : 'document'
-      // Send every common field name a WhatsApp service might read — unknown
-      // fields are ignored, so this maximises the chance of native delivery.
-      body.media_url = media.url
-      body.media_type = mediaType
-      body.type = mediaType
-      body.mimetype = media.mimetype
-      body.mime_type = media.mimetype
-      body.filename = media.filename
-      body.file_name = media.filename
-      body.caption = message
-      if (!isImage) body.document_url = media.url
+      url = RAILWAY_MEDIA_URL
+      body = isImage
+        ? { phone, image_url: media.url, caption: message }
+        : { phone, document_url: media.url, document_name: media.filename, caption: message }
+    } else {
+      url = RAILWAY_URL
+      body = { phone, name: phone, message, call_id: randomUUID(), campaign: 'Manual' }
     }
-    const res = await fetch(RAILWAY_URL, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': RAILWAY_SECRET },
       body: JSON.stringify(body),
@@ -145,9 +144,11 @@ export async function POST(req: NextRequest) {
     media = { url: result.url, filename: file.name, mimetype: file.type || 'application/octet-stream' }
   }
 
-  // When a file is attached it is delivered as a NATIVE attachment via the media
-  // fields in sendWA — so the caption is just the user's typed message (no raw URL).
-  const finalMessage = (message || '').trim() || (media ? '' : '📎')
+  // Caption is just the agent's typed message. Files go out as native attachments
+  // via /api/send-media, so we no longer embed the URL in the text.
+  // Text-only sends still need a non-empty message (Railway /api/send requires it).
+  const caption = (message || '').trim()
+  const finalMessage = media ? caption : (caption || '📎')
 
   const results = await Promise.all(
     phones.map(async (phone) => {
