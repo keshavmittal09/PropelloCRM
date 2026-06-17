@@ -145,9 +145,12 @@ export async function POST(req: NextRequest) {
     media = { url: result.url, filename: file.name, mimetype: file.type || 'application/octet-stream' }
   }
 
-  // When a file is attached it is delivered as a NATIVE attachment via the media
-  // fields in sendWA — so the caption is just the user's typed message (no raw URL).
-  const finalMessage = (message || '').trim() || (media ? '' : '📎')
+  // Railway's /api/send REQUIRES a non-empty `message`. We also embed the file URL
+  // in the text as a guaranteed-accessible fallback, since the Railway agent is a
+  // text/template sender and may ignore the native media fields.
+  const fileLabel = media ? `\n\n📎 *${media.filename}*` : ''
+  const fileLink = media ? `\n${media.url}` : ''
+  const finalMessage = (message + fileLabel + fileLink).trim() || '📎'
 
   const results = await Promise.all(
     phones.map(async (phone) => {
