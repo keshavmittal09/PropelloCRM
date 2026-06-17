@@ -12,23 +12,37 @@ function normalise(p: string): string {
   return p.length === 10 ? `91${p}` : p
 }
 
-async function uploadToStorage(fileBytes: Uint8Array, fileName: string, mimeType: string): Promise<string | null> {
+async function uploadToSupabase(fileBytes: Uint8Array, fileName: string, mimeType: string): Promise<string | null> {
+  if (!WA_URL || !WA_KEY) return null
   try {
     const sb = createClient(WA_URL, WA_KEY)
     const ext = fileName.split('.').pop() ?? 'bin'
     const path = `broadcasts/${randomUUID()}.${ext}`
     const { error } = await sb.storage.from('media').upload(path, fileBytes, { contentType: mimeType, upsert: false })
     if (error) return null
-    // Use a signed URL (valid 24h) so WhatsApp can download the file
-    // regardless of whether the bucket is public or private
     const { data: signed } = await sb.storage.from('media').createSignedUrl(path, 86400)
     if (signed?.signedUrl) return signed.signedUrl
-    // Fallback to public URL if signing fails
     const { data: pub } = sb.storage.from('media').getPublicUrl(path)
     return pub.publicUrl
-  } catch {
-    return null
-  }
+  } catch { return null }
+}
+
+// Fallback: upload to 0x0.st — free public file host, returns a permanent direct-download URL
+async function uploadToPublicHost(fileBytes: Uint8Array, fileName: string, mimeType: string): Promise<string | null> {
+  try {
+    const blob = new Blob([Buffer.from(fileBytes)], { type: mimeType })
+    const form = new FormData()
+    form.append('file', blob, fileName)
+    const res = await fetch('https://0x0.st', { method: 'POST', body: form })
+    if (!res.ok) return null
+    const url = (await res.text()).trim()
+    return url.startsWith('http') ? url : null
+  } catch { return null }
+}
+
+async function uploadToStorage(fileBytes: Uint8Array, fileName: string, mimeType: string): Promise<string | null> {
+  return (await uploadToSupabase(fileBytes, fileName, mimeType)) ??
+         (await uploadToPublicHost(fileBytes, fileName, mimeType))
 }
 
 async function sendWA(phone: string, message: string, mediaUrl?: string): Promise<{ status: string; reason?: string }> {

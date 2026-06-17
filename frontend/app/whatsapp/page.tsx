@@ -273,32 +273,29 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[580px] mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[820px] mx-4 max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-start justify-between px-6 pt-6 pb-4 border-b border-gray-100">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-semibold text-gray-900">{lead.name}</span>
-              <span className={labelStyle(lead.label)}>{lead.label}</span>
-            </div>
-            <p className="text-sm text-gray-500 mt-0.5">{lead.phone}</p>
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-base font-semibold text-gray-900 truncate">{lead.name}</span>
+            <span className={labelStyle(lead.label)}>{lead.label}</span>
+            <span className="text-sm text-gray-400">{lead.phone}</span>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none ml-4 flex-shrink-0">×</button>
         </div>
 
-        {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-3 px-6 py-4 border-b border-gray-100">
+        {/* Stats — compact single row */}
+        <div className="flex flex-wrap gap-x-5 gap-y-1 px-6 py-2.5 border-b border-gray-100 bg-gray-50/60">
           {([
-            ['SCORE', `${lead.score} / 10`],
-            ['STATUS', lead.label],
-            ['INTENT', lead.intent || '—'],
-            ['MESSAGES', lead.message_count],
-            ['FIRST SEEN', new Date(lead.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
-            ['LAST ACTIVE', timeAgo(lead.last_message || lead.updated_at)],
+            ['Score', `${lead.score} / 10`],
+            ['Intent', lead.intent || '—'],
+            ['Messages', lead.message_count],
+            ['First seen', new Date(lead.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })],
+            ['Last active', timeAgo(lead.last_message || lead.updated_at)],
           ] as [string, string | number][]).map(([k, v]) => (
-            <div key={k} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-              <p className="text-[10px] font-semibold text-gray-400 tracking-wider mb-0.5">{k}</p>
-              <p className={`text-sm font-medium ${k === 'SCORE' ? 'text-blue-600' : 'text-gray-800'}`}>{v}</p>
+            <div key={k} className="flex items-center gap-1.5 text-xs">
+              <span className="font-semibold text-gray-400 uppercase tracking-wide">{k}:</span>
+              <span className={`font-medium ${k === 'Score' ? 'text-blue-600' : 'text-gray-700'}`}>{v}</span>
             </div>
           ))}
         </div>
@@ -344,7 +341,7 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
         <div className="px-6 pb-5 pt-3 border-t border-gray-100 flex flex-col gap-2">
           <p className="text-[10px] font-semibold text-gray-400 tracking-widest uppercase">Send Message</p>
           <textarea
-            rows={2}
+            rows={3}
             value={text}
             onChange={e => setText(e.target.value)}
             placeholder="Type a follow-up message…"
