@@ -265,7 +265,7 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
         setChats(prev => [...prev, newMsg])
         setText(''); setFile(null)
       } else {
-        toast.error('Failed: ' + (json.results?.[0]?.reason ?? 'unknown'))
+        toast.error('Failed: ' + (json.error ?? json.results?.[0]?.reason ?? 'unknown'))
       }
     } catch (e: any) { toast.error(e?.message) }
     finally { setSending(false) }
