@@ -95,7 +95,7 @@ export default function WhatsAppChatsPanel({ leadId, phone }: Props) {
           timestamp: new Date().toISOString(),
         }])
       } else {
-        toast.error('Send failed: ' + (json.results?.[0]?.reason || 'Unknown error'))
+        toast.error('Send failed: ' + (json.error || json.results?.[0]?.reason || 'Unknown error'))
       }
     } catch (e: any) {
       toast.error(e?.message || 'Failed to send')
