@@ -70,11 +70,29 @@ async function uploadToStorage(fileBytes: Uint8Array, fileName: string, mimeType
   return { url: null, error: `${primary.error} | fallback: ${fallback.error}` }
 }
 
-async function sendWA(phone: string, message: string, mediaUrl?: string): Promise<{ status: string; reason?: string }> {
+type MediaInfo = { url: string; filename: string; mimetype: string }
+
+async function sendWA(phone: string, message: string, media?: MediaInfo): Promise<{ status: string; reason?: string }> {
   phone = normalise(phone)
   try {
     const body: Record<string, unknown> = { phone, name: phone, message, call_id: randomUUID(), campaign: 'Manual' }
-    if (mediaUrl) body.media_url = mediaUrl
+    if (media) {
+      // Detect whether this is an image or a document so the WhatsApp agent
+      // can deliver it as a NATIVE attachment instead of a plain text link.
+      const isImage = media.mimetype.startsWith('image/')
+      const mediaType = isImage ? 'image' : 'document'
+      // Send every common field name a WhatsApp service might read — unknown
+      // fields are ignored, so this maximises the chance of native delivery.
+      body.media_url = media.url
+      body.media_type = mediaType
+      body.type = mediaType
+      body.mimetype = media.mimetype
+      body.mime_type = media.mimetype
+      body.filename = media.filename
+      body.file_name = media.filename
+      body.caption = message
+      if (!isImage) body.document_url = media.url
+    }
     const res = await fetch(RAILWAY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Secret': RAILWAY_SECRET },
@@ -110,7 +128,7 @@ export async function POST(req: NextRequest) {
   if (!phones.length) return NextResponse.json({ error: 'phones required' }, { status: 400 })
   if (!message && !file) return NextResponse.json({ error: 'message or file required' }, { status: 400 })
 
-  let mediaUrl: string | null = null
+  let media: MediaInfo | null = null
 
   if (file) {
     const bytes = new Uint8Array(await file.arrayBuffer())
@@ -124,21 +142,20 @@ export async function POST(req: NextRequest) {
         { status: 502 },
       )
     }
-    mediaUrl = result.url
+    media = { url: result.url, filename: file.name, mimetype: file.type || 'application/octet-stream' }
   }
 
-  // Embed the URL in the message text too, so it's tappable even if native media delivery is unsupported.
-  const fileLabel = file ? `\n\n📎 *${file.name}*` : ''
-  const fileLink = mediaUrl ? `\n${mediaUrl}` : ''
-  const finalMessage = (message + fileLabel + fileLink).trim() || '📎'
+  // When a file is attached it is delivered as a NATIVE attachment via the media
+  // fields in sendWA — so the caption is just the user's typed message (no raw URL).
+  const finalMessage = (message || '').trim() || (media ? '' : '📎')
 
   const results = await Promise.all(
     phones.map(async (phone) => {
-      const r = await sendWA(phone, finalMessage, mediaUrl ?? undefined)
+      const r = await sendWA(phone, finalMessage, media ?? undefined)
       return { phone, ...r }
     })
   )
 
   const sent = results.filter(r => r.status === 'sent').length
-  return NextResponse.json({ total: phones.length, sent, failed: phones.length - sent, results, mediaUrl })
+  return NextResponse.json({ total: phones.length, sent, failed: phones.length - sent, results, mediaUrl: media?.url ?? null })
 }
