@@ -227,24 +227,16 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
               <p className="text-xs text-[#8f8378] mt-0.5">{task.title}</p>
             </div>
             <button
-              onClick={() => { if (step === 1) onClose(); else setStep(s => s - 1) }}
+              onClick={onClose}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-[#7b7166] hover:bg-[#f0e8de] transition-colors text-sm"
             >
-              {step === 1 ? '✕' : '←'}
+              ✕
             </button>
           </div>
           <div className="flex gap-1.5 mt-3">
-            {[1, 2, 3, 4].map(s => (
-              <div key={s} className={`flex-1 h-1.5 rounded-full transition-colors ${s <= step ? 'bg-[#c86f43]' : 'bg-[#e8ddcf]'}`} />
-            ))}
+            <div className="flex-1 h-1.5 rounded-full bg-[#c86f43]" />
           </div>
-          <p className="text-xs text-[#8f8378] mt-1.5">
-            Step {step} of 4 — {
-              step === 1 ? 'Call Details' :
-              step === 2 ? 'Customer Profile' :
-              step === 3 ? 'Lead Edit' : 'Confirm & Submit'
-            }
-          </p>
+          <p className="text-xs text-[#8f8378] mt-1.5">Step 1 of 1 — Call Details</p>
         </div>
 
         {/* Body */}
@@ -299,40 +291,12 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-[#e8ddcf] bg-[#faf7f3]">
           <div className="flex gap-3">
-            {step > 1 && (
-              <button onClick={() => setStep(s => s - 1)}
-                className="flex-1 px-5 py-3 rounded-xl border border-[#e1d3c2] text-[#6e6357] font-medium hover:bg-[#f0e8de] transition-colors">
-                Back
-              </button>
-            )}
-            {step < 3 ? (
-              <button onClick={() => {
-                if (step === 1 && !callStatus) { toast.error('Select call status to continue'); return }
-                if (step === 2) {
-                  const required = [age, occupation, familySize, income, budget, preferredLocation, timeline, livingSituation, investmentPurpose]
-                  if (required.some(v => v === null || v === '')) {
-                    toast.error("Please answer all customer profile questions — select \"Don't Know\" if unknown")
-                    return
-                  }
-                }
-                setStep(s => s + 1)
-              }}
-                className="flex-1 px-5 py-3 rounded-xl bg-[#2f2317] text-white font-semibold hover:bg-[#1f1610] transition-colors">
-                Next
-              </button>
-            ) : step === 3 ? (
-              <button onClick={() => setStep(4)}
-                className="flex-1 px-5 py-3 rounded-xl bg-[#2f2317] text-white font-semibold hover:bg-[#1f1610] transition-colors">
-                Next
-              </button>
-            ) : (
-              <button onClick={handleSubmit} disabled={!callStatus || submitting}
-                className="flex-1 px-5 py-3 rounded-xl bg-[#2f7a4e] text-white font-semibold hover:bg-[#236539] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                {submitting ? (
-                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Submitting...</>
-                ) : 'Submit & Complete'}
-              </button>
-            )}
+            <button onClick={handleSubmit} disabled={!callStatus || submitting}
+              className="flex-1 px-5 py-3 rounded-xl bg-[#2f7a4e] text-white font-semibold hover:bg-[#236539] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+              {submitting ? (
+                <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Submitting...</>
+              ) : 'Complete Task'}
+            </button>
           </div>
         </div>
       </div>
