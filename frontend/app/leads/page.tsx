@@ -3,18 +3,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useLeadsPaginated } from '@/hooks/useQueries'
 import Sidebar from '@/components/shared/Sidebar'
-import { ScoreBadge, SourceTag, DaysInStage } from '@/components/shared/Badges'
+import { ScoreBadge, SourceTag } from '@/components/shared/Badges'
 import { formatBudget, formatDate, stageConfig } from '@/lib/utils'
 import { leadsApi } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { LeadStage, LeadScore } from '@/lib/types'
 import { getWASupabase } from '@/lib/waSupabase'
-
-function waPhone(p: string): string {
-  const d = p.replace(/\D/g, '')
-  return d.length === 10 ? `91${d}` : d
-}
 
 const WA_LABEL_STYLE: Record<string, string> = {
   HOT: 'bg-red-100 text-red-700',
@@ -43,19 +38,6 @@ const DATE_FILTERS = [
 ]
 const PAGE_SIZE = 25
 
-const sentimentColor = (s: string | null | undefined) => {
-  if (s === 'positive') return 'text-green-600 bg-green-50'
-  if (s === 'negative') return 'text-red-600 bg-red-50'
-  return 'text-gray-500 bg-gray-50'
-}
-
-const waStatusColor = (s: string | undefined) => {
-  if (s === 'replied') return 'text-green-700 bg-green-100'
-  if (s === 'read') return 'text-blue-700 bg-blue-100'
-  if (s === 'delivered') return 'text-indigo-600 bg-indigo-50'
-  if (s === 'sent') return 'text-yellow-700 bg-yellow-100'
-  return 'text-gray-400 bg-gray-50'
-}
 
 export default function LeadsPage() {
   const router = useRouter()
@@ -88,7 +70,6 @@ export default function LeadsPage() {
 
   useEffect(() => { setPage(1) }, [stage, score, source, campaignId, search, sentiment, waStatus, assigned, retry, scoreRange, dateFilter, dateFrom, dateTo])
 
-  const [waMap, setWaMap] = useState<Record<string, { label: string; score: number }>>({})
   const [waSearchResults, setWaSearchResults] = useState<any[]>([])
 
   // Search WA Supabase when search term changes
@@ -127,25 +108,6 @@ export default function LeadsPage() {
   const leads = leadsPage?.items ?? []
   const totalLeads = leadsPage?.total ?? 0
 
-  // Fetch WA bot labels for the current page's leads
-  useEffect(() => {
-    if (!leads.length) return
-    const phones = leads.map(l => l.contact?.phone).filter(Boolean) as string[]
-    if (!phones.length) return
-    const normalized = phones.map(waPhone)
-    try {
-      getWASupabase()
-        .from('leads')
-        .select('phone,label,score')
-        .in('phone', normalized)
-        .then(({ data }) => {
-          if (!data) return
-          const map: Record<string, { label: string; score: number }> = {}
-          data.forEach((r: any) => { map[r.phone] = { label: r.label, score: r.score } })
-          setWaMap(map)
-        })
-    } catch { /* WA Supabase not configured — skip */ }
-  }, [leads])
   const totalPages = Math.max(leadsPage?.total_pages ?? 1, 1)
   const visibleStart = totalLeads === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const visibleEnd = totalLeads === 0 ? 0 : Math.min(page * PAGE_SIZE, totalLeads)
@@ -337,10 +299,10 @@ export default function LeadsPage() {
           ) : (
             <div className="space-y-4">
               <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden overflow-x-auto">
-                <table className="w-full min-w-[1100px]">
+                <table className="w-full min-w-[700px]">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/60">
-                      {['Contact', 'Category', 'WA Bot', 'AI Score', 'Sentiment', 'Stage', 'Budget', 'Source', 'WhatsApp', 'Retry', 'Days', 'Agent', 'Next Follow-up'].map(h => (
+                      {['Contact', 'Category', 'Stage', 'Budget', 'Source', 'Next Follow-up'].map(h => (
                         <th key={h} className="text-left text-xs font-semibold text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -360,42 +322,6 @@ export default function LeadsPage() {
                         {/* Category (Hot/Warm/Cold) */}
                         <td className="px-4 py-3"><ScoreBadge score={lead.lead_score} /></td>
 
-                        {/* WA Bot label from WhatsApp Supabase */}
-                        <td className="px-4 py-3">
-                          {(() => {
-                            const wa = waMap[waPhone(lead.contact?.phone ?? '')]
-                            return wa
-                              ? <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${WA_LABEL_STYLE[wa.label] ?? 'bg-gray-100 text-gray-600'}`}>{wa.label}</span>
-                              : <span className="text-xs text-gray-300">—</span>
-                          })()}
-                        </td>
-
-                        {/* AI Score (0-100) */}
-                        <td className="px-4 py-3">
-                          {lead.call_score != null ? (
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-16 h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full ${lead.call_score >= 80 ? 'bg-red-500' : lead.call_score >= 50 ? 'bg-yellow-400' : 'bg-blue-400'}`}
-                                  style={{ width: `${lead.call_score}%` }}
-                                />
-                              </div>
-                              <span className="text-xs font-medium text-gray-700">{lead.call_score}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-300">—</span>
-                          )}
-                        </td>
-
-                        {/* Sentiment */}
-                        <td className="px-4 py-3">
-                          {lead.call_sentiment ? (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sentimentColor(lead.call_sentiment)}`}>
-                              {lead.call_sentiment}
-                            </span>
-                          ) : <span className="text-xs text-gray-300">—</span>}
-                        </td>
-
                         {/* Stage */}
                         <td className="px-4 py-3">
                           <span className="flex items-center gap-1.5 text-sm text-gray-700">
@@ -406,25 +332,6 @@ export default function LeadsPage() {
 
                         <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{formatBudget(lead.budget_min, lead.budget_max)}</td>
                         <td className="px-4 py-3"><SourceTag source={lead.source} /></td>
-
-                        {/* WhatsApp Status */}
-                        <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${waStatusColor(lead.whatsapp_status)}`}>
-                            {(lead.whatsapp_status ?? 'not_sent').replace('_', ' ')}
-                          </span>
-                        </td>
-
-                        {/* Retry */}
-                        <td className="px-4 py-3">
-                          {(lead.retry_count ?? 0) > 0 ? (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${lead.max_retries_reached ? 'bg-red-100 text-red-700' : 'bg-orange-50 text-orange-600'}`}>
-                              {lead.max_retries_reached ? 'Max reached' : `Retry ${lead.retry_count}`}
-                            </span>
-                          ) : <span className="text-xs text-gray-300">—</span>}
-                        </td>
-
-                        <td className="px-4 py-3"><DaysInStage days={lead.days_in_stage} /></td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{lead.assigned_agent?.name?.split(' ')[0] ?? '—'}</td>
 
                         {/* Next Follow-up */}
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
