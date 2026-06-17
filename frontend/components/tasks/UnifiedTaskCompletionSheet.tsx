@@ -25,7 +25,7 @@ const TOPIC_OPTIONS = [
   { value: 'flat_size', label: 'Flat Size' },
   { value: 'loan', label: 'Loan' },
   { value: 'site_visit', label: 'Site Visit' },
-  { value: 'other', label: 'Other' },
+  { value: 'follow_up', label: 'Follow Up' },
 ]
 
 const AGE_OPTIONS = ['under_20', '20-30', '30-40', '40-50', '50-60', '60+', 'unknown']
@@ -49,6 +49,7 @@ const L: Record<string, string> = {
   under_20L: '< 20L', '20L-40L': '20-40L', '40L-70L': '40-70L', '70L-1Cr': '70L-1Cr', '1Cr-2Cr': '1-2Cr', '2Cr+': '2Cr+',
   immediate: 'Immediately', soon: 'Soon (3-6m)', later: 'Later (6-12m)', exploring: 'Just Exploring',
   'Renting': 'Renting', 'Owned': 'Owned', 'Living with parents': 'Living with parents', 'Other': 'Other',
+  price: 'Price', location: 'Location', flat_size: 'Flat Size', loan: 'Loan', site_visit: 'Site Visit', follow_up: 'Follow Up',
 }
 
 const FOLLOWUP_OPTIONS = [
@@ -58,6 +59,21 @@ const FOLLOWUP_OPTIONS = [
   { value: '1_week', label: 'In 1 Week' },
   { value: 'not_needed', label: 'Not Needed' },
 ]
+
+// Format an ISO date-time-local string ("YYYY-MM-DDTHH:mm" or "YYYY-MM-DD") for display
+function fmtDate(v: string): string {
+  if (!v) return ''
+  const d = new Date(v)
+  if (isNaN(d.getTime())) return v
+  return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// Convert a datetime-local input value to a full ISO string
+function dateToIso(v: string): string | null {
+  if (!v) return null
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
 
 interface Props {
   task: Task
@@ -87,6 +103,10 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
   const [followupDate, setFollowupDate] = useState('')
   const [followupTime, setFollowupTime] = useState('09:00')
   const [remarkText, setRemarkText] = useState('')
+  // Topic-specific scheduling
+  const [siteVisitDate, setSiteVisitDate] = useState('')
+  const [followUpAt, setFollowUpAt] = useState('')
+  const [followUpNote, setFollowUpNote] = useState('')
   // Step 3 lead edit fields
   const [editName, setEditName] = useState(lead?.contact?.name ?? '')
   const [editPhone, setEditPhone] = useState(lead?.contact?.phone ?? '')
@@ -157,10 +177,22 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
     const remarkLines: string[] = [`Call status: ${callLabel}`]
     if (interestLabel) remarkLines.push(`Interest: ${interestLabel}`)
     if (topics.length > 0) remarkLines.push(`Discussed: ${topics.map(t => L[t] ?? t).join(', ')}`)
+    if (topics.includes('site_visit') && siteVisitDate) remarkLines.push(`Site visit scheduled: ${fmtDate(siteVisitDate)}`)
+    if (topics.includes('follow_up')) {
+      if (followUpAt) remarkLines.push(`Follow-up on: ${fmtDate(followUpAt)}`)
+      if (followUpNote.trim()) remarkLines.push(`Follow-up note: ${followUpNote.trim()}`)
+    }
     if (demographics.occupation) remarkLines.push(`Occupation: ${L[demographics.occupation] ?? demographics.occupation}`)
     if (demographics.family_size) remarkLines.push(`Family: ${L[demographics.family_size]}`)
     if (demographics.property_budget) remarkLines.push(`Budget: ${L[demographics.property_budget] ?? demographics.property_budget}`)
     if (remarkText.trim()) remarkLines.push(`Note: ${remarkText.trim()}`)
+
+    // Schedule next follow-up from the topic date pickers (site visit or follow-up date)
+    const scheduledDate =
+      (topics.includes('site_visit') && siteVisitDate ? dateToIso(siteVisitDate) : null) ??
+      (topics.includes('follow_up') && followUpAt ? dateToIso(followUpAt) : null) ??
+      getNextFollowupDate()
+    const followUpComboNote = [followUpNote.trim(), remarkText.trim()].filter(Boolean).join(' — ')
 
     // Pad remark_text to 80 chars if needed (backend requires min_length=80)
     const MIN_CHARS = 80
@@ -176,8 +208,8 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
         interest_level: interest ?? undefined,
         topics_discussed: topics,
         demographics: Object.keys(demographics).length > 0 ? demographics : undefined,
-        next_followup_at: getNextFollowupDate(),
-        note: remarkText.trim() || undefined,
+        next_followup_at: scheduledDate,
+        note: followUpComboNote || undefined,
       })
 
       // Sync any edited lead fields
@@ -242,7 +274,14 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
         {/* Body */}
         <div className="flex-1 overflow-auto px-5 py-4">
           {step === 1 && (
-            <Step1 callStatus={callStatus} setCallStatus={setCallStatus} interest={interest} setInterest={setInterest} topics={topics} toggleTopic={toggleTopic} />
+            <Step1
+              callStatus={callStatus} setCallStatus={setCallStatus}
+              interest={interest} setInterest={setInterest}
+              topics={topics} toggleTopic={toggleTopic}
+              siteVisitDate={siteVisitDate} setSiteVisitDate={setSiteVisitDate}
+              followUpAt={followUpAt} setFollowUpAt={setFollowUpAt}
+              followUpNote={followUpNote} setFollowUpNote={setFollowUpNote}
+            />
           )}
           {step === 2 && (
             <Step2
@@ -313,7 +352,7 @@ function SelectChip({ label, selected, onClick }: { label: string; selected: boo
   )
 }
 
-function Step1({ callStatus, setCallStatus, interest, setInterest, topics, toggleTopic }: any) {
+function Step1({ callStatus, setCallStatus, interest, setInterest, topics, toggleTopic, siteVisitDate, setSiteVisitDate, followUpAt, setFollowUpAt, followUpNote, setFollowUpNote }: any) {
   const isConnected = callStatus === 'connected'
   return (
     <div className="space-y-5">
@@ -355,6 +394,42 @@ function Step1({ callStatus, setCallStatus, interest, setInterest, topics, toggl
               )
             })}
           </div>
+
+          {topics.includes('site_visit') && (
+            <div className="mt-3 bg-[#fef7f2] border border-[#efd7c6] rounded-xl p-3">
+              <p className="text-sm font-semibold text-[#1f1914] mb-1.5">📅 Site visit date &amp; time</p>
+              <input
+                type="datetime-local"
+                value={siteVisitDate}
+                onChange={e => setSiteVisitDate(e.target.value)}
+                className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 focus:border-[#c86f43]"
+              />
+            </div>
+          )}
+
+          {topics.includes('follow_up') && (
+            <div className="mt-3 bg-[#fef7f2] border border-[#efd7c6] rounded-xl p-3 space-y-2.5">
+              <div>
+                <p className="text-sm font-semibold text-[#1f1914] mb-1.5">📅 Follow-up date &amp; time</p>
+                <input
+                  type="datetime-local"
+                  value={followUpAt}
+                  onChange={e => setFollowUpAt(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 focus:border-[#c86f43]"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#1f1914] mb-1.5">What to discuss?</p>
+                <textarea
+                  rows={2}
+                  value={followUpNote}
+                  onChange={e => setFollowUpNote(e.target.value)}
+                  placeholder="e.g. Need to talk about loan approval…"
+                  className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 focus:border-[#c86f43]"
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
