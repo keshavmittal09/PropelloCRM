@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const callName = (payload.name || '').trim() || 'Customer'
+
   try {
     const res = await fetch(VAANI_URL, {
       method: 'POST',
@@ -56,7 +58,10 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         agent_id: agentId,
         contact_number: contactNumber,
-        ...(payload.name ? { contact_name: payload.name.trim() } : {}),
+        // Send the name under several common keys — Vaani ignores unknown ones.
+        contact_name: callName,
+        name: callName,
+        customer_name: callName,
       }),
     })
     const text = await res.text()
@@ -64,7 +69,20 @@ export async function POST(req: NextRequest) {
     try { data = JSON.parse(text) } catch { /* non-JSON response */ }
 
     if (!res.ok) {
-      const reason = data?.error || data?.message || text || `HTTP ${res.status}`
+      // FastAPI/Pydantic validation errors come back as { detail: [{ loc, msg, type }] }.
+      // Turn them into a readable "missing field" message instead of raw JSON.
+      let reason: string
+      if (Array.isArray(data?.detail)) {
+        reason = data.detail
+          .map((d: any) => {
+            const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : d.loc
+            return `${field}: ${d.msg || d.type}`
+          })
+          .join(' · ')
+      } else {
+        reason = data?.error || data?.message || data?.detail || text || `HTTP ${res.status}`
+      }
+      console.error('[trigger-call] Vaani rejected:', text)
       return NextResponse.json({ error: `Call failed — ${reason}` }, { status: res.status })
     }
 
