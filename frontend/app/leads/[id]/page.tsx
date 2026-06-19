@@ -11,6 +11,7 @@ import { DuplicateAlert } from '@/components/shared/DuplicateAlert'
 import { formatBudget, formatDate, stageConfig } from '@/lib/utils'
 import { leadsApi, tasksApi } from '@/lib/api'
 import WhatsAppChatsPanel from '@/components/leads/WhatsAppChatsPanel'
+import TalkToAIModal from '@/components/shared/TalkToAIModal'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { MasterProfileTab } from '@/components/leads/MasterProfileTab'
@@ -33,6 +34,7 @@ export default function LeadDetailPage() {
   const { data: tasks } = useAllTasks({ lead_id: id })
   const [panel, setPanel] = useState<Panel>('profile')
   const [showWhatsApp, setShowWhatsApp] = useState(false)
+  const [showAICall, setShowAICall] = useState(false)
   const [showVisitModal, setShowVisitModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [nextStage, setNextStage] = useState(lead?.stage ?? 'new')
@@ -221,6 +223,10 @@ export default function LeadDetailPage() {
                 className="px-4 py-2 border border-green-200 bg-green-50 text-green-700 rounded-xl text-sm font-medium hover:bg-green-100 transition-colors">
                 💬 WhatsApp
               </button>
+              <button onClick={() => setShowAICall(true)}
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-pink-500 to-indigo-500 hover:opacity-95 transition-opacity">
+                📞 AI Call
+              </button>
               <button onClick={() => setShowVisitModal(true)}
                 className="px-4 py-2 border border-[#e1d3c2] bg-[#fffdfa] rounded-xl text-sm font-medium hover:bg-[#f8eee3] transition-colors text-[#52473d]">
                 🏠 Schedule visit
@@ -243,6 +249,13 @@ export default function LeadDetailPage() {
           <div className="xl:col-span-1 space-y-4">
             {/* Quick action panels */}
             {showWhatsApp && <WhatsAppSender leadId={id} onClose={() => setShowWhatsApp(false)} />}
+            {showAICall && (
+              <TalkToAIModal
+                onClose={() => setShowAICall(false)}
+                initialName={lead?.contact?.name ?? ''}
+                initialPhone={lead?.contact?.phone ?? ''}
+              />
+            )}
             {showVisitModal && <ScheduleVisitModal leadId={id} onClose={() => setShowVisitModal(false)} />}
             {showEditModal && <EditLeadModal lead={lead} onClose={() => setShowEditModal(false)} />}
 

@@ -7,6 +7,7 @@ import { formatCurrency, formatDateTime, timeAgo } from '@/lib/utils'
 import Sidebar from '@/components/shared/Sidebar'
 import LeadSourceChart from '@/components/shared/LeadSourceChart'
 import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
+import TalkToAIModal from '@/components/shared/TalkToAIModal'
 import { authApi, notificationsApi } from '@/lib/api'
 import { MobileHeader } from '@/components/mobile/MobileHeader'
 import { useQueryClient } from '@tanstack/react-query'
@@ -36,6 +37,7 @@ export default function Dashboard() {
   const { data: sourceStats } = useSourceStats()
   const dashboardTasks = (tasks ?? []).slice(0, 12)
   const [showBroadcast, setShowBroadcast] = useState(false)
+  const [showAICall, setShowAICall] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
 
@@ -61,9 +63,17 @@ export default function Dashboard() {
           subtitle={summary ? `${summary.total_leads} total leads` : 'Loading...'}
         />
         {/* Header */}
-        <div className="mb-10 mt-4 px-2">
-          <h2 className="text-5xl font-semibold tracking-tight text-[#1f1914]">Good morning, {agent?.name?.split(' ')[0]}.</h2>
-          <p className="text-[#756c63] font-medium tracking-wide text-sm mt-2">Here is your live real estate pipeline overview.</p>
+        <div className="mb-10 mt-4 px-2 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-5xl font-semibold tracking-tight text-[#1f1914]">Good morning, {agent?.name?.split(' ')[0]}.</h2>
+            <p className="text-[#756c63] font-medium tracking-wide text-sm mt-2">Here is your live real estate pipeline overview.</p>
+          </div>
+          <button
+            onClick={() => setShowAICall(true)}
+            className="mt-2 rounded-full bg-gradient-to-r from-pink-500 to-indigo-500 px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-lg transition-opacity hover:opacity-95"
+          >
+            📞 Talk to AI
+          </button>
         </div>
 
         {/* Primary Stats grid */}
@@ -254,6 +264,8 @@ export default function Dashboard() {
             }}
           />
         )}
+
+        {showAICall && <TalkToAIModal onClose={() => setShowAICall(false)} />}
       </main>
     </div>
   )
