@@ -14,13 +14,6 @@ const ROLE_LABEL: Record<string, string> = {
   call_agent: 'Call Agent',
 }
 
-// The starter call-agent accounts requested for this workspace.
-const QUICK_AGENTS = [
-  { name: 'Nopur', email: 'nopur@propello.ai', password: 'nopur123', role: 'call_agent' },
-  { name: 'Sales 1', email: 'sales1@propello.ai', password: 'sales1123', role: 'call_agent' },
-  { name: 'Sales 2', email: 'sales2@propello.ai', password: 'sales2123', role: 'call_agent' },
-]
-
 export default function StaffPage() {
   const { agent } = useAuthStore()
   const router = useRouter()
@@ -62,18 +55,6 @@ export default function StaffPage() {
     setCreating(true)
     const ok = await createAgent(form)
     if (ok) setForm({ name: '', email: '', password: '', role: 'call_agent' })
-    setCreating(false)
-  }
-
-  const createAllQuick = async () => {
-    setCreating(true)
-    const existing = new Set(agents.map(a => a.email.toLowerCase()))
-    let made = 0
-    for (const q of QUICK_AGENTS) {
-      if (existing.has(q.email.toLowerCase())) continue
-      if (await createAgent(q)) made++
-    }
-    toast.success(made ? `Added ${made} call agent(s)` : 'All starter agents already exist')
     setCreating(false)
   }
 
@@ -141,10 +122,6 @@ export default function StaffPage() {
           <div className="bg-white border border-gray-200 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <h3 className="font-semibold text-gray-900">Add a new agent</h3>
-              <button onClick={createAllQuick} disabled={creating}
-                className="text-xs font-semibold text-indigo-600 border border-indigo-200 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 disabled:opacity-50">
-                ⚡ Quick-add starter call agents (nopur, sales1, sales2)
-              </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}

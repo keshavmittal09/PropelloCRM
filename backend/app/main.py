@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import asyncio
 from app.core.config import settings
 from app.core.dependencies import get_current_user, get_db
-from app.db.base import init_db
+from app.db.base import init_db, seed_default_agents
 from app.jobs.scheduler import start_scheduler
 from app.routers.auth import router as auth_router
 from app.routers.leads import router as leads_router
@@ -54,6 +54,13 @@ async def lifespan(app: FastAPI):
     if last_error:
         logger.error("Database initialization failed after retries. Exiting startup.")
         raise last_error
+
+    try:
+        created = await seed_default_agents()
+        if created:
+            logger.info("Seeded %s default call-agent account(s).", created)
+    except Exception as e:
+        logger.warning("Default agent seeding skipped: %s", e)
 
     start_scheduler()
     logger.info("Database initialized. Scheduler started.")

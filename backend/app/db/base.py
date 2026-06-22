@@ -168,3 +168,36 @@ async def init_db():
             """))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_phone ON whatsapp_messages (phone)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_lead_id ON whatsapp_messages (lead_id)"))
+
+
+# Starter call-agent accounts seeded on startup. Idempotent — only created if the
+# email does not already exist. Change these passwords from the Staff page later.
+DEFAULT_CALL_AGENTS = [
+    {"name": "Nopur", "email": "nopur@propello.ai", "password": "nopur123", "role": "call_agent"},
+    {"name": "Sales 1", "email": "sales1@propello.ai", "password": "sales1123", "role": "call_agent"},
+    {"name": "Sales 2", "email": "sales2@propello.ai", "password": "sales2123", "role": "call_agent"},
+]
+
+
+async def seed_default_agents():
+    """Create the standard call-agent accounts if they don't already exist."""
+    from sqlalchemy import select
+    from app.models.agent import Agent
+    from app.core.security import hash_password
+
+    async with AsyncSessionLocal() as session:
+        created = 0
+        for spec in DEFAULT_CALL_AGENTS:
+            existing = await session.execute(select(Agent).where(Agent.email == spec["email"]))
+            if existing.scalar_one_or_none():
+                continue
+            session.add(Agent(
+                name=spec["name"],
+                email=spec["email"],
+                password_hash=hash_password(spec["password"]),
+                role=spec["role"],
+            ))
+            created += 1
+        if created:
+            await session.commit()
+        return created

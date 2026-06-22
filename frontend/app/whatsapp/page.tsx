@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Sidebar from '@/components/shared/Sidebar'
+import { useAuthStore } from '@/store/useAuthStore'
 import { getWASupabase, type WALead, type WAConversation } from '@/lib/waSupabase'
 import toast from 'react-hot-toast'
 
@@ -378,6 +380,13 @@ function ChatModal({ lead, onClose }: { lead: WALead; onClose: () => void }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function WhatsAppLeadsPage() {
+  const router = useRouter()
+  const { agent } = useAuthStore()
+  // Call agents have no WhatsApp access.
+  useEffect(() => {
+    if (agent?.role === 'call_agent') router.replace('/leads')
+  }, [agent?.role, router])
+
   const [leads, setLeads] = useState<WALead[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
