@@ -41,11 +41,6 @@ export default function Dashboard() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
 
-  // Call agents have no dashboard — send them straight to their leads.
-  useEffect(() => {
-    if (agent?.role === 'call_agent') router.replace('/leads')
-  }, [agent?.role, router])
-
   useEffect(() => {
     if (agent?.role !== 'admin') return
     authApi.listAgents().then(setAgents).catch(() => setAgents([]))

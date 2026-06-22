@@ -1028,18 +1028,21 @@ async def distribute_leads(
     if not agents:
         raise HTTPException(status_code=400, detail="No active call agents to assign leads to")
 
+    from sqlalchemy import update as sa_update
+
     only_unassigned = payload.only_unassigned if payload else True
 
-    # Pick the leads to distribute.
+    # Fetch only lead IDs (lightweight) — never load full ORM rows; there can be
+    # thousands of leads and loading them all would time out.
     if only_unassigned:
-        result = await db.execute(
-            select(Lead).where(or_(Lead.assigned_to.is_(None), Lead.assigned_to == ""))
+        id_result = await db.execute(
+            select(Lead.id).where(or_(Lead.assigned_to.is_(None), Lead.assigned_to == ""))
         )
     else:
-        result = await db.execute(select(Lead))
-    leads = result.scalars().all()
+        id_result = await db.execute(select(Lead.id))
+    lead_ids = [row[0] for row in id_result.all()]
 
-    if not leads:
+    if not lead_ids:
         return {"status": "ok", "assigned": 0, "message": "No leads to distribute"}
 
     # Seed each agent's current active-lead count so distribution stays balanced
@@ -1054,19 +1057,29 @@ async def distribute_leads(
         )
         active_counts[agent.id] = count_result.scalar() or 0
 
+    # Compute the assignment in memory: each lead goes to the agent with the
+    # fewest leads so far (load-balanced round-robin).
+    buckets: dict[str, list[str]] = {a.id: [] for a in agents}
+    for lid in lead_ids:
+        assignee = min(agents, key=lambda a: active_counts[a.id])
+        buckets[assignee.id].append(lid)
+        active_counts[assignee.id] += 1
+
+    # Apply with bulk UPDATEs in batches (fast — a few statements, not thousands).
+    now = datetime.utcnow()
+    BATCH = 500
     assigned_count = 0
     per_agent: dict[str, int] = {}
-    for lead in leads:
-        # Skip leads that already belong to the smallest-load agent when
-        # rebalancing would be a no-op (only_unassigned already filtered these).
-        assignee = min(agents, key=lambda a: active_counts.get(a.id, 0))
-        if lead.assigned_to == assignee.id:
+    for aid, ids in buckets.items():
+        if not ids:
             continue
-        lead.assigned_to = assignee.id
-        lead.updated_at = datetime.utcnow()
-        active_counts[assignee.id] += 1
-        per_agent[assignee.id] = per_agent.get(assignee.id, 0) + 1
-        assigned_count += 1
+        for i in range(0, len(ids), BATCH):
+            chunk = ids[i:i + BATCH]
+            await db.execute(
+                sa_update(Lead).where(Lead.id.in_(chunk)).values(assigned_to=aid, updated_at=now)
+            )
+        per_agent[aid] = len(ids)
+        assigned_count += len(ids)
 
     await db.commit()
 

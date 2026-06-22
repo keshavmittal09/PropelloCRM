@@ -65,7 +65,9 @@ export default function StaffPage() {
       const lines = r.breakdown.filter(b => b.assigned > 0).map(b => `${b.agent_name}: ${b.assigned}`).join(' · ')
       toast.success(r.assigned ? `Assigned ${r.assigned} leads — ${lines}` : 'No unassigned leads to distribute', { duration: 6000 })
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? 'Distribution failed')
+      const detail = e?.response?.data?.detail
+      const status = e?.response?.status
+      toast.error(detail ?? (status ? `Distribution failed (HTTP ${status})` : e?.message ?? 'Distribution failed — network/timeout'))
     } finally {
       setDistributing(false)
     }
