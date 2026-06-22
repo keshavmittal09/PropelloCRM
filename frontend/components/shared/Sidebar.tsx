@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react'
 import { cn } from '@/lib/cn'
 
 const nav = [
-  { href: '/',           label: 'Dashboard',    icon: '▦', roles: ['admin', 'manager', 'agent'] as const },
+  { href: '/',           label: 'Dashboard',    icon: '▦' },
   { href: '/leads',      label: 'All Leads',    icon: '☰' },
   { href: '/whatsapp',   label: 'WhatsApp',     icon: '💬', roles: ['admin', 'manager', 'agent'] as const },
   { href: '/tasks',      label: 'Tasks',        icon: '✓' },
