@@ -128,6 +128,21 @@ export const leadsApi = {
       '/api/leads/distribute',
       payload ?? {},
     ).then(r => r.data),
+  uploadLeads: async (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    const token = typeof window !== 'undefined' ? localStorage.getItem('propello_token') : null
+    const response = await fetch(`${api.defaults.baseURL}/api/leads/upload`, {
+      method: 'POST',
+      headers: { Authorization: token ? `Bearer ${token}` : '' },
+      body: form,
+    })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+      throw new Error(error.detail || 'Upload failed')
+    }
+    return response.json() as Promise<{ status: string; created: number; skipped: number; total: number }>
+  },
   updateLeadPriority: (id: string, priority: string) =>
     api.patch<Lead>(`/api/leads/${id}/priority`, { priority }).then(r => r.data),
   getDemographics: (id: string) => api.get<DemographicsProfile>(`/api/leads/${id}/demographics`).then(r => r.data),

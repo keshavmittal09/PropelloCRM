@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, asc, desc
 from sqlalchemy.orm import selectinload
@@ -1100,6 +1100,135 @@ async def distribute_leads(
     await db.commit()
 
     return {"status": "ok", "assigned": assigned_count, "agents": len(agents), "breakdown": breakdown}
+
+
+# ─── SIMPLE LEAD UPLOAD (Name, Phone, Hot/Warm/Cold) ────────────────────────
+
+def _pick_column(headers: list[str], *candidates: str) -> Optional[int]:
+    """Return the index of the first header that matches any candidate keyword."""
+    lowered = [(h or "").strip().lower() for h in headers]
+    for i, h in enumerate(lowered):
+        for c in candidates:
+            if c in h:
+                return i
+    return None
+
+
+def _map_score(raw: str) -> str:
+    v = (raw or "").strip().lower()
+    if "hot" in v:
+        return "hot"
+    if "cold" in v:
+        return "cold"
+    return "warm"
+
+
+def _parse_lead_rows(content: bytes, filename: str) -> list[dict]:
+    """Parse a CSV/XLSX with Name, Phone, and Type columns into lead dicts."""
+    import csv as _csv
+    import io as _io
+
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    table: list[list[str]] = []
+
+    if ext in ("xlsx", "xls"):
+        try:
+            import openpyxl
+        except ImportError:
+            raise ValueError("openpyxl is required for Excel files")
+        wb = openpyxl.load_workbook(_io.BytesIO(content), data_only=True, read_only=True)
+        ws = wb[wb.sheetnames[0]]
+        for row in ws.iter_rows(values_only=True):
+            table.append(["" if c is None else str(c) for c in row])
+    elif ext == "csv":
+        text = content.decode("utf-8-sig", errors="replace")
+        table = [list(r) for r in _csv.reader(_io.StringIO(text))]
+    else:
+        raise ValueError("Unsupported file type — upload a .xlsx or .csv file")
+
+    # Drop fully-empty rows
+    table = [r for r in table if any((c or "").strip() for c in r)]
+    if not table:
+        return []
+
+    headers = table[0]
+    name_i = _pick_column(headers, "name", "customer", "contact")
+    phone_i = _pick_column(headers, "phone", "number", "mobile", "contact no")
+    type_i = _pick_column(headers, "type", "category", "score", "label", "tier")
+
+    # If headers don't look like headers (no phone column found), assume
+    # positional layout: col0=name, col1=phone, col2=type, and include row 0.
+    data_rows = table[1:]
+    if phone_i is None:
+        name_i, phone_i, type_i = 0, 1, 2
+        data_rows = table
+
+    leads: list[dict] = []
+    for r in data_rows:
+        def cell(idx):
+            return (r[idx].strip() if idx is not None and idx < len(r) and r[idx] else "")
+        phone_digits = "".join(ch for ch in cell(phone_i) if ch.isdigit())
+        if len(phone_digits) < 10:
+            continue
+        phone = phone_digits[-10:]  # store the 10-digit number
+        leads.append({
+            "name": cell(name_i) or "Unknown",
+            "phone": phone,
+            "lead_score": _map_score(cell(type_i)),
+        })
+    return leads
+
+
+@router.post("/upload")
+async def upload_leads(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Upload leads from an Excel/CSV with columns: Name, Phone, Type (Hot/Warm/Cold).
+
+    Admin/manager only. Creates unassigned leads — distribute them afterwards.
+    """
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin/Manager only")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="File is empty")
+
+    try:
+        rows = _parse_lead_rows(content, file.filename or "upload.xlsx")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="No valid rows found — need Name, Phone and Type columns")
+
+    created = 0
+    skipped = 0
+    for row in rows:
+        # Skip if a contact with this phone already exists (dedupe).
+        existing = await db.execute(select(Contact).where(Contact.phone == row["phone"]))
+        contact = existing.scalar_one_or_none()
+        if contact:
+            # Already in CRM — skip to avoid duplicates.
+            skipped += 1
+            continue
+        contact = Contact(name=row["name"], phone=row["phone"], source="upload")
+        db.add(contact)
+        await db.flush()
+        lead = Lead(
+            contact_id=contact.id,
+            source="manual",  # 'upload' isn't a valid lead_source enum value
+            stage="new",
+            lead_score=row["lead_score"],
+            stage_changed_at=datetime.utcnow(),
+        )
+        db.add(lead)
+        created += 1
+
+    await db.commit()
+    return {"status": "ok", "created": created, "skipped": skipped, "total": len(rows)}
 
 
 # ─── CAMPAIGN LEAD ASSIGNMENT TABLE ─────────────────────────────────────────

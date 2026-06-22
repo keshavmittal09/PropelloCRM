@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/useAuthStore'
 import Sidebar from '@/components/shared/Sidebar'
@@ -21,9 +21,21 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [distributing, setDistributing] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'call_agent' })
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const isAdmin = agent?.role === 'admin'
+  const callAgents = agents.filter(a => a.role === 'call_agent' || a.role === 'agent')
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   const load = async () => {
     setLoading(true)
@@ -59,9 +71,10 @@ export default function StaffPage() {
   }
 
   const distribute = async () => {
+    if (selectedIds.size === 0) return toast.error('Select at least one agent to assign leads to')
     setDistributing(true)
     try {
-      const r = await leadsApi.distribute({ only_unassigned: true })
+      const r = await leadsApi.distribute({ only_unassigned: true, selected_agent_ids: Array.from(selectedIds) })
       const lines = r.breakdown.filter(b => b.assigned > 0).map(b => `${b.agent_name}: ${b.assigned}`).join(' · ')
       toast.success(r.assigned ? `Assigned ${r.assigned} leads — ${lines}` : 'No unassigned leads to distribute', { duration: 6000 })
     } catch (e: any) {
@@ -70,6 +83,19 @@ export default function StaffPage() {
       toast.error(detail ?? (status ? `Distribution failed (HTTP ${status})` : e?.message ?? 'Distribution failed — network/timeout'))
     } finally {
       setDistributing(false)
+    }
+  }
+
+  const uploadFile = async (file: File) => {
+    setUploading(true)
+    try {
+      const r = await leadsApi.uploadLeads(file)
+      toast.success(`Uploaded ${r.created} new lead(s)${r.skipped ? ` · ${r.skipped} already existed` : ''}`, { duration: 6000 })
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Upload failed')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
     }
   }
 
@@ -112,14 +138,66 @@ export default function StaffPage() {
               className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50">
               📊 Leaderboard
             </button>
-            <button onClick={distribute} disabled={distributing}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
-              {distributing ? 'Distributing…' : '🔀 Distribute unassigned leads'}
-            </button>
           </div>
         </div>
 
         <div className="px-8 py-6 space-y-6">
+          {/* Assign leads: upload + pick agents + distribute */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5">
+            <h3 className="font-semibold text-gray-900 mb-1">Assign leads to call agents</h3>
+            <p className="text-xs text-gray-500 mb-4">Upload an Excel/CSV of new leads (or use leads already in the database), choose the agents, then assign — leads are split evenly (round-robin) across the selected agents.</p>
+
+            {/* Step 1: upload */}
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-4 mb-4">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">1 · Upload leads (optional)</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Excel/CSV with columns: <span className="font-medium">Name</span>, <span className="font-medium">Phone</span>, <span className="font-medium">Type</span> (Hot / Warm / Cold)</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f) }} />
+                  <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                    className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50">
+                    {uploading ? 'Uploading…' : '📄 Upload Excel / CSV'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Step 2: pick agents */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-gray-800">2 · Choose agents</p>
+                <button onClick={() => setSelectedIds(new Set(callAgents.filter(a => a.is_active).map(a => a.id)))}
+                  className="text-xs text-indigo-600 hover:underline">Select all</button>
+              </div>
+              {callAgents.length === 0 ? (
+                <p className="text-xs text-gray-400">No call agents yet — add one below.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {callAgents.filter(a => a.is_active).map(a => {
+                    const on = selectedIds.has(a.id)
+                    return (
+                      <button key={a.id} onClick={() => toggleSelect(a.id)}
+                        className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-all ${on ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        {on ? '✓ ' : ''}{a.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Step 3: assign */}
+            <div className="flex items-center gap-3">
+              <button onClick={distribute} disabled={distributing || selectedIds.size === 0}
+                className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                {distributing ? 'Assigning…' : `🔀 Assign unassigned leads to ${selectedIds.size || 'selected'} agent${selectedIds.size === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </div>
+
           {/* Add agent */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
