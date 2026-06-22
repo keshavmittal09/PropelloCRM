@@ -121,6 +121,13 @@ export const leadsApi = {
       `/api/leads/campaign/${campaignId}/bulk-assign`,
       payload,
     ).then(r => r.data),
+  reassign: (id: string, agent_id: string, reason = 'Manual reassignment') =>
+    api.post(`/api/leads/${id}/reassign`, { agent_id, reason }).then(r => r.data),
+  distribute: (payload?: { selected_agent_ids?: string[]; only_unassigned?: boolean }) =>
+    api.post<{ status: string; assigned: number; agents: number; breakdown: { agent_id: string; agent_name: string; assigned: number }[] }>(
+      '/api/leads/distribute',
+      payload ?? {},
+    ).then(r => r.data),
   updateLeadPriority: (id: string, priority: string) =>
     api.patch<Lead>(`/api/leads/${id}/priority`, { priority }).then(r => r.data),
   getDemographics: (id: string) => api.get<DemographicsProfile>(`/api/leads/${id}/demographics`).then(r => r.data),
