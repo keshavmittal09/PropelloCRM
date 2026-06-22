@@ -992,6 +992,103 @@ async def reassign_lead(
     }
 
 
+# ─── GLOBAL ROUND-ROBIN LEAD DISTRIBUTION ───────────────────────────────────
+
+class DistributeRequest(BaseModel):
+    # Optional subset of agent ids to distribute to. If omitted, all active
+    # call agents (and agents) are used.
+    selected_agent_ids: Optional[list[str]] = None
+    # If True (default) only assign leads that currently have no assignee.
+    # If False, redistribute ALL leads evenly across the chosen agents.
+    only_unassigned: bool = True
+
+
+@router.post("/distribute")
+async def distribute_leads(
+    payload: Optional[DistributeRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Round-robin (load-balanced) distribution of leads across call agents.
+
+    Admin/manager only. Assigns each lead to the agent with the fewest active
+    leads, so the workload stays balanced. By default only unassigned leads are
+    distributed; set only_unassigned=false to rebalance everyone.
+    """
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin/Manager only")
+
+    from app.services.assignment_service import get_available_agents
+    from app.services.lead_service import create_notification
+
+    agents = await get_available_agents(db)
+    if payload and payload.selected_agent_ids:
+        wanted = set(payload.selected_agent_ids)
+        agents = [a for a in agents if a.id in wanted]
+    if not agents:
+        raise HTTPException(status_code=400, detail="No active call agents to assign leads to")
+
+    only_unassigned = payload.only_unassigned if payload else True
+
+    # Pick the leads to distribute.
+    if only_unassigned:
+        result = await db.execute(
+            select(Lead).where(or_(Lead.assigned_to.is_(None), Lead.assigned_to == ""))
+        )
+    else:
+        result = await db.execute(select(Lead))
+    leads = result.scalars().all()
+
+    if not leads:
+        return {"status": "ok", "assigned": 0, "message": "No leads to distribute"}
+
+    # Seed each agent's current active-lead count so distribution stays balanced
+    # against work they already hold.
+    active_counts: dict[str, int] = {}
+    for agent in agents:
+        count_result = await db.execute(
+            select(func.count(Lead.id)).where(
+                Lead.assigned_to == agent.id,
+                Lead.stage.notin_(["won", "lost", "nurture"]),
+            )
+        )
+        active_counts[agent.id] = count_result.scalar() or 0
+
+    assigned_count = 0
+    per_agent: dict[str, int] = {}
+    for lead in leads:
+        # Skip leads that already belong to the smallest-load agent when
+        # rebalancing would be a no-op (only_unassigned already filtered these).
+        assignee = min(agents, key=lambda a: active_counts.get(a.id, 0))
+        if lead.assigned_to == assignee.id:
+            continue
+        lead.assigned_to = assignee.id
+        lead.updated_at = datetime.utcnow()
+        active_counts[assignee.id] += 1
+        per_agent[assignee.id] = per_agent.get(assignee.id, 0) + 1
+        assigned_count += 1
+
+    await db.commit()
+
+    # Notify each agent who received leads.
+    breakdown = []
+    for agent in agents:
+        count = per_agent.get(agent.id, 0)
+        breakdown.append({"agent_id": agent.id, "agent_name": agent.name, "assigned": count})
+        if count > 0:
+            await create_notification(
+                db,
+                agent.id,
+                title=f"{count} new lead(s) assigned to you",
+                body=f"{current_user.name} distributed {count} lead(s) to you. Start calling!",
+                notif_type="new_lead",
+                link="/leads",
+            )
+    await db.commit()
+
+    return {"status": "ok", "assigned": assigned_count, "agents": len(agents), "breakdown": breakdown}
+
+
 # ─── CAMPAIGN LEAD ASSIGNMENT TABLE ─────────────────────────────────────────
 
 class CampaignAssignmentTableResponse(BaseModel):
