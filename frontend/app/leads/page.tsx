@@ -10,6 +10,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import type { LeadStage, LeadScore } from '@/lib/types'
 import { getWASupabase } from '@/lib/waSupabase'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { MobileLeadCard } from '@/components/mobile/MobileLeadCard'
+import { MobileHeader } from '@/components/mobile/MobileHeader'
 
 const WA_LABEL_STYLE: Record<string, string> = {
   HOT: 'bg-red-100 text-red-700',
@@ -120,6 +123,51 @@ export default function LeadsPage() {
     setStage(''); setScore(''); setSource(''); setCampaignId(''); setSearch('')
     setSentiment(''); setWaStatus(''); setAssigned(''); setRetry('')
     setScoreRange({}); setDateFilter(''); setDateFrom(''); setDateTo('')
+  }
+
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-[#f8f4ef] pb-24">
+        <MobileHeader title="Leads" subtitle={`${totalLeads} total`} showBack={false} />
+        <div className="sticky top-[60px] z-10 bg-white border-b border-[#e8ddcf] px-4 py-2.5">
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            placeholder="Search name or phone…"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[#e8ddcf] text-sm outline-none focus:border-[#c86f43] bg-[#faf7f2]"
+          />
+        </div>
+        <div className="p-3 space-y-2.5">
+          {isLoading ? (
+            [1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="bg-white rounded-2xl h-24 animate-pulse border border-[#e8ddcf]" />
+            ))
+          ) : leads.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-4xl mb-3">📭</p>
+              <p className="text-[#8f8378] font-medium">No leads found</p>
+            </div>
+          ) : (
+            leads.map((lead) => <MobileLeadCard key={lead.id} lead={lead} />)
+          )}
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-4 py-5">
+            <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="px-4 py-2 rounded-xl border border-[#e8ddcf] bg-white text-sm font-semibold text-[#5f5348] disabled:opacity-40">
+              ← Prev
+            </button>
+            <span className="text-sm text-[#8f8378] font-medium">{page} / {totalPages}</span>
+            <button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="px-4 py-2 rounded-xl border border-[#e8ddcf] bg-white text-sm font-semibold text-[#5f5348] disabled:opacity-40">
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
