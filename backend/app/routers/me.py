@@ -36,6 +36,19 @@ async def get_my_tasks(
     from sqlalchemy import case
 
     now = datetime.utcnow()
+    from sqlalchemy import update as sa_update
+
+    # Repair: earlier follow-up tasks were created "due now" and immediately
+    # flipped to overdue. Reset auto-generated follow-ups to pending with no due
+    # date so they live under Pending.
+    await db.execute(
+        sa_update(Task).where(
+            Task.assigned_to == current_user.id,
+            Task.task_type == "call",
+            Task.title.like("Follow up:%"),
+            Task.status == "overdue",
+        ).values(status="pending", due_at=None)
+    )
 
     # Backfill: every lead assigned to me should have at least one follow-up task
     # so leads assigned before task-creation existed still show up to call agents.
@@ -59,11 +72,11 @@ async def get_my_tasks(
                     title=f"Follow up: {names.get(lid) or 'lead'}",
                     task_type="call",
                     assigned_to=current_user.id,
-                    due_at=now,
+                    due_at=None,  # no due date → stays under Pending, never auto-overdue
                     priority="high",
                     status="pending",
                 ))
-            await db.commit()
+    await db.commit()
 
     priority_order = case(
         (Task.priority == "high", 0),
