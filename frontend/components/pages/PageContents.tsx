@@ -115,8 +115,16 @@ export function TasksPageContent() {
                 {tasks.map((task) => (
                   <tr key={task.id} className={`border-b border-[#eee5d9] ${task.status === 'overdue' ? 'bg-red-50/20' : 'hover:bg-[#f9f4ee]'}`}>
                     <td className="px-5 py-4">
-                      <p className={`text-sm font-semibold ${task.status === 'done' ? 'line-through text-gray-400' : 'text-[#2f261f]'}`}>{task.title}</p>
-                      {task.description ? <p className="mt-1 text-xs text-[#8a7f74] line-clamp-2">{task.description}</p> : null}
+                      <p className={`text-sm font-semibold ${task.status === 'done' ? 'line-through text-gray-400' : 'text-[#2f261f]'}`}>
+                        {task.lead?.contact?.name || task.title.replace(/^Follow up:\s*/i, '')}
+                      </p>
+                      {task.lead?.contact?.phone ? (
+                        <a href={`tel:${task.lead.contact.phone}`}
+                          className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#2f6fa8] hover:underline">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                          {task.lead.contact.phone}
+                        </a>
+                      ) : task.description ? <p className="mt-1 text-xs text-[#8a7f74] line-clamp-2">{task.description}</p> : null}
                     </td>
                     <td className="px-4 py-4 text-sm text-[#5f5348]">{task.assigned_agent?.name || 'Unassigned'}</td>
                     <td className="px-4 py-4 text-sm text-[#5f5348]">{task.due_at ? formatDateTime(task.due_at) : 'No due date'}</td>
