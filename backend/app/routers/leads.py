@@ -1119,7 +1119,7 @@ async def distribute_leads(
                     title=f"Follow up: {names.get(lid) or 'lead'}",
                     task_type="call",
                     assigned_to=aid,
-                    due_at=now,
+                    due_at=None,  # no due date → stays under Pending, not Overdue
                     priority="high",
                     status="pending",
                 ))
