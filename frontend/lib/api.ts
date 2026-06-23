@@ -77,6 +77,7 @@ export const meApi = {
   getLeads: (params?: { stage?: string; search?: string; skip?: number; limit?: number }) =>
     api.get<Lead[]>('/api/me/leads', { params }).then(r => r.data),
   getPerformance: () => api.get<AgentPerformanceResponse>('/api/me/performance').then(r => r.data),
+  summary: (days = 30) => api.get<AnalyticsSummary>('/api/me/summary', { params: { days } }).then(r => r.data),
 }
 
 // ─── LEADS ───────────────────────────────────────────────────────────────────
