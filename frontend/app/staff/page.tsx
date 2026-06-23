@@ -22,7 +22,11 @@ export default function StaffPage() {
   const [creating, setCreating] = useState(false)
   const [distributing, setDistributing] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // The leads from the most recently uploaded sheet — assignment is scoped to these.
+  const [batchIds, setBatchIds] = useState<string[]>([])
+  const [batchName, setBatchName] = useState('')
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'call_agent' })
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -72,15 +76,19 @@ export default function StaffPage() {
 
   const distribute = async () => {
     if (selectedIds.size === 0) return toast.error('Select at least one agent to assign leads to')
+    if (batchIds.length === 0) return toast.error('Upload an Excel/CSV sheet first — only the uploaded leads are assigned')
     setDistributing(true)
     try {
-      const r = await leadsApi.distribute({ only_unassigned: true, selected_agent_ids: Array.from(selectedIds) })
+      const r = await leadsApi.distribute({ selected_agent_ids: Array.from(selectedIds), lead_ids: batchIds })
       const lines = r.breakdown.filter(b => b.assigned > 0).map(b => `${b.agent_name}: ${b.assigned}`).join(' · ')
-      toast.success(r.assigned ? `Assigned ${r.assigned} leads — ${lines}` : 'No unassigned leads to distribute', { duration: 6000 })
+      toast.success(r.assigned ? `Assigned ${r.assigned} uploaded leads — ${lines}` : 'Nothing to assign', { duration: 6000 })
+      // Batch consumed — clear it so we don't re-assign the same sheet.
+      setBatchIds([])
+      setBatchName('')
     } catch (e: any) {
       const detail = e?.response?.data?.detail
       const status = e?.response?.status
-      toast.error(detail ?? (status ? `Distribution failed (HTTP ${status})` : e?.message ?? 'Distribution failed — network/timeout'))
+      toast.error(detail ?? (status ? `Assignment failed (HTTP ${status})` : e?.message ?? 'Assignment failed — network/timeout'))
     } finally {
       setDistributing(false)
     }
@@ -90,12 +98,29 @@ export default function StaffPage() {
     setUploading(true)
     try {
       const r = await leadsApi.uploadLeads(file)
-      toast.success(`Uploaded ${r.created} new lead(s)${r.skipped ? ` · ${r.skipped} already existed` : ''}`, { duration: 6000 })
+      setBatchIds(r.lead_ids ?? [])
+      setBatchName(file.name)
+      toast.success(`Uploaded ${r.created} lead(s) from ${file.name}${r.skipped ? ` · ${r.skipped} skipped (already in CRM)` : ''}. Now pick agents and assign.`, { duration: 7000 })
     } catch (e: any) {
       toast.error(e?.message ?? 'Upload failed')
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const deleteUploaded = async () => {
+    if (!confirm('Delete ALL leads imported via Staff uploads (and their contacts)? This cannot be undone.')) return
+    setDeleting(true)
+    try {
+      const r = await leadsApi.deleteUploadedLeads()
+      toast.success(`Deleted ${r.deleted_leads} uploaded lead(s)`, { duration: 6000 })
+      setBatchIds([])
+      setBatchName('')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Delete failed')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -144,14 +169,14 @@ export default function StaffPage() {
         <div className="px-8 py-6 space-y-6">
           {/* Assign leads: upload + pick agents + distribute */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5">
-            <h3 className="font-semibold text-gray-900 mb-1">Assign leads to call agents</h3>
-            <p className="text-xs text-gray-500 mb-4">Upload an Excel/CSV of new leads (or use leads already in the database), choose the agents, then assign — leads are split evenly (round-robin) across the selected agents.</p>
+            <h3 className="font-semibold text-gray-900 mb-1">Assign uploaded leads to call agents</h3>
+            <p className="text-xs text-gray-500 mb-4">Upload an Excel/CSV sheet, choose the agents, then assign. <span className="font-medium text-gray-700">Only the leads from the uploaded sheet are assigned</span> — never your whole database.</p>
 
             {/* Step 1: upload */}
             <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 p-4 mb-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                  <p className="text-sm font-semibold text-gray-800">1 · Upload leads (optional)</p>
+                  <p className="text-sm font-semibold text-gray-800">1 · Upload leads</p>
                   <p className="text-xs text-gray-500 mt-0.5">Excel/CSV with columns: <span className="font-medium">Name</span>, <span className="font-medium">Phone</span>, <span className="font-medium">Type</span> (Hot / Warm / Cold)</p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -163,6 +188,11 @@ export default function StaffPage() {
                   </button>
                 </div>
               </div>
+              {batchIds.length > 0 && (
+                <div className="mt-3 flex items-center gap-2 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  ✓ {batchIds.length} lead(s) ready from <span className="font-semibold">{batchName}</span> — these are the only leads that will be assigned.
+                </div>
+              )}
             </div>
 
             {/* Step 2: pick agents */}
@@ -190,10 +220,14 @@ export default function StaffPage() {
             </div>
 
             {/* Step 3: assign */}
-            <div className="flex items-center gap-3">
-              <button onClick={distribute} disabled={distributing || selectedIds.size === 0}
+            <div className="flex items-center gap-3 flex-wrap">
+              <button onClick={distribute} disabled={distributing || selectedIds.size === 0 || batchIds.length === 0}
                 className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                {distributing ? 'Assigning…' : `🔀 Assign unassigned leads to ${selectedIds.size || 'selected'} agent${selectedIds.size === 1 ? '' : 's'}`}
+                {distributing ? 'Assigning…' : `🔀 Assign ${batchIds.length || ''} uploaded lead${batchIds.length === 1 ? '' : 's'} to ${selectedIds.size || 'selected'} agent${selectedIds.size === 1 ? '' : 's'}`}
+              </button>
+              <button onClick={deleteUploaded} disabled={deleting}
+                className="px-4 py-2 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 disabled:opacity-50">
+                {deleting ? 'Deleting…' : '🗑 Remove uploaded leads from database'}
               </button>
             </div>
           </div>

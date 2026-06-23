@@ -1001,6 +1001,9 @@ class DistributeRequest(BaseModel):
     # If True (default) only assign leads that currently have no assignee.
     # If False, redistribute ALL leads evenly across the chosen agents.
     only_unassigned: bool = True
+    # Optional explicit set of lead ids to distribute (e.g. a just-uploaded
+    # batch). When provided, ONLY these leads are assigned — not the whole DB.
+    lead_ids: Optional[list[str]] = None
 
 
 @router.post("/distribute")
@@ -1031,10 +1034,14 @@ async def distribute_leads(
     from sqlalchemy import update as sa_update
 
     only_unassigned = payload.only_unassigned if payload else True
+    explicit_ids = payload.lead_ids if payload else None
 
     # Fetch only lead IDs (lightweight) — never load full ORM rows; there can be
     # thousands of leads and loading them all would time out.
-    if only_unassigned:
+    if explicit_ids:
+        # Distribute ONLY this specific batch (e.g. a just-uploaded sheet).
+        id_result = await db.execute(select(Lead.id).where(Lead.id.in_(explicit_ids)))
+    elif only_unassigned:
         id_result = await db.execute(
             select(Lead.id).where(or_(Lead.assigned_to.is_(None), Lead.assigned_to == ""))
         )
@@ -1206,6 +1213,7 @@ async def upload_leads(
 
     created = 0
     skipped = 0
+    created_ids: list[str] = []
     for row in rows:
         # Skip if a contact with this phone already exists (dedupe).
         existing = await db.execute(select(Contact).where(Contact.phone == row["phone"]))
@@ -1225,10 +1233,57 @@ async def upload_leads(
             stage_changed_at=datetime.utcnow(),
         )
         db.add(lead)
+        await db.flush()  # populate lead.id so we can return this batch
+        created_ids.append(lead.id)
         created += 1
 
     await db.commit()
-    return {"status": "ok", "created": created, "skipped": skipped, "total": len(rows)}
+    # lead_ids lets the caller assign *only* this uploaded batch, not the whole DB.
+    return {"status": "ok", "created": created, "skipped": skipped, "total": len(rows), "lead_ids": created_ids}
+
+
+@router.post("/delete-uploaded")
+async def delete_uploaded_leads(
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Delete every lead that was imported via the Staff page upload.
+
+    Admin only. Upload-sourced leads are identified by their contact's
+    source = 'upload'. Removes the leads, their contacts, and related records.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    from sqlalchemy import delete as sa_delete
+    from app.models.models import Activity, Task, SiteVisit
+    from app.models.followup import FollowUp
+
+    # Find the uploaded contacts and their leads.
+    contact_rows = await db.execute(select(Contact.id).where(Contact.source == "upload"))
+    contact_ids = [r[0] for r in contact_rows.all()]
+    if not contact_ids:
+        return {"status": "ok", "deleted_leads": 0, "deleted_contacts": 0}
+
+    lead_rows = await db.execute(select(Lead.id).where(Lead.contact_id.in_(contact_ids)))
+    lead_ids = [r[0] for r in lead_rows.all()]
+
+    BATCH = 500
+    if lead_ids:
+        for i in range(0, len(lead_ids), BATCH):
+            chunk = lead_ids[i:i + BATCH]
+            await db.execute(sa_delete(Activity).where(Activity.lead_id.in_(chunk)))
+            await db.execute(sa_delete(Task).where(Task.lead_id.in_(chunk)))
+            await db.execute(sa_delete(FollowUp).where(FollowUp.lead_id.in_(chunk)))
+            await db.execute(sa_delete(SiteVisit).where(SiteVisit.lead_id.in_(chunk)))
+            await db.execute(sa_delete(Lead).where(Lead.id.in_(chunk)))
+
+    for i in range(0, len(contact_ids), BATCH):
+        chunk = contact_ids[i:i + BATCH]
+        await db.execute(sa_delete(Contact).where(Contact.id.in_(chunk)))
+
+    await db.commit()
+    return {"status": "ok", "deleted_leads": len(lead_ids), "deleted_contacts": len(contact_ids)}
 
 
 # ─── CAMPAIGN LEAD ASSIGNMENT TABLE ─────────────────────────────────────────

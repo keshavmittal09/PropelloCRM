@@ -123,10 +123,14 @@ export const leadsApi = {
     ).then(r => r.data),
   reassign: (id: string, agent_id: string, reason = 'Manual reassignment') =>
     api.post(`/api/leads/${id}/reassign`, { agent_id, reason }).then(r => r.data),
-  distribute: (payload?: { selected_agent_ids?: string[]; only_unassigned?: boolean }) =>
+  distribute: (payload?: { selected_agent_ids?: string[]; only_unassigned?: boolean; lead_ids?: string[] }) =>
     api.post<{ status: string; assigned: number; agents: number; breakdown: { agent_id: string; agent_name: string; assigned: number }[] }>(
       '/api/leads/distribute',
       payload ?? {},
+    ).then(r => r.data),
+  deleteUploadedLeads: () =>
+    api.post<{ status: string; deleted_leads: number; deleted_contacts: number }>(
+      '/api/leads/delete-uploaded', {},
     ).then(r => r.data),
   uploadLeads: async (file: File) => {
     const form = new FormData()
@@ -144,7 +148,7 @@ export const leadsApi = {
       const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
       throw new Error(error.detail || 'Upload failed')
     }
-    return response.json() as Promise<{ status: string; created: number; skipped: number; total: number }>
+    return response.json() as Promise<{ status: string; created: number; skipped: number; total: number; lead_ids: string[] }>
   },
   updateLeadPriority: (id: string, priority: string) =>
     api.patch<Lead>(`/api/leads/${id}/priority`, { priority }).then(r => r.data),
