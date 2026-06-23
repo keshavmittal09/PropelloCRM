@@ -47,6 +47,9 @@ class Lead(Base):
     ai_analysis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ai_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     dnd: Mapped[bool] = mapped_column(Boolean, default=False)
+    # True for leads imported via the Staff-page Excel/CSV upload (a separate
+    # batch, kept distinct from the main CRM database).
+    is_uploaded: Mapped[bool] = mapped_column(Boolean, default=False)
     last_remark: Mapped[str | None] = mapped_column(String(200), nullable=True)
     last_interaction_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Demographic profile fields (enriched via task completion form)
