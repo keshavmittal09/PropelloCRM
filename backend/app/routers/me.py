@@ -36,6 +36,35 @@ async def get_my_tasks(
     from sqlalchemy import case
 
     now = datetime.utcnow()
+
+    # Backfill: every lead assigned to me should have at least one follow-up task
+    # so leads assigned before task-creation existed still show up to call agents.
+    assigned_rows = await db.execute(select(Lead.id).where(Lead.assigned_to == current_user.id))
+    assigned_ids = [r[0] for r in assigned_rows.all()]
+    if assigned_ids:
+        tasked_rows = await db.execute(
+            select(Task.lead_id).where(Task.lead_id.in_(assigned_ids)).distinct()
+        )
+        tasked = {r[0] for r in tasked_rows.all()}
+        missing = [lid for lid in assigned_ids if lid not in tasked]
+        if missing:
+            name_rows = await db.execute(
+                select(Lead.id, Contact.name).join(Contact, Lead.contact_id == Contact.id)
+                .where(Lead.id.in_(missing))
+            )
+            names = {r[0]: r[1] for r in name_rows.all()}
+            for lid in missing:
+                db.add(Task(
+                    lead_id=lid,
+                    title=f"Follow up: {names.get(lid) or 'lead'}",
+                    task_type="call",
+                    assigned_to=current_user.id,
+                    due_at=now,
+                    priority="high",
+                    status="pending",
+                ))
+            await db.commit()
+
     priority_order = case(
         (Task.priority == "high", 0),
         (Task.priority == "normal", 1),
@@ -78,6 +107,52 @@ async def get_my_tasks(
             await db.commit()
 
     return [TaskResponse.model_validate(t) for t in tasks]
+
+
+@router.get("/summary")
+async def get_my_summary(
+    days: int = 30,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Dashboard stats scoped to the current user's own assigned leads.
+
+    Lets call agents see a populated dashboard (analytics/summary is admin-only).
+    """
+    me = current_user.id
+    from_date = datetime.utcnow() - timedelta(days=days)
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    async def cnt(*conds):
+        r = await db.execute(select(func.count(Lead.id)).where(Lead.assigned_to == me, *conds))
+        return r.scalar() or 0
+
+    total = await cnt()
+    new_today = await cnt(Lead.created_at >= today_start)
+    hot = await cnt(Lead.lead_score == "hot", Lead.stage.notin_(["won", "lost"]))
+    warm = await cnt(Lead.lead_score == "warm", Lead.stage.notin_(["won", "lost"]))
+    cold = await cnt(Lead.lead_score == "cold", Lead.stage.notin_(["won", "lost"]))
+    active = await cnt(Lead.stage.notin_(["won", "lost"]))
+    won = await cnt(Lead.stage == "won", Lead.updated_at >= from_date)
+    lost = await cnt(Lead.stage == "lost", Lead.updated_at >= from_date)
+    total_period = await cnt(Lead.created_at >= from_date)
+    conversion_rate = round((won / total_period * 100), 1) if total_period > 0 else 0.0
+
+    return {
+        "total_leads": total,
+        "new_leads_today": new_today,
+        "hot_leads": hot,
+        "warm_leads": warm,
+        "cold_leads": cold,
+        "assigned_leads": active,
+        "won_this_month": won,
+        "lost_this_month": lost,
+        "converted_leads": won,
+        "pipeline_value": 0.0,
+        "ai_calls_completed": 0,
+        "whatsapp_sent": 0,
+        "conversion_rate": conversion_rate,
+    }
 
 
 @router.get("/leads", response_model=List[LeadResponse])

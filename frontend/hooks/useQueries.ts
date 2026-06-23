@@ -104,8 +104,15 @@ export const useCompleteTask = () => {
 }
 
 // ─── ANALYTICS ───────────────────────────────────────────────────────────────
-export const useAnalyticsSummary = (days = 30) =>
-  useQuery({ queryKey: ['analytics', 'summary', days], queryFn: () => analyticsApi.summary(days), staleTime: 60000 })
+export const useAnalyticsSummary = (days = 30) => {
+  const role = useAuthStore((s) => s.agent?.role)
+  const mine = role === 'call_agent' || role === 'agent'
+  return useQuery({
+    queryKey: ['analytics', 'summary', days, role],
+    queryFn: () => (mine ? meApi.summary(days) : analyticsApi.summary(days)),
+    staleTime: 60000,
+  })
+}
 
 export const useFunnel = () =>
   useQuery({ queryKey: ['analytics', 'funnel'], queryFn: analyticsApi.funnel, staleTime: 60000 })
