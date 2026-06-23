@@ -132,7 +132,10 @@ export const leadsApi = {
     const form = new FormData()
     form.append('file', file)
     const token = typeof window !== 'undefined' ? localStorage.getItem('propello_token') : null
-    const response = await fetch(`${api.defaults.baseURL}/api/leads/upload`, {
+    // Strip any trailing slash from baseURL to avoid a double slash (//api/...)
+    // which the backend treats as an unknown path and 404s ("Not Found").
+    const base = (api.defaults.baseURL || '').replace(/\/+$/, '')
+    const response = await fetch(`${base}/api/leads/upload`, {
       method: 'POST',
       headers: { Authorization: token ? `Bearer ${token}` : '' },
       body: form,
@@ -217,7 +220,8 @@ export const campaignsApi = {
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('propello_token') : null
 
-    const response = await fetch(`${api.defaults.baseURL}/api/campaigns/upload`, {
+    const base = (api.defaults.baseURL || '').replace(/\/+$/, '')
+    const response = await fetch(`${base}/api/campaigns/upload`, {
       method: 'POST',
       headers: {
         Authorization: token ? `Bearer ${token}` : '',
