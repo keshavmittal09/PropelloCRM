@@ -48,6 +48,8 @@ export default function MobileTasksPage({
     const now = new Date()
     return dueDate > now && task.status !== 'done'
   })
+  // Follow-up tasks have no due date — they must still show under pending.
+  const noDue = sorted.filter((task) => !task.due_at && task.status !== 'done')
   const done = sorted.filter((task) => task.status === 'done')
 
   const counts = {
@@ -99,6 +101,9 @@ export default function MobileTasksPage({
             )}
             {filter !== 'done' && upcoming.length > 0 && (
               <Section title="Upcoming" tasks={upcoming} onComplete={setCompletingTask} />
+            )}
+            {filter !== 'done' && noDue.length > 0 && (
+              <Section title="Follow-ups" tasks={noDue} onComplete={setCompletingTask} />
             )}
             {filter !== 'pending' && done.length > 0 && (
               <Section title="Done" tasks={done} onComplete={setCompletingTask} />
