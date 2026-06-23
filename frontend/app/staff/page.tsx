@@ -109,6 +109,16 @@ export default function StaffPage() {
     }
   }
 
+  const removeAgentLeads = async (a: Agent) => {
+    if (!confirm(`Remove all leads currently assigned to ${a.name}? Their leads go back to the unassigned pool and their pending follow-up tasks are cancelled.`)) return
+    try {
+      const r = await leadsApi.unassignAgent(a.id)
+      toast.success(r.unassigned ? `Removed ${r.unassigned} lead(s) from ${a.name}` : `${a.name} had no assigned leads`, { duration: 6000 })
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail ?? 'Failed to remove leads')
+    }
+  }
+
   const deleteUploaded = async () => {
     if (!confirm('Delete ALL leads imported via Staff uploads (and their contacts)? This cannot be undone.')) return
     setDeleting(true)
@@ -290,12 +300,20 @@ export default function StaffPage() {
                         </span>
                       </td>
                       <td className="px-5 py-3 text-right">
-                        {a.is_active && a.id !== agent?.id && (
-                          <button onClick={() => toggleActive(a)}
-                            className="text-xs text-red-500 hover:text-red-700 border border-red-100 px-2.5 py-1 rounded-lg hover:border-red-200">
-                            Deactivate
-                          </button>
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          {(a.role === 'call_agent' || a.role === 'agent') && (
+                            <button onClick={() => removeAgentLeads(a)}
+                              className="text-xs text-amber-700 hover:text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg hover:bg-amber-50">
+                              Remove leads
+                            </button>
+                          )}
+                          {a.is_active && a.id !== agent?.id && (
+                            <button onClick={() => toggleActive(a)}
+                              className="text-xs text-red-500 hover:text-red-700 border border-red-100 px-2.5 py-1 rounded-lg hover:border-red-200">
+                              Deactivate
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
