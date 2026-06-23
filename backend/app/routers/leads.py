@@ -772,24 +772,30 @@ async def get_master_profile(
         except (ValueError, TypeError):
             phone_int = None
         if phone_int:
-            cd_result = await db.execute(
-                select(CDLead)
-                .where(CDLead.phone_number == phone_int)
-                .order_by(CDLead.updated_at.desc())
-                .limit(1)
-            )
-            cd_lead = cd_result.scalar_one_or_none()
-            if cd_lead:
-                ai_data = {
-                    "config_preference": cd_lead.config_interest,
-                    "budget_range": cd_lead.budget_signal,
-                    "site_visit_intent": "Yes" if cd_lead.site_visit_committed else ("Maybe" if cd_lead.site_visit_timeframe else "No"),
-                    "primary_language": cd_lead.language_preference,
-                    "objection_type": cd_lead.objection_type,
-                    "intent_level": cd_lead.intent_level,
-                    "ai_summary": cd_lead.enriched_summary,
-                    "key_quote": cd_lead.key_quote,
-                }
+            # Best-effort enrichment — never let a campaign-lookup error break the
+            # whole master profile (e.g. for uploaded leads with no campaign data).
+            try:
+                cd_result = await db.execute(
+                    select(CDLead)
+                    .where(CDLead.phone_number == phone_int)
+                    .order_by(CDLead.updated_at.desc())
+                    .limit(1)
+                )
+                cd_lead = cd_result.scalar_one_or_none()
+                if cd_lead:
+                    ai_data = {
+                        "config_preference": cd_lead.config_interest,
+                        "budget_range": cd_lead.budget_signal,
+                        "site_visit_intent": "Yes" if cd_lead.site_visit_committed else ("Maybe" if cd_lead.site_visit_timeframe else "No"),
+                        "primary_language": cd_lead.language_preference,
+                        "objection_type": cd_lead.objection_type,
+                        "intent_level": cd_lead.intent_level,
+                        "ai_summary": cd_lead.enriched_summary,
+                        "key_quote": cd_lead.key_quote,
+                    }
+            except Exception:
+                await db.rollback()
+                ai_data = {}
 
     # Compute stats
     task_result = await db.execute(select(Task).where(Task.lead_id == lead_id))
@@ -1090,6 +1096,35 @@ async def distribute_leads(
 
     await db.commit()
 
+    # Create a follow-up call task per assigned lead so the call agent has
+    # something to act on (and the call-completion form to fill after calling).
+    all_assigned = [lid for ids in buckets.values() for lid in ids]
+    if all_assigned:
+        name_rows = await db.execute(
+            select(Lead.id, Contact.name).join(Contact, Lead.contact_id == Contact.id)
+            .where(Lead.id.in_(all_assigned))
+        )
+        names = {r[0]: r[1] for r in name_rows.all()}
+        # Don't double up if the lead already has a pending task.
+        existing_rows = await db.execute(
+            select(Task.lead_id).where(Task.lead_id.in_(all_assigned), Task.status == "pending")
+        )
+        has_task = {r[0] for r in existing_rows.all()}
+        for aid, ids in buckets.items():
+            for lid in ids:
+                if lid in has_task:
+                    continue
+                db.add(Task(
+                    lead_id=lid,
+                    title=f"Follow up: {names.get(lid) or 'lead'}",
+                    task_type="call",
+                    assigned_to=aid,
+                    due_at=now,
+                    priority="high",
+                    status="pending",
+                ))
+        await db.commit()
+
     # Notify each agent who received leads.
     breakdown = []
     for agent in agents:
@@ -1107,6 +1142,50 @@ async def distribute_leads(
     await db.commit()
 
     return {"status": "ok", "assigned": assigned_count, "agents": len(agents), "breakdown": breakdown}
+
+
+class UnassignAgentRequest(BaseModel):
+    agent_id: str
+
+
+@router.post("/unassign-agent")
+async def unassign_agent_leads(
+    payload: UnassignAgentRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Agent = Depends(get_current_user),
+):
+    """Remove all leads from a specific agent (admin/manager only).
+
+    The leads are unassigned (returned to the pool, ready to re-distribute) and
+    the agent's pending follow-up tasks for them are cancelled.
+    """
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Admin/Manager only")
+
+    from sqlalchemy import update as sa_update
+
+    lead_rows = await db.execute(select(Lead.id).where(Lead.assigned_to == payload.agent_id))
+    lead_ids = [r[0] for r in lead_rows.all()]
+    if not lead_ids:
+        return {"status": "ok", "unassigned": 0}
+
+    now = datetime.utcnow()
+    BATCH = 500
+    for i in range(0, len(lead_ids), BATCH):
+        chunk = lead_ids[i:i + BATCH]
+        await db.execute(
+            sa_update(Lead).where(Lead.id.in_(chunk)).values(assigned_to=None, updated_at=now)
+        )
+        await db.execute(
+            sa_update(Task).where(
+                Task.assigned_to == payload.agent_id,
+                Task.lead_id.in_(chunk),
+                Task.status == "pending",
+            ).values(status="cancelled")
+        )
+
+    await db.commit()
+    return {"status": "ok", "unassigned": len(lead_ids)}
 
 
 # ─── SIMPLE LEAD UPLOAD (Name, Phone, Hot/Warm/Cold) ────────────────────────

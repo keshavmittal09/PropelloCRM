@@ -132,6 +132,10 @@ export const leadsApi = {
     api.post<{ status: string; deleted_leads: number; deleted_contacts: number }>(
       '/api/leads/delete-uploaded', {},
     ).then(r => r.data),
+  unassignAgent: (agent_id: string) =>
+    api.post<{ status: string; unassigned: number }>(
+      '/api/leads/unassign-agent', { agent_id },
+    ).then(r => r.data),
   uploadLeads: async (file: File) => {
     const form = new FormData()
     form.append('file', file)
