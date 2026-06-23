@@ -169,6 +169,9 @@ async def init_db():
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_phone ON whatsapp_messages (phone)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_lead_id ON whatsapp_messages (lead_id)"))
 
+            # Marker for leads imported via the Staff-page upload (separate batch)
+            await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_uploaded BOOLEAN DEFAULT FALSE"))
+
 
 # Starter call-agent accounts seeded on startup. Idempotent — only created if the
 # email does not already exist. Change these passwords from the Staff page later.

@@ -100,7 +100,7 @@ export default function StaffPage() {
       const r = await leadsApi.uploadLeads(file)
       setBatchIds(r.lead_ids ?? [])
       setBatchName(file.name)
-      toast.success(`Uploaded ${r.created} lead(s) from ${file.name}${r.skipped ? ` · ${r.skipped} skipped (already in CRM)` : ''}. Now pick agents and assign.`, { duration: 7000 })
+      toast.success(`Uploaded ${r.created} lead(s) from ${file.name}${r.skipped ? ` · ${r.skipped} skipped (missing/invalid phone)` : ''}. Now pick agents and assign.`, { duration: 7000 })
     } catch (e: any) {
       toast.error(e?.message ?? 'Upload failed')
     } finally {

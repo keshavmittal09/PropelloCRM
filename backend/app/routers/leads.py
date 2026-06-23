@@ -1212,24 +1212,23 @@ async def upload_leads(
         raise HTTPException(status_code=400, detail="No valid rows found — need Name, Phone and Type columns")
 
     created = 0
-    skipped = 0
     created_ids: list[str] = []
     for row in rows:
-        # Skip if a contact with this phone already exists (dedupe).
+        # Reuse the contact if this phone already exists (phone is unique), else
+        # create one. Either way we create a lead — the whole sheet is uploaded,
+        # nothing is skipped as a "duplicate".
         existing = await db.execute(select(Contact).where(Contact.phone == row["phone"]))
         contact = existing.scalar_one_or_none()
-        if contact:
-            # Already in CRM — skip to avoid duplicates.
-            skipped += 1
-            continue
-        contact = Contact(name=row["name"], phone=row["phone"], source="upload")
-        db.add(contact)
-        await db.flush()
+        if not contact:
+            contact = Contact(name=row["name"], phone=row["phone"], source="upload")
+            db.add(contact)
+            await db.flush()
         lead = Lead(
             contact_id=contact.id,
             source="manual",  # 'upload' isn't a valid lead_source enum value
             stage="new",
             lead_score=row["lead_score"],
+            is_uploaded=True,  # marks this lead as part of an uploaded batch
             stage_changed_at=datetime.utcnow(),
         )
         db.add(lead)
@@ -1239,7 +1238,7 @@ async def upload_leads(
 
     await db.commit()
     # lead_ids lets the caller assign *only* this uploaded batch, not the whole DB.
-    return {"status": "ok", "created": created, "skipped": skipped, "total": len(rows), "lead_ids": created_ids}
+    return {"status": "ok", "created": created, "skipped": len(rows) - created, "total": len(rows), "lead_ids": created_ids}
 
 
 @router.post("/delete-uploaded")
@@ -1259,13 +1258,8 @@ async def delete_uploaded_leads(
     from app.models.models import Activity, Task, SiteVisit
     from app.models.followup import FollowUp
 
-    # Find the uploaded contacts and their leads.
-    contact_rows = await db.execute(select(Contact.id).where(Contact.source == "upload"))
-    contact_ids = [r[0] for r in contact_rows.all()]
-    if not contact_ids:
-        return {"status": "ok", "deleted_leads": 0, "deleted_contacts": 0}
-
-    lead_rows = await db.execute(select(Lead.id).where(Lead.contact_id.in_(contact_ids)))
+    # All leads from Staff uploads are flagged is_uploaded.
+    lead_rows = await db.execute(select(Lead.id).where(Lead.is_uploaded == True))
     lead_ids = [r[0] for r in lead_rows.all()]
 
     BATCH = 500
@@ -1278,12 +1272,18 @@ async def delete_uploaded_leads(
             await db.execute(sa_delete(SiteVisit).where(SiteVisit.lead_id.in_(chunk)))
             await db.execute(sa_delete(Lead).where(Lead.id.in_(chunk)))
 
-    for i in range(0, len(contact_ids), BATCH):
-        chunk = contact_ids[i:i + BATCH]
-        await db.execute(sa_delete(Contact).where(Contact.id.in_(chunk)))
+    # Remove contacts created by uploads that no longer have any leads.
+    contact_rows = await db.execute(select(Contact.id).where(Contact.source == "upload"))
+    upload_contact_ids = [r[0] for r in contact_rows.all()]
+    deleted_contacts = 0
+    for cid in upload_contact_ids:
+        remaining = await db.execute(select(func.count(Lead.id)).where(Lead.contact_id == cid))
+        if (remaining.scalar() or 0) == 0:
+            await db.execute(sa_delete(Contact).where(Contact.id == cid))
+            deleted_contacts += 1
 
     await db.commit()
-    return {"status": "ok", "deleted_leads": len(lead_ids), "deleted_contacts": len(contact_ids)}
+    return {"status": "ok", "deleted_leads": len(lead_ids), "deleted_contacts": deleted_contacts}
 
 
 # ─── CAMPAIGN LEAD ASSIGNMENT TABLE ─────────────────────────────────────────
