@@ -16,6 +16,8 @@ const INTEREST_OPTIONS = [
   { value: 'hot', label: 'Hot', emoji: '🔴' },
   { value: 'warm', label: 'Warm', emoji: '🟠' },
   { value: 'cold', label: 'Cold', emoji: '🔵' },
+  { value: 'not_interested', label: 'Not Interested', emoji: '🚫' },
+  { value: 'busy', label: 'Busy', emoji: '🔕' },
   { value: 'unknown', label: "Don't Know", emoji: '❓' },
 ]
 
