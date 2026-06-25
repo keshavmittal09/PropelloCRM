@@ -145,6 +145,12 @@ async def root():
     return {"status": "ok", "product": "Propello CRM", "version": "1.0.0"}
 
 
+# Build marker to prove which code is actually running after a deploy.
+@app.get("/api/_build")
+async def build_marker():
+    return {"build": "2026-06-25-completion-greenlet-fix"}
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
