@@ -1,5 +1,26 @@
 import type { LeadScore, LeadStage, LeadSource } from './types'
 
+/**
+ * Safely turn any API error into a display string. FastAPI 422 responses put an
+ * ARRAY of {type, loc, msg, ...} objects in `detail`; passing that straight to
+ * toast/JSX throws React error #31 ("objects are not valid as a child").
+ */
+export function apiErrorMessage(e: unknown, fallback = 'Something went wrong'): string {
+  const err = e as { response?: { data?: { detail?: unknown } }; message?: string }
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((d) => (typeof d === 'string' ? d : (d as { msg?: string })?.msg))
+      .filter(Boolean)
+    return msgs.length ? (msgs.join('; ') as string) : fallback
+  }
+  if (detail && typeof detail === 'object') {
+    return (detail as { msg?: string }).msg ?? fallback
+  }
+  return err?.message ?? fallback
+}
+
 export function formatCurrency(amount: number | null | undefined): string {
   if (!amount) return '—'
   if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(1)}Cr`
