@@ -2,7 +2,7 @@
 Demographic sync service — handles syncing task-completion form data
 back to the lead's demographic profile.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -140,6 +140,14 @@ async def create_followup_from_completion(
     """
     if not next_followup_at:
         return None
+
+    # Task.due_at is a TIMESTAMP WITHOUT TIME ZONE column; asyncpg raises a
+    # DataError ("can't subtract offset-naive and offset-aware datetimes") when
+    # handed a timezone-aware value, which then cascades into a MissingGreenlet
+    # and a 500. The frontend sends an ISO 'Z' timestamp (tz-aware), so always
+    # strip the timezone to naive UTC before persisting.
+    if next_followup_at.tzinfo is not None and next_followup_at.utcoffset() is not None:
+        next_followup_at = next_followup_at.astimezone(timezone.utc).replace(tzinfo=None)
 
     # Determine priority from interest level
     priority = "high"
