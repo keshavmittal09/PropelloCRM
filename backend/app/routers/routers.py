@@ -440,80 +440,84 @@ async def complete_task_with_remark(
     if current_user.role in {"agent", "call_agent"} and task.assigned_to != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to complete this task")
 
-    # Mark task done
-    task.status = "done"
-    task.completed_at = datetime.utcnow()
-    task.completion_remark = data.remark_text
-    task.completion_tags = data.preset_tags
-
-    # Feature 5: AI remark quality scoring
-    from app.services.remark_quality_service import evaluate_and_update_task
-    await evaluate_and_update_task(db, task, data.remark_text)
-
     lead = await db.get(Lead, task.lead_id)
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
-    updated_lead_fields = await sync_demographics_to_lead(
-        db=db,
-        lead=lead,
-        demographics=data.demographics,
-        call_status=data.call_status,
-        interest_level=data.interest_level,
-        topics_discussed=data.topics_discussed or [],
-        note=data.note or data.remark_text,
-        agent_id=current_user.id,
-    )
-
+    # --- Essential completion: commit first so the task is definitely marked
+    # done even if any of the optional enrichment below fails. ---
+    task.status = "done"
+    task.completed_at = datetime.utcnow()
+    task.completion_remark = data.remark_text
+    task.completion_tags = data.preset_tags
     lead.last_remark = data.remark_text[:120]
     lead.last_interaction_at = datetime.utcnow()
     lead.last_contacted_at = datetime.utcnow()
+    await db.commit()
 
-    followup_task = await create_followup_from_completion(db, lead, data.next_followup_at, current_user.id)
+    # --- Best-effort enrichment: AI score, demographics, follow-up task,
+    # activity log (admin visibility) and notification. Never block completion. ---
+    try:
+        from app.services.remark_quality_service import evaluate_and_update_task
+        await evaluate_and_update_task(db, task, data.remark_text)
 
-    from app.services.lead_service import log_activity
-    tag_str = ", ".join(data.preset_tags) if data.preset_tags else ""
-    description = data.remark_text
-    if tag_str:
-        description = f"[Tags: {tag_str}] {description}"
-
-    activity = Activity(
-        lead_id=task.lead_id,
-        contact_id=lead.contact_id,
-        type="task_completion_remark",
-        title=f"Task completed: {task.title}",
-        description=description,
-        performed_by=current_user.id,
-        meta={
-            "task_id": task.id,
-            "preset_tags": data.preset_tags,
-            "remark_text": data.remark_text,
-            "updated_lead_fields": updated_lead_fields,
-            "next_followup_at": data.next_followup_at.isoformat() if data.next_followup_at else None,
-            "followup_task_id": followup_task.id if followup_task else None,
-        },
-    )
-    db.add(activity)
-
-    if task.assigned_to:
-        await create_notification(
-            db,
-            task.assigned_to,
-            title="Task completed with remark",
-            body=f"{current_user.name} completed: {task.title}",
-            notif_type="reminder",
-            link="/tasks",
+        updated_lead_fields = await sync_demographics_to_lead(
+            db=db,
+            lead=lead,
+            demographics=data.demographics,
+            call_status=data.call_status,
+            interest_level=data.interest_level,
+            topics_discussed=data.topics_discussed or [],
+            note=data.note or data.remark_text,
+            agent_id=current_user.id,
         )
 
-    # Keep performance metrics fresh on every task completion event.
-    if task.assigned_to:
-        try:
-            from app.services.performance_service import update_agent_performance_live
-            await update_agent_performance_live(db, task.assigned_to, days=30)
-        except Exception:
-            pass
+        followup_task = await create_followup_from_completion(db, lead, data.next_followup_at, current_user.id)
 
-    await db.commit()
+        tag_str = ", ".join(data.preset_tags) if data.preset_tags else ""
+        description = data.remark_text
+        if tag_str:
+            description = f"[Tags: {tag_str}] {description}"
+
+        activity = Activity(
+            lead_id=task.lead_id,
+            contact_id=lead.contact_id,
+            type="task_completion_remark",
+            title=f"Task completed: {task.title}",
+            description=description,
+            performed_by=current_user.id,
+            meta={
+                "task_id": task.id,
+                "preset_tags": data.preset_tags,
+                "remark_text": data.remark_text,
+                "updated_lead_fields": updated_lead_fields,
+                "next_followup_at": data.next_followup_at.isoformat() if data.next_followup_at else None,
+                "followup_task_id": followup_task.id if followup_task else None,
+            },
+        )
+        db.add(activity)
+
+        if task.assigned_to:
+            await create_notification(
+                db,
+                task.assigned_to,
+                title="Task completed with remark",
+                body=f"{current_user.name} completed: {task.title}",
+                notif_type="reminder",
+                link="/tasks",
+            )
+            try:
+                from app.services.performance_service import update_agent_performance_live
+                await update_agent_performance_live(db, task.assigned_to, days=30)
+            except Exception:
+                pass
+
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        import logging
+        logging.getLogger(__name__).warning("Task completion enrichment failed for %s: %s", task.id, e)
+
     response_task = await _load_task_for_response(db, task.id)
     return TaskResponse.model_validate(response_task)
 
