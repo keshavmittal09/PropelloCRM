@@ -172,10 +172,18 @@ async def init_db():
             # Marker for leads imported via the Staff-page upload (separate batch)
             await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_uploaded BOOLEAN DEFAULT FALSE"))
 
-            # Widen call-status/interest columns so longer values (e.g.
-            # 'not_interested') fit and don't break task completion.
-            await conn.execute(text("ALTER TABLE leads ALTER COLUMN last_call_interest TYPE VARCHAR(30)"))
-            await conn.execute(text("ALTER TABLE leads ALTER COLUMN last_call_status TYPE VARCHAR(30)"))
+    # Widen call-status/interest columns so longer values (e.g. 'not_interested')
+    # fit. Run in isolated transactions so a failure can NEVER crash startup /
+    # block the deploy.
+    for stmt in (
+        "ALTER TABLE leads ALTER COLUMN last_call_interest TYPE VARCHAR(30)",
+        "ALTER TABLE leads ALTER COLUMN last_call_status TYPE VARCHAR(30)",
+    ):
+        try:
+            async with engine.begin() as conn2:
+                await conn2.execute(text(stmt))
+        except Exception:
+            pass
 
 
 # Starter call-agent accounts seeded on startup. Idempotent — only created if the
