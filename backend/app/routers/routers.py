@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import case, or_, select
@@ -426,10 +426,29 @@ async def complete_task(task_id: str, db: AsyncSession = Depends(get_db), curren
     return TaskResponse.model_validate(response_task)
 
 
+async def _score_and_rank_in_background(task_id: str, agent_id: str | None, remark_text: str):
+    """Slow work (Groq AI scoring + performance recompute) run AFTER the response
+    is sent, in its own DB session, so task completion returns instantly."""
+    from app.db.base import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
+        try:
+            task = await session.get(Task, task_id)
+            if task:
+                from app.services.remark_quality_service import evaluate_and_update_task
+                await evaluate_and_update_task(session, task, remark_text)
+            if agent_id:
+                from app.services.performance_service import update_agent_performance_live
+                await update_agent_performance_live(session, agent_id, days=30)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+
+
 @tasks_router.patch("/{task_id}/complete-with-remark", response_model=TaskResponse)
 async def complete_task_with_remark(
     task_id: str,
     data: TaskCompleteWithRemarkRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: Agent = Depends(get_current_user),
 ):
@@ -455,12 +474,10 @@ async def complete_task_with_remark(
     lead.last_contacted_at = datetime.utcnow()
     await db.commit()
 
-    # --- Best-effort enrichment: AI score, demographics, follow-up task,
-    # activity log (admin visibility) and notification. Never block completion. ---
+    # --- Fast enrichment (DB only): demographics, follow-up task, activity log
+    # (admin visibility) and notification. AI scoring + performance run in the
+    # background so the request never waits on the slow Groq call. ---
     try:
-        from app.services.remark_quality_service import evaluate_and_update_task
-        await evaluate_and_update_task(db, task, data.remark_text)
-
         updated_lead_fields = await sync_demographics_to_lead(
             db=db,
             lead=lead,
@@ -506,17 +523,15 @@ async def complete_task_with_remark(
                 notif_type="reminder",
                 link="/tasks",
             )
-            try:
-                from app.services.performance_service import update_agent_performance_live
-                await update_agent_performance_live(db, task.assigned_to, days=30)
-            except Exception:
-                pass
 
         await db.commit()
     except Exception as e:
         await db.rollback()
         import logging
         logging.getLogger(__name__).warning("Task completion enrichment failed for %s: %s", task.id, e)
+
+    # Slow AI scoring + performance recompute happen after the response is sent.
+    background_tasks.add_task(_score_and_rank_in_background, task.id, task.assigned_to, data.remark_text)
 
     response_task = await _load_task_for_response(db, task.id)
     return TaskResponse.model_validate(response_task)
