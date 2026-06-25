@@ -468,6 +468,12 @@ async def complete_task_with_remark(
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
 
+    # Capture identifiers as plain values up front. If the enrichment block below
+    # fails and rolls back, the `task` ORM object becomes expired — and touching
+    # any of its attributes afterwards would emit IO synchronously and raise
+    # MissingGreenlet (a 500). Use these locals after the try/except instead.
+    task_assigned_to = task.assigned_to
+
     # --- Essential completion: commit first so the task is definitely marked
     # done even if any of the optional enrichment below fails. ---
     task.status = "done"
@@ -533,12 +539,14 @@ async def complete_task_with_remark(
     except Exception as e:
         await db.rollback()
         import logging
-        logging.getLogger(__name__).warning("Task completion enrichment failed for %s: %s", task.id, e)
+        # Use task_id (a plain str), not task.id — after rollback the ORM object
+        # is expired and attribute access would raise MissingGreenlet.
+        logging.getLogger(__name__).warning("Task completion enrichment failed for %s: %s", task_id, e, exc_info=True)
 
     # Slow AI scoring + performance recompute happen after the response is sent.
-    background_tasks.add_task(_score_and_rank_in_background, task.id, task.assigned_to, data.remark_text)
+    background_tasks.add_task(_score_and_rank_in_background, task_id, task_assigned_to, data.remark_text)
 
-    response_task = await _load_task_for_response(db, task.id)
+    response_task = await _load_task_for_response(db, task_id)
     return TaskResponse.model_validate(response_task)
 
 
