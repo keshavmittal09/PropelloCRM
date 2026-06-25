@@ -102,7 +102,13 @@ async def sync_demographics_to_lead(
         new_note = f"[{timestamp} - {agent_id}]: {note.strip()}"
 
         existing = lead.last_remark or ""
-        lead.last_remark = f"{existing}\n{new_note}".strip() if existing else new_note
+        # leads.last_remark is VARCHAR(200). Put the newest note first and cap to
+        # the column width; otherwise a long remark overflows the column, raises
+        # StringDataRightTruncation, and rolls back the ENTIRE enrichment commit
+        # (silently dropping the activity log + demographic updates). The full
+        # remark is still preserved on task.completion_remark and the activity.
+        combined = f"{new_note}\n{existing}".strip() if existing else new_note
+        lead.last_remark = combined[:200]
         updated_fields.append("last_remark")
 
     lead.updated_at = datetime.utcnow()
