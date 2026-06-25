@@ -210,10 +210,15 @@ def _task_query_options():
 
 
 async def _load_task_for_response(db: AsyncSession, task_id: str) -> Task:
+    # Expire identity-map objects first so the eager loaders below actually run.
+    # Otherwise the already-loaded task is returned WITHOUT its relationships, and
+    # serializing lead.contact triggers an async lazy-load (greenlet_spawn error).
+    db.expire_all()
     result = await db.execute(
         select(Task)
         .options(*_task_query_options())
         .where(Task.id == task_id)
+        .execution_options(populate_existing=True)
     )
     task = result.scalar_one_or_none()
     if not task:

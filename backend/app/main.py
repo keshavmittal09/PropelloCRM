@@ -148,7 +148,7 @@ async def root():
 # Build marker to prove which code is actually running after a deploy.
 @app.get("/api/_build")
 async def build_marker():
-    return {"build": "2026-06-25-completion-greenlet-fix"}
+    return {"build": "2026-06-25-loadtask-eager-fix"}
 
 
 @app.get("/health")
