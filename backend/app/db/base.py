@@ -15,8 +15,12 @@ const_engine_kwargs = {
     "pool_size": 10,
     "max_overflow": 20,
     "pool_timeout": 30,
-    "pool_recycle": 1800,
-    "pool_pre_ping": True,
+    # Recycle connections well under typical idle timeouts to keep them fresh.
+    "pool_recycle": 300,
+    # NOTE: pool_pre_ping is intentionally OFF. With the asyncpg async engine its
+    # ping() bridges async->sync via await_only and raises MissingGreenlet on
+    # connection checkout, which crashed startup/requests. pool_recycle keeps
+    # connections fresh instead.
 }
 
 parsed_url = make_url(settings.DATABASE_URL)
