@@ -148,9 +148,16 @@ async def create_followup_from_completion(
     elif lead.last_call_interest == "cold":
         priority = "low"
 
+    # Fetch the contact name via a query — never lazy-load lead.contact here
+    # (async lazy access raises greenlet_spawn errors).
+    contact_name = None
+    if lead.contact_id:
+        res = await db.execute(select(Contact.name).where(Contact.id == lead.contact_id))
+        contact_name = res.scalar()
+
     task = Task(
         lead_id=lead.id,
-        title=f"Follow up — {lead.contact.name if lead.contact else 'Lead'}",
+        title=f"Follow up — {contact_name or 'Lead'}",
         task_type="call",
         assigned_to=agent_id,
         due_at=next_followup_at,

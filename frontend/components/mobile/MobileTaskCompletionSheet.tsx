@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { tasksApi, leadsApi } from '@/lib/api'
 import type { Task, DemographicsInput, TaskCompleteDemographicPayload } from '@/lib/types'
+import { apiErrorMessage } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
 // ─── Option definitions ───────────────────────────────────────────────────────
@@ -195,7 +196,7 @@ export function MobileTaskCompletionSheet({ task, onClose, onComplete }: Props) 
       }
       onComplete()
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail ?? 'Failed to complete task')
+      toast.error(apiErrorMessage(e, 'Failed to complete task'))
     } finally {
       setSubmitting(false)
     }
