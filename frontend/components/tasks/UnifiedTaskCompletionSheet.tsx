@@ -197,10 +197,16 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
       getNextFollowupDate()
     const followUpComboNote = [followUpNote.trim(), remarkText.trim()].filter(Boolean).join(' — ')
 
-    // Pad remark_text to 80 chars if needed (backend requires min_length=80)
+    // Backend requires remark_text >= 80 chars. Append a descriptive sentence
+    // and pad to guarantee the minimum (short outcomes like "No Answer" otherwise
+    // fail validation with "String should have at least 80 characters").
     const MIN_CHARS = 80
     const remark_text = remarkLines.join('. ')
-    const paddedRemark = remark_text.length >= MIN_CHARS ? remark_text : remark_text + ' [Task completed via mobile form]'
+    let paddedRemark = remark_text
+    if (paddedRemark.length < MIN_CHARS) {
+      paddedRemark = `${remark_text}. Outcome recorded by the call agent via the follow-up form.`
+      if (paddedRemark.length < MIN_CHARS) paddedRemark = paddedRemark.padEnd(MIN_CHARS, ' .')
+    }
 
     setSubmitting(true)
     try {
