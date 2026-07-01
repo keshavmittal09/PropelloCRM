@@ -181,43 +181,48 @@ async def send_whatsapp_text(to_phone: str, message_body: str) -> tuple[bool, Op
 
 # ─── ANALYTICS SERVICE ───────────────────────────────────────────────────────
 
-async def get_summary(db: AsyncSession, days: int = 30) -> dict:
+async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional[str] = None) -> dict:
     from_date = datetime.utcnow() - timedelta(days=days)
 
-    # The dashboard reflects the sales team's working set: only leads assigned to
-    # a *live sales agent* (active agents whose role is agent/call_agent — e.g.
-    # Sunil, Chitra, Priyanka). Leads assigned to admins, managers or former/
-    # inactive agents are excluded, so this tracks the real ~200-lead working set
-    # rather than the full ~2500-lead database (which stays on the All Leads page).
-    # Hot/Warm/Cold reflect what the agent actually selected on their last call
-    # (last_call_interest), not the raw AI lead_score.
-    sales_agent_ids = select(Agent.id).where(
-        Agent.is_active == True,  # noqa: E712
-        Agent.role.in_(["agent", "call_agent"]),
-    )
-    active_assigned = [Lead.assigned_to.in_(sales_agent_ids), Lead.stage.notin_(["won", "lost"])]
+    # The dashboard reflects only *assigned* leads — never the full ~2500-lead
+    # database (that stays on the All Leads page). Scope depends on the viewer:
+    #   - scope_agent_id set  -> a single sales agent sees only their own leads
+    #     (e.g. Chitra's dashboard = Chitra's leads and her call categorisation).
+    #   - scope_agent_id None -> admin/reception see the whole live sales team
+    #     (all leads assigned to active agent/call_agent accounts, ~210 leads).
+    # Hot/Warm/Cold reflect what the agent selected on their last call
+    # (last_call_interest), not the raw AI lead_score. Won/lost are NOT excluded
+    # so the assigned count matches the raw number of leads handed to agents.
+    if scope_agent_id:
+        assigned_scope = [Lead.assigned_to == scope_agent_id]
+    else:
+        sales_agent_ids = select(Agent.id).where(
+            Agent.is_active == True,  # noqa: E712
+            Agent.role.in_(["agent", "call_agent"]),
+        )
+        assigned_scope = [Lead.assigned_to.in_(sales_agent_ids)]
 
     total = await db.execute(
-        select(func.count(Lead.id)).where(*active_assigned)
+        select(func.count(Lead.id)).where(*assigned_scope)
     )
     total_count = total.scalar()
 
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0)
     new_today = await db.execute(
-        select(func.count(Lead.id)).where(Lead.assigned_to.in_(sales_agent_ids), Lead.created_at >= today_start)
+        select(func.count(Lead.id)).where(*assigned_scope, Lead.created_at >= today_start)
     )
 
     hot = await db.execute(
-        select(func.count(Lead.id)).where(Lead.last_call_interest == "hot", *active_assigned)
+        select(func.count(Lead.id)).where(Lead.last_call_interest == "hot", *assigned_scope)
     )
     warm = await db.execute(
-        select(func.count(Lead.id)).where(Lead.last_call_interest == "warm", *active_assigned)
+        select(func.count(Lead.id)).where(Lead.last_call_interest == "warm", *assigned_scope)
     )
     cold = await db.execute(
-        select(func.count(Lead.id)).where(Lead.last_call_interest == "cold", *active_assigned)
+        select(func.count(Lead.id)).where(Lead.last_call_interest == "cold", *assigned_scope)
     )
     assigned = await db.execute(
-        select(func.count(Lead.id)).where(*active_assigned)
+        select(func.count(Lead.id)).where(*assigned_scope)
     )
 
     won = await db.execute(
