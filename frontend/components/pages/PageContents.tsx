@@ -12,6 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/useAuthStore'
 import type { Agent, Task } from '@/lib/types'
 import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
+import { LeadTypeBadge, parseCompletion } from '@/components/tasks/LeadType'
 import toast from 'react-hot-toast'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
@@ -48,6 +49,10 @@ export function TasksPageContent() {
 
   const { data: tasks, isLoading } = useAllTasks(params)
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
+
+  const isDone = filter === 'done'
+  // Sales agents don't see the Due column (per dashboard spec); admins/managers do.
+  const showDue = canViewAll
 
   const priorityColor: Record<string, string> = {
     high: 'text-red-700 bg-red-50 border-red-200',
@@ -104,8 +109,19 @@ export function TasksPageContent() {
               <thead className="border-b border-[#eee5d9] bg-[#fbf7f0]">
                 <tr>
                   <th className="px-5 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Task</th>
+                  {!isDone && (
+                    <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Leads</th>
+                  )}
+                  {isDone && (
+                    <>
+                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Your Lead</th>
+                      <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Your Remarks</th>
+                    </>
+                  )}
                   <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Assigned To</th>
-                  <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Due</th>
+                  {showDue && (
+                    <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Due</th>
+                  )}
                   <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Priority</th>
                   <th className="px-4 py-3 text-left text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Status</th>
                   <th className="px-4 py-3 text-right text-[11px] uppercase tracking-widest text-[#8a7f74] font-semibold">Actions</th>
@@ -126,8 +142,24 @@ export function TasksPageContent() {
                         </a>
                       ) : task.description ? <p className="mt-1 text-xs text-[#8a7f74] line-clamp-2">{task.description}</p> : null}
                     </td>
+                    {!isDone && (
+                      <td className="px-4 py-4"><LeadTypeBadge value={task.lead?.lead_score} /></td>
+                    )}
+                    {isDone && (() => {
+                      const c = parseCompletion(task)
+                      return (
+                        <>
+                          <td className="px-4 py-4"><LeadTypeBadge value={c.leadType} /></td>
+                          <td className="px-4 py-4 text-sm text-[#5f5348] max-w-[220px]">
+                            <span className={c.connected ? 'text-[#2f7a4e] font-medium' : 'text-[#8a7f74]'}>{c.remark}</span>
+                          </td>
+                        </>
+                      )
+                    })()}
                     <td className="px-4 py-4 text-sm text-[#5f5348]">{task.assigned_agent?.name || 'Unassigned'}</td>
-                    <td className="px-4 py-4 text-sm text-[#5f5348]">{task.due_at ? formatDateTime(task.due_at) : 'No due date'}</td>
+                    {showDue && (
+                      <td className="px-4 py-4 text-sm text-[#5f5348]">{task.due_at ? formatDateTime(task.due_at) : 'No due date'}</td>
+                    )}
                     <td className="px-4 py-4">
                       <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${priorityColor[task.priority] ?? priorityColor.normal}`}>
                         {task.priority}
@@ -147,9 +179,9 @@ export function TasksPageContent() {
                         {task.status !== 'done' ? (
                           <button
                             onClick={() => setCompletingTask(task)}
-                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm ring-1 ring-emerald-700/20 hover:bg-emerald-700 transition-colors"
                           >
-                            Done
+                            ✓ Done
                           </button>
                         ) : null}
                         {task.lead_id ? (

@@ -78,8 +78,8 @@ export default function Dashboard() {
 
         {/* Primary Stats grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
-          <StatCard label="Total Leads" value={summary?.total_leads ?? '—'}
-            onClick={() => router.push('/leads')} />
+          <StatCard label="Assigned Leads" value={summary?.assigned_leads ?? '—'} sub="SALES WORKING SET"
+            onClick={() => router.push('/leads?assigned=assigned')} />
           <StatCard label="New Today" value={summary?.new_leads_today ?? '—'}
             onClick={() => router.push('/leads?date_filter=today')} />
           <div
@@ -106,25 +106,27 @@ export default function Dashboard() {
             onClick={() => router.push('/leads?lead_score=hot')}>
             <p className="text-[11px] tracking-[0.16em] text-red-500 font-semibold uppercase mb-1">Hot Leads</p>
             <p className="text-4xl font-semibold tracking-tight text-red-600">{summary?.hot_leads ?? '—'}</p>
-            <p className="text-[11px] font-medium text-red-400 mt-2 tracking-[0.12em]">SCORE 80–100</p>
+            <p className="text-[11px] font-medium text-red-400 mt-2 tracking-[0.12em]">MARKED BY AGENTS</p>
           </div>
           <div className="rounded-3xl p-5 bg-yellow-50 border border-yellow-100 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/leads?lead_score=warm')}>
             <p className="text-[11px] tracking-[0.16em] text-yellow-600 font-semibold uppercase mb-1">Warm Leads</p>
             <p className="text-4xl font-semibold tracking-tight text-yellow-700">{summary?.warm_leads ?? '—'}</p>
-            <p className="text-[11px] font-medium text-yellow-500 mt-2 tracking-[0.12em]">SCORE 50–79</p>
+            <p className="text-[11px] font-medium text-yellow-500 mt-2 tracking-[0.12em]">MARKED BY AGENTS</p>
           </div>
           <div className="rounded-3xl p-5 bg-blue-50 border border-blue-100 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/leads?lead_score=cold')}>
             <p className="text-[11px] tracking-[0.16em] text-blue-500 font-semibold uppercase mb-1">Cold Leads</p>
             <p className="text-4xl font-semibold tracking-tight text-blue-600">{summary?.cold_leads ?? '—'}</p>
-            <p className="text-[11px] font-medium text-blue-400 mt-2 tracking-[0.12em]">SCORE 0–49</p>
+            <p className="text-[11px] font-medium text-blue-400 mt-2 tracking-[0.12em]">MARKED BY AGENTS</p>
           </div>
           <div className="rounded-3xl p-5 bg-gray-50 border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/leads?assigned=assigned')}>
-            <p className="text-[11px] tracking-[0.16em] text-gray-500 font-semibold uppercase mb-1">Assigned</p>
-            <p className="text-4xl font-semibold tracking-tight text-gray-700">{summary?.assigned_leads ?? '—'}</p>
-            <p className="text-[11px] font-medium text-gray-400 mt-2 tracking-[0.12em]">ACTIVE LEADS</p>
+            <p className="text-[11px] tracking-[0.16em] text-gray-500 font-semibold uppercase mb-1">Categorized</p>
+            <p className="text-4xl font-semibold tracking-tight text-gray-700">
+              {summary ? (summary.hot_leads + summary.warm_leads + summary.cold_leads) : '—'}
+            </p>
+            <p className="text-[11px] font-medium text-gray-400 mt-2 tracking-[0.12em]">HOT + WARM + COLD</p>
           </div>
         </div>
 

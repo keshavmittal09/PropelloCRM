@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/useAuthStore'
 import { NotificationBell } from './NotificationBell'
 import { useState, useEffect } from 'react'
@@ -24,15 +24,23 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { agent, logout } = useAuthStore()
   const [mounted, setMounted] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // Reception is a dashboard-only role — bounce it back to the dashboard if it
+  // lands on any other page (e.g. via a bookmarked URL).
+  const isReception = agent?.role === 'reception'
   useEffect(() => {
     setMounted(true)
   }, [])
+  useEffect(() => {
+    if (isReception && pathname !== '/') router.replace('/')
+  }, [isReception, pathname, router])
 
   const visibleNav = nav.filter(item => {
+    if (isReception) return item.href === '/'
     if (!('roles' in item) || !item.roles) return true
     return !!agent?.role && (item.roles as readonly string[]).includes(agent.role)
   })

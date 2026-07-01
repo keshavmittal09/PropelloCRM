@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'manager' | 'agent' | 'call_agent'
+export type Role = 'admin' | 'manager' | 'agent' | 'call_agent' | 'reception'
 export type LeadStage = 'new' | 'contacted' | 'site_visit_scheduled' | 'site_visit_done' | 'negotiation' | 'won' | 'lost' | 'nurture'
 export type LeadScore = 'hot' | 'warm' | 'cold'
 export type LeadSource = 'priya_ai' | 'website' | 'facebook_ads' | 'google_ads' | '99acres' | 'magicbricks' | 'walk_in' | 'referral' | 'email_campaign' | 'manual' | 'campaign'
