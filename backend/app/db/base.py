@@ -69,8 +69,8 @@ async def init_db():
             await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'campaign_call'"))
             await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'task_completion_remark'"))
             await conn.execute(text("ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'call_agent'"))
-            # 'reception' — limited, dashboard-only staff role (Krishna group)
-            await conn.execute(text("ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'reception'"))
+            # NOTE: the 'reception' role value is added below in its own isolated
+            # transaction so an enum failure can never abort the whole init_db.
 
             # Feature 1-3: new columns on tasks and leads
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_remark TEXT"))
@@ -184,6 +184,8 @@ async def init_db():
     for stmt in (
         "ALTER TABLE leads ALTER COLUMN last_call_interest TYPE VARCHAR(30)",
         "ALTER TABLE leads ALTER COLUMN last_call_status TYPE VARCHAR(30)",
+        # Dashboard-only 'reception' staff role — isolated so it never blocks startup.
+        "ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'reception'",
     ):
         try:
             async with engine.begin() as conn2:
@@ -217,19 +219,24 @@ async def seed_default_agents():
     from app.models.agent import Agent
     from app.core.security import hash_password
 
-    async with AsyncSessionLocal() as session:
-        created = 0
-        for spec in DEFAULT_CALL_AGENTS + DEFAULT_STAFF_ACCOUNTS:
-            existing = await session.execute(select(Agent).where(Agent.email == spec["email"]))
-            if existing.scalar_one_or_none():
-                continue
-            session.add(Agent(
-                name=spec["name"],
-                email=spec["email"],
-                password_hash=hash_password(spec["password"]),
-                role=spec["role"],
-            ))
-            created += 1
-        if created:
-            await session.commit()
-        return created
+    created = 0
+    # Commit each account independently so one failure (e.g. an unexpected role
+    # value) can never roll back or block the others.
+    for spec in DEFAULT_CALL_AGENTS + DEFAULT_STAFF_ACCOUNTS:
+        try:
+            async with AsyncSessionLocal() as session:
+                existing = await session.execute(select(Agent).where(Agent.email == spec["email"]))
+                if existing.scalar_one_or_none():
+                    continue
+                session.add(Agent(
+                    name=spec["name"],
+                    email=spec["email"],
+                    password_hash=hash_password(spec["password"]),
+                    role=spec["role"],
+                ))
+                await session.commit()
+                created += 1
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Could not seed account %s: %s", spec["email"], e)
+    return created
