@@ -21,6 +21,16 @@ export function LeadTypeBadge({ value }: { value?: string | null }) {
   )
 }
 
+// Strip bracketed system notes (e.g. "[Task completed via mobile form]") and
+// drop placeholder / "unknown" values so they never surface in the table.
+function clean(value?: string | null): string | null {
+  if (!value) return null
+  const v = value.replace(/\[[^\]]*\]/g, '').trim()
+  if (!v) return null
+  if (/^(don'?t\s*know|unknown|not\s*needed|n\/?a|none)$/i.test(v)) return null
+  return v
+}
+
 // Parse the structured completion remark the call sheet writes, e.g.
 // "Call status: Yes, Connected. Interest: Hot. Follow-up on: 12 Jul 2026, 09:00 AM. …"
 // Falls back to the lead's stored call fields when the remark isn't structured.
@@ -29,17 +39,18 @@ export function parseCompletion(task: Task): { connected: boolean; leadType: str
   const grab = (re: RegExp) => remark.match(re)?.[1]?.trim() || null
 
   const callStatus = grab(/Call status:\s*([^.]+)/i)
-  const interest = grab(/Interest:\s*([^.]+)/i)
+  const interest = clean(grab(/Interest:\s*([^.]+)/i)) ?? clean(task.lead?.last_call_interest)
   const followUp = grab(/Follow-up on:\s*([^.]+?)(?:\.\s|\.$|$)/i)
 
   const lead = task.lead
   const statusText = callStatus ?? lead?.last_call_status ?? ''
   const connected = /connect/i.test(statusText) || lead?.last_call_status === 'connected'
-  const leadType = connected ? (interest ?? lead?.last_call_interest ?? null) : null
+  // Only show a lead type when the call connected AND a real type was chosen.
+  const leadType = connected ? interest : null
 
   let remarkText: string
   if (connected) {
-    remarkText = followUp ? `Follow-up: ${followUp}` : (interest ? interest : 'Connected')
+    remarkText = followUp ? `Follow-up: ${followUp}` : (interest ?? 'Connected')
   } else if (/wrong/i.test(statusText) || lead?.last_call_status === 'wrong_number') {
     remarkText = 'Wrong Number'
   } else if (/call\s*back|callback/i.test(statusText) || lead?.last_call_status === 'callback') {
@@ -47,7 +58,8 @@ export function parseCompletion(task: Task): { connected: boolean; leadType: str
   } else if (/no\s*answer/i.test(statusText) || lead?.last_call_status === 'no_answer') {
     remarkText = 'No Answer'
   } else {
-    remarkText = callStatus || (lead?.last_remark ? lead.last_remark.split('\n')[0].slice(0, 60) : '—')
+    // Unstructured / mobile-form completions: show a cleaned remark or nothing.
+    remarkText = clean(callStatus) ?? clean(lead?.last_remark?.split('\n')[0]?.slice(0, 60)) ?? '—'
   }
 
   return { connected, leadType, remark: remarkText }

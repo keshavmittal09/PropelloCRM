@@ -2,7 +2,7 @@
 Demographic sync service — handles syncing task-completion form data
 back to the lead's demographic profile.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -102,7 +102,13 @@ async def sync_demographics_to_lead(
         new_note = f"[{timestamp} - {agent_id}]: {note.strip()}"
 
         existing = lead.last_remark or ""
-        lead.last_remark = f"{existing}\n{new_note}".strip() if existing else new_note
+        # leads.last_remark is VARCHAR(200). Put the newest note first and cap to
+        # the column width; otherwise a long remark overflows the column, raises
+        # StringDataRightTruncation, and rolls back the ENTIRE enrichment commit
+        # (silently dropping the activity log + demographic updates). The full
+        # remark is still preserved on task.completion_remark and the activity.
+        combined = f"{new_note}\n{existing}".strip() if existing else new_note
+        lead.last_remark = combined[:200]
         updated_fields.append("last_remark")
 
     lead.updated_at = datetime.utcnow()
@@ -140,6 +146,14 @@ async def create_followup_from_completion(
     """
     if not next_followup_at:
         return None
+
+    # Task.due_at is a TIMESTAMP WITHOUT TIME ZONE column; asyncpg raises a
+    # DataError ("can't subtract offset-naive and offset-aware datetimes") when
+    # handed a timezone-aware value, which then cascades into a MissingGreenlet
+    # and a 500. The frontend sends an ISO 'Z' timestamp (tz-aware), so always
+    # strip the timezone to naive UTC before persisting.
+    if next_followup_at.tzinfo is not None and next_followup_at.utcoffset() is not None:
+        next_followup_at = next_followup_at.astimezone(timezone.utc).replace(tzinfo=None)
 
     # Determine priority from interest level
     priority = "high"
