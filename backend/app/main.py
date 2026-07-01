@@ -96,9 +96,13 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> Response:
     logger.exception(f"Unhandled exception: {exc}")
+    import traceback as _tb
+    # TEMP DEBUG: include the last app frames so we can pinpoint greenlet origins.
+    frames = [f"{fr.filename.split('/app/')[-1]}:{fr.lineno} {fr.name}"
+              for fr in _tb.extract_tb(exc.__traceback__) if "/app/" in fr.filename]
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"},
+        content={"detail": f"Internal server error: {str(exc)}", "where": frames[-6:]},
     )
 
 
@@ -143,6 +147,12 @@ async def recompute_performance(
 @app.get("/")
 async def root():
     return {"status": "ok", "product": "Propello CRM", "version": "1.0.0"}
+
+
+# Build marker to prove which code is actually running after a deploy.
+@app.get("/api/_build")
+async def build_marker():
+    return {"build": "2026-06-25-debug-trace"}
 
 
 @app.get("/health")

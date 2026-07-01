@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import type { Task } from '@/lib/types'
+import { LeadTypeBadge, parseCompletion } from '@/components/tasks/LeadType'
 
 interface Props {
   task: Task
@@ -61,9 +62,14 @@ export function MobileTaskCard({ task, onComplete }: Props) {
               <p className="text-xs text-[#8f8378] mt-0.5 truncate">{task.title}</p>
             )}
           </div>
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize flex-shrink-0 ${colors.badge}`}>
-            {task.priority}
-          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {task.status !== 'done' && task.lead?.lead_score && (
+              <LeadTypeBadge value={task.lead.lead_score} />
+            )}
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${colors.badge}`}>
+              {task.priority}
+            </span>
+          </div>
         </div>
 
         {/* Due time */}
@@ -71,6 +77,19 @@ export function MobileTaskCard({ task, onComplete }: Props) {
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${colors.dot}`} />
           {due.label}
         </div>
+
+        {/* Completed call outcome — Your Lead + Your Remarks */}
+        {task.status === 'done' && (() => {
+          const c = parseCompletion(task)
+          return (
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <span className="text-[#8f8378]">Your lead:</span>
+              <LeadTypeBadge value={c.leadType} />
+              <span className="text-[#8f8378] ml-1">·</span>
+              <span className={c.connected ? 'text-[#2f7a4e] font-medium' : 'text-[#8a7f74]'}>{c.remark}</span>
+            </div>
+          )
+        })()}
 
         {/* Action buttons */}
         <div className="flex gap-2 mt-3">

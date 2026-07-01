@@ -210,10 +210,15 @@ def _task_query_options():
 
 
 async def _load_task_for_response(db: AsyncSession, task_id: str) -> Task:
+    # Expire identity-map objects first so the eager loaders below actually run.
+    # Otherwise the already-loaded task is returned WITHOUT its relationships, and
+    # serializing lead.contact triggers an async lazy-load (greenlet_spawn error).
+    db.expire_all()
     result = await db.execute(
         select(Task)
         .options(*_task_query_options())
         .where(Task.id == task_id)
+        .execution_options(populate_existing=True)
     )
     task = result.scalar_one_or_none()
     if not task:
@@ -473,6 +478,12 @@ async def complete_task_with_remark(
     lead.last_interaction_at = datetime.utcnow()
     lead.last_contacted_at = datetime.utcnow()
     await db.commit()
+
+    # Capture plain values now. If the enrichment below fails and we rollback,
+    # ORM attribute access on the expired task/lead would itself raise greenlet
+    # errors — so never touch task.* / lead.* after a rollback; use these.
+    task_assigned_to = task.assigned_to
+    task_title = task.title
 
     # --- Fast enrichment (DB only): demographics, follow-up task, activity log
     # (admin visibility) and notification. AI scoring + performance run in the
@@ -879,7 +890,8 @@ analytics_router = APIRouter()
 
 @analytics_router.get("/summary")
 async def summary(days: int = 30, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
-    if current_user.role not in ("admin", "manager"):
+    # 'reception' is a dashboard-only role and may read the summary.
+    if current_user.role not in ("admin", "manager", "reception"):
         raise HTTPException(status_code=403, detail="Manager/Admin only")
     return await get_summary(db, days)
 
@@ -891,7 +903,7 @@ async def funnel(db: AsyncSession = Depends(get_db), current_user: Agent = Depen
 
 @analytics_router.get("/by-source")
 async def by_source(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
-    if current_user.role not in ("admin", "manager"):
+    if current_user.role not in ("admin", "manager", "reception"):
         raise HTTPException(status_code=403, detail="Manager/Admin only")
     return await get_source_stats(db)
 

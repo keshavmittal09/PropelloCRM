@@ -69,6 +69,8 @@ async def init_db():
             await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'campaign_call'"))
             await conn.execute(text("ALTER TYPE activity_type ADD VALUE IF NOT EXISTS 'task_completion_remark'"))
             await conn.execute(text("ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'call_agent'"))
+            # 'reception' — limited, dashboard-only staff role (Krishna group)
+            await conn.execute(text("ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'reception'"))
 
             # Feature 1-3: new columns on tasks and leads
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_remark TEXT"))
@@ -198,16 +200,26 @@ DEFAULT_CALL_AGENTS = [
     {"name": "Sales 2", "email": "sales2@propello.ai", "password": "sales2123", "role": "call_agent"},
 ]
 
+# Krishna group staff accounts.
+#   - krishna-group    : full admin access; its dashboard shows only the sales-team
+#                        working set (assigned leads + agent-marked hot/warm/cold),
+#                        never the full ~2500 lead database.
+#   - reception-krishna: limited role — dashboard only, no other pages.
+DEFAULT_STAFF_ACCOUNTS = [
+    {"name": "Krishna Group", "email": "krishna-group@propelloai", "password": "krishna123", "role": "admin"},
+    {"name": "Reception Krishna", "email": "reception-krishna@propelloai", "password": "reception123", "role": "reception"},
+]
+
 
 async def seed_default_agents():
-    """Create the standard call-agent accounts if they don't already exist."""
+    """Create the standard call-agent + Krishna staff accounts if missing."""
     from sqlalchemy import select
     from app.models.agent import Agent
     from app.core.security import hash_password
 
     async with AsyncSessionLocal() as session:
         created = 0
-        for spec in DEFAULT_CALL_AGENTS:
+        for spec in DEFAULT_CALL_AGENTS + DEFAULT_STAFF_ACCOUNTS:
             existing = await session.execute(select(Agent).where(Agent.email == spec["email"]))
             if existing.scalar_one_or_none():
                 continue

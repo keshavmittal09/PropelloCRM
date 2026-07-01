@@ -139,7 +139,7 @@ async def update_agent_role(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
 
-    allowed_roles = {"admin", "manager", "agent", "call_agent"}
+    allowed_roles = {"admin", "manager", "agent", "call_agent", "reception"}
     next_role = (payload.role or "").strip().lower()
     if next_role not in allowed_roles:
         raise HTTPException(status_code=400, detail="Invalid role")

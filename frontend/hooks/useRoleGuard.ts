@@ -7,13 +7,16 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/useAuthStore'
 
-export type Role = 'admin' | 'manager' | 'agent' | 'call_agent'
+export type Role = 'admin' | 'manager' | 'agent' | 'call_agent' | 'reception'
 
 const ROLE_HIERARCHY: Record<Role, number> = {
   admin: 4,
   manager: 3,
   agent: 2,
   call_agent: 1,
+  // Reception is dashboard-only; kept below every guarded role so role guards
+  // deny it access to other feature pages.
+  reception: 0,
 }
 
 /**
