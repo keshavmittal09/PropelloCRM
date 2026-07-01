@@ -184,28 +184,40 @@ async def send_whatsapp_text(to_phone: str, message_body: str) -> tuple[bool, Op
 async def get_summary(db: AsyncSession, days: int = 30) -> dict:
     from_date = datetime.utcnow() - timedelta(days=days)
 
-    total = await db.execute(select(func.count(Lead.id)))
+    # The dashboard reflects the sales team's working set: only leads assigned to
+    # a *live sales agent* (active agents whose role is agent/call_agent — e.g.
+    # Sunil, Chitra, Priyanka). Leads assigned to admins, managers or former/
+    # inactive agents are excluded, so this tracks the real ~200-lead working set
+    # rather than the full ~2500-lead database (which stays on the All Leads page).
+    # Hot/Warm/Cold reflect what the agent actually selected on their last call
+    # (last_call_interest), not the raw AI lead_score.
+    sales_agent_ids = select(Agent.id).where(
+        Agent.is_active == True,  # noqa: E712
+        Agent.role.in_(["agent", "call_agent"]),
+    )
+    active_assigned = [Lead.assigned_to.in_(sales_agent_ids), Lead.stage.notin_(["won", "lost"])]
+
+    total = await db.execute(
+        select(func.count(Lead.id)).where(*active_assigned)
+    )
     total_count = total.scalar()
 
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0)
     new_today = await db.execute(
-        select(func.count(Lead.id)).where(Lead.created_at >= today_start)
+        select(func.count(Lead.id)).where(Lead.assigned_to.in_(sales_agent_ids), Lead.created_at >= today_start)
     )
 
     hot = await db.execute(
-        select(func.count(Lead.id)).where(Lead.lead_score == "hot", Lead.stage.notin_(["won", "lost"]))
+        select(func.count(Lead.id)).where(Lead.last_call_interest == "hot", *active_assigned)
     )
     warm = await db.execute(
-        select(func.count(Lead.id)).where(Lead.lead_score == "warm", Lead.stage.notin_(["won", "lost"]))
+        select(func.count(Lead.id)).where(Lead.last_call_interest == "warm", *active_assigned)
     )
     cold = await db.execute(
-        select(func.count(Lead.id)).where(Lead.lead_score == "cold", Lead.stage.notin_(["won", "lost"]))
+        select(func.count(Lead.id)).where(Lead.last_call_interest == "cold", *active_assigned)
     )
     assigned = await db.execute(
-        select(func.count(Lead.id)).where(
-            Lead.assigned_to.isnot(None),
-            Lead.stage.notin_(["won", "lost"]),
-        )
+        select(func.count(Lead.id)).where(*active_assigned)
     )
 
     won = await db.execute(
