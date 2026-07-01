@@ -898,10 +898,11 @@ analytics_router = APIRouter()
 
 @analytics_router.get("/summary")
 async def summary(days: int = 30, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
-    # 'reception' is a dashboard-only role and may read the summary.
-    if current_user.role not in ("admin", "manager", "reception"):
-        raise HTTPException(status_code=403, detail="Manager/Admin only")
-    return await get_summary(db, days)
+    # Admin & reception see the whole live sales team (~210 assigned leads).
+    # A sales agent (agent/call_agent/manager) sees only their own assigned
+    # leads and their own hot/warm/cold call categorisation.
+    scope_agent_id = None if current_user.role in ("admin", "reception") else current_user.id
+    return await get_summary(db, days, scope_agent_id=scope_agent_id)
 
 @analytics_router.get("/funnel")
 async def funnel(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):

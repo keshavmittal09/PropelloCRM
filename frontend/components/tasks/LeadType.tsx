@@ -21,6 +21,8 @@ export function LeadTypeBadge({ value }: { value?: string | null }) {
   )
 }
 
+const TEMPERATURES = ['hot', 'warm', 'cold']
+
 // Strip bracketed system notes (e.g. "[Task completed via mobile form]") and
 // drop placeholder / "unknown" values so they never surface in the table.
 function clean(value?: string | null): string | null {
@@ -31,26 +33,38 @@ function clean(value?: string | null): string | null {
   return v
 }
 
-// Parse the structured completion remark the call sheet writes, e.g.
-// "Call status: Yes, Connected. Interest: Hot. Follow-up on: 12 Jul 2026, 09:00 AM. …"
-// Falls back to the lead's stored call fields when the remark isn't structured.
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+// Derive a short, clean call outcome for the Done board — never the raw remark
+// dump. Works whether the completion remark is punctuated
+// ("Call status: Yes, Connected. Interest: Warm.") or not
+// ("Call status Connected Interest Warm Discussed Location"). Falls back to the
+// lead's stored call fields.
 export function parseCompletion(task: Task): { connected: boolean; leadType: string | null; remark: string } {
   const remark = task.completion_remark ?? ''
-  const grab = (re: RegExp) => remark.match(re)?.[1]?.trim() || null
-
-  const callStatus = grab(/Call status:\s*([^.]+)/i)
-  const interest = clean(grab(/Interest:\s*([^.]+)/i)) ?? clean(task.lead?.last_call_interest)
-  const followUp = grab(/Follow-up on:\s*([^.]+?)(?:\.\s|\.$|$)/i)
-
   const lead = task.lead
-  const statusText = callStatus ?? lead?.last_call_status ?? ''
-  const connected = /connect/i.test(statusText) || lead?.last_call_status === 'connected'
-  // Only show a lead type when the call connected AND a real type was chosen.
-  const leadType = connected ? interest : null
 
+  const statusRaw = remark.match(/Call status:?\s*(Yes,?\s*Connected|Connected|No Answer|Wrong Number|Call Back Later|Callback)/i)?.[1] ?? null
+  const interestRaw = remark.match(/Interest:?\s*(Hot|Warm|Cold|Not Interested|Busy|Don'?t Know|Unknown)/i)?.[1] ?? null
+  const followUp = remark.match(/Follow-?up on:?\s*([^.]+?)(?:\.|Follow-?up note|Note|Occupation|Family|Budget|$)/i)?.[1]?.trim() || null
+
+  const statusText = statusRaw ?? lead?.last_call_status ?? ''
+  const connected = /connect/i.test(statusText) || lead?.last_call_status === 'connected'
+
+  const interestKey = (clean(interestRaw) ?? clean(lead?.last_call_interest) ?? '')
+    .toLowerCase().replace(/\s+/g, '_')
+
+  // Your Lead = a real temperature (hot/warm/cold) only, and only when connected.
+  const leadType = connected && TEMPERATURES.includes(interestKey) ? interestKey : null
+
+  // Your Remarks = a single short label.
   let remarkText: string
   if (connected) {
-    remarkText = followUp ? `Follow-up: ${followUp}` : (interest ?? 'Connected')
+    if (followUp) remarkText = `Follow-up: ${followUp}`
+    else if (TEMPERATURES.includes(interestKey)) remarkText = cap(interestKey)
+    else if (interestKey === 'not_interested') remarkText = 'Not Interested'
+    else if (interestKey === 'busy') remarkText = 'Busy'
+    else remarkText = 'Connected'
   } else if (/wrong/i.test(statusText) || lead?.last_call_status === 'wrong_number') {
     remarkText = 'Wrong Number'
   } else if (/call\s*back|callback/i.test(statusText) || lead?.last_call_status === 'callback') {
@@ -58,8 +72,7 @@ export function parseCompletion(task: Task): { connected: boolean; leadType: str
   } else if (/no\s*answer/i.test(statusText) || lead?.last_call_status === 'no_answer') {
     remarkText = 'No Answer'
   } else {
-    // Unstructured / mobile-form completions: show a cleaned remark or nothing.
-    remarkText = clean(callStatus) ?? clean(lead?.last_remark?.split('\n')[0]?.slice(0, 60)) ?? '—'
+    remarkText = '—'
   }
 
   return { connected, leadType, remark: remarkText }
