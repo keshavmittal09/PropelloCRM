@@ -21,7 +21,7 @@ from app.schemas.schemas import (
 )
 from app.services.services import (
     get_summary, get_funnel, get_source_stats, get_agent_stats,
-    send_whatsapp
+    send_whatsapp, is_sales_scoped_admin, live_sales_agent_ids,
 )
 from app.services.memory_service import build_memory_brief
 from app.services.lead_service import create_notification
@@ -250,6 +250,9 @@ async def list_tasks(
     )
     if current_user.role in {"agent", "call_agent"}:
         query = query.where(Task.assigned_to == current_user.id)
+    # Sales-scoped admins (Krishna group) only see the live sales team's tasks.
+    if is_sales_scoped_admin(current_user):
+        query = query.where(Task.assigned_to.in_(live_sales_agent_ids()))
     if status == "overdue":
         query = query.where(
             Task.due_at.is_not(None),
@@ -305,6 +308,8 @@ async def todays_tasks(db: AsyncSession = Depends(get_db), current_user: Agent =
     )
     if current_user.role in {"agent", "call_agent"}:
         query = query.where(Task.assigned_to == current_user.id)
+    if is_sales_scoped_admin(current_user):
+        query = query.where(Task.assigned_to.in_(live_sales_agent_ids()))
 
     result = await db.execute(query)
     return [TaskResponse.model_validate(t) for t in result.scalars().all()]
@@ -333,6 +338,8 @@ async def overdue_tasks(db: AsyncSession = Depends(get_db), current_user: Agent 
     )
     if current_user.role in {"agent", "call_agent"}:
         query = query.where(Task.assigned_to == current_user.id)
+    if is_sales_scoped_admin(current_user):
+        query = query.where(Task.assigned_to.in_(live_sales_agent_ids()))
 
     result = await db.execute(query)
     tasks = result.scalars().all()
