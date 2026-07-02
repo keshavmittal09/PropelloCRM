@@ -130,10 +130,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* AI & WhatsApp Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
-          <StatCard label="AI Calls (30d)" value={summary?.ai_calls_completed ?? '—'} sub="PRIYA + CAMPAIGN" color="text-violet-600" />
-          <StatCard label="WhatsApp Sent (30d)" value={summary?.whatsapp_sent ?? '—'} sub="AUTO + MANUAL" color="text-green-600" />
+        {/* Won / Lost Stats */}
+        <div className="grid grid-cols-2 gap-5 mb-10">
           <StatCard label="Won (30d)" value={summary?.won_this_month ?? '—'} color="text-emerald-700"
             onClick={() => router.push('/leads?stage=won')} />
           <StatCard label="Lost (30d)" value={summary?.lost_this_month ?? '—'} color="text-gray-400"

@@ -18,6 +18,7 @@ from app.schemas.schemas import (
     LeadResponse, StageUpdate, NoteCreate, CallLogCreate, ActivityResponse,
     MasterProfileUpdate, DemographicsInput, DemographicsResponse,
 )
+from app.services.services import is_sales_scoped_admin, live_sales_agent_ids
 from app.services.lead_service import process_inbound_lead, change_lead_stage, log_activity, create_auto_task, create_notification
 from app.services.services import find_matching_properties, send_whatsapp
 from app.services.memory_service import build_memory_brief
@@ -191,6 +192,10 @@ async def list_leads(
         min_score, max_score, date_filter, date_from, date_to,
         current_user.role, current_user.id,
     )
+    # Sales-scoped admins (e.g. Krishna group) only ever see the live sales
+    # team's leads, never the full database.
+    if is_sales_scoped_admin(current_user):
+        filters = list(filters) + [Lead.assigned_to.in_(live_sales_agent_ids())]
 
     query = (
         select(Lead)
@@ -241,6 +246,10 @@ async def list_leads_paginated(
         min_score, max_score, date_filter, date_from, date_to,
         current_user.role, current_user.id,
     )
+    # Sales-scoped admins (e.g. Krishna group) only ever see the live sales
+    # team's leads, never the full database.
+    if is_sales_scoped_admin(current_user):
+        filters = list(filters) + [Lead.assigned_to.in_(live_sales_agent_ids())]
 
     base_query = select(Lead)
     count_query = select(func.count(Lead.id))

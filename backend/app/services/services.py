@@ -187,6 +187,25 @@ async def send_whatsapp_text(to_phone: str, message_body: str) -> tuple[bool, Op
 # live sales team changes.
 LIVE_SALES_AGENT_NAMES = ["Sunil", "Chitra", "Priyanka"]
 
+# Admin accounts whose *data* is restricted to the live sales team (they keep
+# full admin UI access, but only ever see the sales agents' leads/agents — never
+# the full ~2500-lead database). Matched case-insensitively on email.
+SALES_SCOPED_ADMIN_EMAILS = {"krishna-group@propelloai"}
+
+
+def live_sales_agent_ids():
+    """Subquery of active agent ids matching the live sales team names."""
+    name_filters = [func.lower(Agent.name).like(f"%{n.lower()}%") for n in LIVE_SALES_AGENT_NAMES]
+    return select(Agent.id).where(
+        Agent.is_active == True,  # noqa: E712
+        or_(*name_filters),
+    )
+
+
+def is_sales_scoped_admin(agent) -> bool:
+    """True for admins whose data view is limited to the live sales team."""
+    return (agent.email or "").strip().lower() in SALES_SCOPED_ADMIN_EMAILS
+
 
 async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional[str] = None) -> dict:
     from_date = datetime.utcnow() - timedelta(days=days)
@@ -203,13 +222,11 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
     # so the assigned count matches the raw number of leads handed to agents.
     if scope_agent_id:
         assigned_scope = [Lead.assigned_to == scope_agent_id]
+        task_scope = Task.assigned_to == scope_agent_id
     else:
-        name_filters = [func.lower(Agent.name).like(f"%{n.lower()}%") for n in LIVE_SALES_AGENT_NAMES]
-        sales_agent_ids = select(Agent.id).where(
-            Agent.is_active == True,  # noqa: E712
-            or_(*name_filters),
-        )
+        sales_agent_ids = live_sales_agent_ids()
         assigned_scope = [Lead.assigned_to.in_(sales_agent_ids)]
+        task_scope = Task.assigned_to.in_(sales_agent_ids)
 
     total = await db.execute(
         select(func.count(Lead.id)).where(*assigned_scope)
@@ -221,15 +238,29 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
         select(func.count(Lead.id)).where(*assigned_scope, Lead.created_at >= today_start)
     )
 
-    hot = await db.execute(
-        select(func.count(Lead.id)).where(Lead.last_call_interest == "hot", *assigned_scope)
-    )
-    warm = await db.execute(
-        select(func.count(Lead.id)).where(Lead.last_call_interest == "warm", *assigned_scope)
-    )
-    cold = await db.execute(
-        select(func.count(Lead.id)).where(Lead.last_call_interest == "cold", *assigned_scope)
-    )
+    # Hot/Warm/Cold = what the sales agent actually chose on the Done board. The
+    # choice lives either on Lead.last_call_interest OR inside the completed
+    # task's remark ("Interest: Hot" / "Interest Hot"), so count leads matching
+    # either source — this keeps the dashboard consistent with the Done page.
+    async def _interest_count(label: str) -> int:
+        remark_like = or_(
+            func.lower(Task.completion_remark).like(f"%interest: {label}%"),
+            func.lower(Task.completion_remark).like(f"%interest {label}%"),
+        )
+        lead_ids_from_tasks = select(Task.lead_id).where(
+            Task.status == "done", task_scope, remark_like
+        )
+        result = await db.execute(
+            select(func.count(func.distinct(Lead.id))).where(
+                *assigned_scope,
+                or_(Lead.last_call_interest == label, Lead.id.in_(lead_ids_from_tasks)),
+            )
+        )
+        return result.scalar() or 0
+
+    hot_count = await _interest_count("hot")
+    warm_count = await _interest_count("warm")
+    cold_count = await _interest_count("cold")
     assigned = await db.execute(
         select(func.count(Lead.id)).where(*assigned_scope)
     )
@@ -274,9 +305,9 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
     return {
         "total_leads": total_count or 0,
         "new_leads_today": new_today.scalar() or 0,
-        "hot_leads": hot.scalar() or 0,
-        "warm_leads": warm.scalar() or 0,
-        "cold_leads": cold.scalar() or 0,
+        "hot_leads": hot_count,
+        "warm_leads": warm_count,
+        "cold_leads": cold_count,
         "assigned_leads": assigned.scalar() or 0,
         "won_this_month": won_in_period,
         "lost_this_month": lost.scalar() or 0,
