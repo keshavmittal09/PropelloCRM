@@ -32,26 +32,15 @@ export default function Sidebar() {
   // Reception is a dashboard-only role — bounce it back to the dashboard if it
   // lands on any other page (e.g. via a bookmarked URL).
   const isReception = agent?.role === 'reception'
-
-  // Sales-scoped admins (e.g. Krishna group) keep admin access but only see the
-  // sales-team pages — not WhatsApp, campaigns, contacts, analytics, etc.
-  const SALES_SCOPED_ADMIN_EMAILS = ['krishna-group@propelloai']
-  const isSalesScopedAdmin = !!agent?.email && SALES_SCOPED_ADMIN_EMAILS.includes(agent.email.toLowerCase())
-  const SALES_ADMIN_ALLOWED = ['/', '/leads', '/tasks', '/staff']
-  const salesAdminAllowsPath = pathname === '/' ||
-    SALES_ADMIN_ALLOWED.slice(1).some(p => pathname.startsWith(p))
-
   useEffect(() => {
     setMounted(true)
   }, [])
   useEffect(() => {
     if (isReception && pathname !== '/') router.replace('/')
-    else if (isSalesScopedAdmin && !salesAdminAllowsPath) router.replace('/')
-  }, [isReception, isSalesScopedAdmin, salesAdminAllowsPath, pathname, router])
+  }, [isReception, pathname, router])
 
   const visibleNav = nav.filter(item => {
     if (isReception) return item.href === '/'
-    if (isSalesScopedAdmin) return SALES_ADMIN_ALLOWED.includes(item.href)
     if (!('roles' in item) || !item.roles) return true
     return !!agent?.role && (item.roles as readonly string[]).includes(agent.role)
   })
