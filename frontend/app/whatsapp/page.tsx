@@ -397,7 +397,11 @@ export default function WhatsAppLeadsPage() {
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
 
+  // Sales-scoped admins (e.g. Krishna group) don't see the WhatsApp bot dataset.
+  const hideWhatsAppData = agent?.email?.toLowerCase() === 'krishna-group@propelloai'
+
   const fetchCounts = useCallback(async () => {
+    if (hideWhatsAppData) { setCounts({ ALL: 0, HOT: 0, WARM: 0, COLD: 0 }); return }
     const db = getWASupabase()
     const [all, hot, warm, cold] = await Promise.all([
       db.from('leads').select('*', { count: 'exact', head: true }),
@@ -406,9 +410,10 @@ export default function WhatsAppLeadsPage() {
       db.from('leads').select('*', { count: 'exact', head: true }).eq('label', 'COLD'),
     ])
     setCounts({ ALL: all.count ?? 0, HOT: hot.count ?? 0, WARM: warm.count ?? 0, COLD: cold.count ?? 0 })
-  }, [])
+  }, [hideWhatsAppData])
 
   const fetchLeads = useCallback(async () => {
+    if (hideWhatsAppData) { setLeads([]); setTotal(0); setLoading(false); return }
     setLoading(true)
     const from = (page - 1) * PAGE_SIZE
     const to = from + PAGE_SIZE - 1
@@ -423,7 +428,7 @@ export default function WhatsAppLeadsPage() {
     setLeads(data ?? [])
     setTotal(count ?? 0)
     setLoading(false)
-  }, [labelFilter, search, page])
+  }, [labelFilter, search, page, hideWhatsAppData])
 
   useEffect(() => { setPage(1) }, [labelFilter, search])
   useEffect(() => { fetchLeads() }, [fetchLeads])
