@@ -104,7 +104,12 @@ async def list_agents(
     if current_user.role not in ("admin", "manager"):
         raise HTTPException(status_code=403, detail="Admin/Manager only")
 
-    result = await db.execute(select(Agent).where(Agent.is_active == True))
+    from app.services.services import is_sales_scoped_admin, live_sales_agent_ids
+    query = select(Agent).where(Agent.is_active == True)
+    # Sales-scoped admins (e.g. Krishna group) only see the live sales agents.
+    if is_sales_scoped_admin(current_user):
+        query = query.where(Agent.id.in_(live_sales_agent_ids()))
+    result = await db.execute(query)
     return [AgentResponse.model_validate(a) for a in result.scalars().all()]
 
 
