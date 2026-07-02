@@ -306,6 +306,7 @@ class TaskResponse(BaseModel):
     completed_at: Optional[datetime]
     completion_remark: Optional[str] = None
     completion_tags: Optional[List[str]] = None
+    completion_interest: Optional[str] = None
     remark_quality_score: Optional[float] = None
     remark_quality_feedback: Optional[str] = None
     created_at: datetime

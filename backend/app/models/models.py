@@ -96,6 +96,12 @@ class Task(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completion_remark: Mapped[str | None] = mapped_column(Text, nullable=True)
     completion_tags: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Heat the call agent chose on the completion form (hot/warm/cold/not_interested/
+    # busy/unknown) and the call status (connected/no_answer/wrong_number/callback).
+    # Both are written in the same commit that marks the task done, so they are a
+    # reliable source for the dashboard even if later demographic enrichment fails.
+    completion_interest: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    completion_call_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String, ForeignKey("agents.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     # Remark quality scoring (Feature 5)

@@ -21,6 +21,7 @@ export const useLeadsPaginated = (params?: {
   date_filter?: string
   date_from?: string
   date_to?: string
+  call_outcome?: string
   search?: string
   page?: number
   page_size?: number

@@ -18,7 +18,7 @@ from app.schemas.schemas import (
     LeadResponse, StageUpdate, NoteCreate, CallLogCreate, ActivityResponse,
     MasterProfileUpdate, DemographicsInput, DemographicsResponse,
 )
-from app.services.services import is_sales_scoped_admin, live_sales_agent_ids
+from app.services.services import is_sales_scoped_admin, live_sales_agent_ids, latest_completion_bucket_sq
 from app.services.lead_service import process_inbound_lead, change_lead_stage, log_activity, create_auto_task, create_notification
 from app.services.services import find_matching_properties, send_whatsapp
 from app.services.memory_service import build_memory_brief
@@ -91,6 +91,7 @@ def _build_lead_filters(
     date_filter: Optional[str],
     date_from: Optional[str],
     date_to: Optional[str],
+    call_outcome: Optional[str],
     current_user_role: str,
     current_user_id: str,
 ):
@@ -125,6 +126,16 @@ def _build_lead_filters(
         filters.append(Lead.retry_count == 3)
     elif retry == "max_reached":
         filters.append(Lead.max_retries_reached == True)
+
+    # Agent-marked call outcome from each lead's LATEST completed task
+    # (hot/warm/cold/callback). Keeps the dashboard cards and this list consistent —
+    # both read the agent's marking, not the AI lead_score.
+    if call_outcome:
+        bucket_sq = latest_completion_bucket_sq()
+        filters.append(
+            Lead.id.in_(select(bucket_sq.c.lead_id).where(bucket_sq.c.bucket == call_outcome))
+        )
+
     if min_score is not None:
         filters.append(Lead.call_score >= min_score)
     if max_score is not None:
@@ -180,6 +191,7 @@ async def list_leads(
     date_filter: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    call_outcome: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     skip: int = Query(0),
     limit: int = Query(50),
@@ -190,7 +202,7 @@ async def list_leads(
         stage, source, lead_score, assigned_to, campaign_id,
         sentiment, whatsapp_status, assigned, retry,
         min_score, max_score, date_filter, date_from, date_to,
-        current_user.role, current_user.id,
+        call_outcome, current_user.role, current_user.id,
     )
     # Sales-scoped admins (e.g. Krishna group) only ever see the live sales
     # team's leads, never the full database.
@@ -234,6 +246,7 @@ async def list_leads_paginated(
     date_filter: Optional[str] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
+    call_outcome: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
@@ -244,7 +257,7 @@ async def list_leads_paginated(
         stage, source, lead_score, assigned_to, campaign_id,
         sentiment, whatsapp_status, assigned, retry,
         min_score, max_score, date_filter, date_from, date_to,
-        current_user.role, current_user.id,
+        call_outcome, current_user.role, current_user.id,
     )
     # Sales-scoped admins (e.g. Krishna group) only ever see the live sales
     # team's leads, never the full database.
