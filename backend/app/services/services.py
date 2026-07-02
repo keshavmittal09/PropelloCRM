@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, case
+from sqlalchemy import select, func, and_, case, or_
 from datetime import datetime, timedelta
 from app.models.models import Property, Activity, Task, Notification
 from app.models.lead import Lead
@@ -181,6 +181,13 @@ async def send_whatsapp_text(to_phone: str, message_body: str) -> tuple[bool, Op
 
 # ─── ANALYTICS SERVICE ───────────────────────────────────────────────────────
 
+# The live human sales agents whose leads make up the admin dashboard's working
+# set. Matched case-insensitively against Agent.name so "Chitra Lakha" etc. work.
+# Keep this in sync with scripts/cleanup_pending_tasks.py. Edit this list when the
+# live sales team changes.
+LIVE_SALES_AGENT_NAMES = ["Sunil", "Chitra", "Priyanka"]
+
+
 async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional[str] = None) -> dict:
     from_date = datetime.utcnow() - timedelta(days=days)
 
@@ -188,17 +195,19 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
     # database (that stays on the All Leads page). Scope depends on the viewer:
     #   - scope_agent_id set  -> a single sales agent sees only their own leads
     #     (e.g. Chitra's dashboard = Chitra's leads and her call categorisation).
-    #   - scope_agent_id None -> admin/reception see the whole live sales team
-    #     (all leads assigned to active agent/call_agent accounts, ~210 leads).
+    #   - scope_agent_id None -> admin/reception see the live sales team's leads
+    #     (leads assigned to Sunil/Chitra/Priyanka, ~210) — NOT every leftover
+    #     agent/campaign account, which would balloon the number to ~1800.
     # Hot/Warm/Cold reflect what the agent selected on their last call
     # (last_call_interest), not the raw AI lead_score. Won/lost are NOT excluded
     # so the assigned count matches the raw number of leads handed to agents.
     if scope_agent_id:
         assigned_scope = [Lead.assigned_to == scope_agent_id]
     else:
+        name_filters = [func.lower(Agent.name).like(f"%{n.lower()}%") for n in LIVE_SALES_AGENT_NAMES]
         sales_agent_ids = select(Agent.id).where(
             Agent.is_active == True,  # noqa: E712
-            Agent.role.in_(["agent", "call_agent"]),
+            or_(*name_filters),
         )
         assigned_scope = [Lead.assigned_to.in_(sales_agent_ids)]
 
