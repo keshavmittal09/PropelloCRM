@@ -188,6 +188,10 @@ export default function StaffPage() {
                 <div>
                   <p className="text-sm font-semibold text-gray-800">1 · Upload leads</p>
                   <p className="text-xs text-gray-500 mt-0.5">Excel/CSV with columns: <span className="font-medium">Name</span>, <span className="font-medium">Phone</span>, <span className="font-medium">Type</span> (Hot / Warm / Cold)</p>
+                  <a href="/sample-leads.csv" download
+                    className="inline-flex items-center gap-1 mt-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800 hover:underline">
+                    ⬇ Download sample template (opens in Excel)
+                  </a>
                 </div>
                 <div className="flex items-center gap-2">
                   <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
