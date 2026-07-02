@@ -7,7 +7,10 @@ from pydantic import BaseModel, EmailStr, Field
 # ─── AUTH ────────────────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    # Plain str (not EmailStr): internal accounts like "krishna-group@propelloai"
+    # have no dotted domain and would otherwise fail email validation. Login is an
+    # exact match against the DB, so strict email formatting isn't needed here.
+    email: str
     password: str
 
 class TokenResponse(BaseModel):
@@ -17,7 +20,7 @@ class TokenResponse(BaseModel):
 
 class AgentCreate(BaseModel):
     name: str
-    email: EmailStr
+    email: str  # plain str so internal emails without a dotted domain are allowed
     password: str
     role: str = "agent"
     phone: Optional[str] = None
