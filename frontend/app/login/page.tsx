@@ -67,11 +67,6 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg text-xs text-gray-500">
-            <p className="font-medium mb-1">Demo credentials:</p>
-            <p>Admin: shardul@propello.ai / admin123</p>
-            <p>Agent: raj@propello.ai / agent123</p>
-          </div>
         </div>
       </div>
     </div>
