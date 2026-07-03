@@ -19,7 +19,15 @@ export default function LoginPage() {
       const data = await authApi.login(email, password)
       setAuth(data.agent, data.access_token)
       toast.success(`Welcome back, ${data.agent.name}!`)
-      router.push('/')
+      // Sales agents land on their Tasks page first; admins/managers on the dashboard.
+      const role = data.agent.role
+      if (role === 'admin' || role === 'manager' || role === 'reception') {
+        router.push('/')
+      } else if (role === 'call_agent') {
+        router.push('/call-agent/tasks')
+      } else {
+        router.push('/tasks')
+      }
     } catch {
       toast.error('Invalid email or password')
     } finally {

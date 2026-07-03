@@ -141,6 +141,9 @@ export function TasksPageContent() {
                           {task.lead.contact.phone}
                         </a>
                       ) : task.description ? <p className="mt-1 text-xs text-[#8a7f74] line-clamp-2">{task.description}</p> : null}
+                      {isDone && task.completed_at && (
+                        <p className="mt-1 text-[11px] text-[#a89b8c]">Done: {formatDateTime(task.completed_at)}</p>
+                      )}
                     </td>
                     {!isDone && (
                       <td className="px-4 py-4"><LeadTypeBadge value={task.lead?.lead_score} /></td>
