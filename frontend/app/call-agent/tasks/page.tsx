@@ -26,29 +26,35 @@ export default function MobileTasksPage() {
     return new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
   })
 
-  const overdue = sorted.filter(t => {
-    if (!t.due_at) return false
-    return new Date(t.due_at) < new Date() && t.status !== 'done'
+  // One card per lead on the pending tabs. A lead can have several tasks (the
+  // original assignment plus follow-ups), so dedupe by lead — the count then
+  // reflects assigned leads, not raw task rows.
+  const seenLead = new Set<string>()
+  const pendingByLead = sorted.filter(t => {
+    if (t.status === 'done') return false
+    const key = t.lead_id ?? t.id
+    if (seenLead.has(key)) return false
+    seenLead.add(key)
+    return true
   })
-  const today = sorted.filter(t => {
+
+  const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+  const startOfTomorrow = new Date(startOfToday.getTime() + 86400000)
+
+  const overdue = pendingByLead.filter(t => t.due_at && new Date(t.due_at) < startOfToday)
+  const today = pendingByLead.filter(t => {
     if (!t.due_at) return false
     const d = new Date(t.due_at)
-    const today = new Date()
-    return d.toDateString() === today.toDateString() && t.status !== 'done'
+    return d >= startOfToday && d < startOfTomorrow
   })
-  const upcoming = sorted.filter(t => {
-    if (!t.due_at) return false
-    const d = new Date(t.due_at)
-    const today = new Date()
-    return d > today && t.status !== 'done'
-  })
+  const upcoming = pendingByLead.filter(t => t.due_at && new Date(t.due_at) >= startOfTomorrow)
   // Pending tasks with no due date — these must still appear on Pending/All.
-  const noDate = sorted.filter(t => !t.due_at && t.status !== 'done')
+  const noDate = pendingByLead.filter(t => !t.due_at)
   const done = sorted.filter(t => t.status === 'done')
 
   const counts = {
-    all: sorted.length,
-    pending: (tasks ?? []).filter(t => t.status !== 'done').length,
+    all: pendingByLead.length + done.length,
+    pending: pendingByLead.length,
     done: done.length,
   }
 
@@ -56,12 +62,16 @@ export default function MobileTasksPage() {
   const visibleCount = filter === 'done'
     ? done.length
     : filter === 'pending'
-      ? overdue.length + today.length + upcoming.length + noDate.length
-      : sorted.length
+      ? pendingByLead.length
+      : counts.all
 
   return (
     <div className="min-h-screen bg-[#f8f4ef] pb-20">
-      <MobileHeader title="My Tasks" subtitle={`${counts.pending} pending`} />
+      <MobileHeader title="My Tasks" subtitle={
+        filter === 'done' ? `${counts.done} done`
+          : filter === 'pending' ? `${counts.pending} pending`
+            : `${counts.all} tasks`
+      } />
 
       {/* Filter tabs */}
       <div className="sticky top-[60px] z-10 bg-white border-b border-[#e8ddcf] px-4">
@@ -76,7 +86,7 @@ export default function MobileTasksPage() {
                   : 'text-[#8f8378] hover:text-[#4f453b]'
               }`}
             >
-              {f}
+              {f} ({counts[f]})
             </button>
           ))}
         </div>
