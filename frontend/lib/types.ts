@@ -199,6 +199,7 @@ export interface AnalyticsSummary {
   hot_leads: number
   warm_leads: number
   cold_leads: number
+  callback_leads: number
   assigned_leads: number
   won_this_month: number
   lost_this_month: number

@@ -19,7 +19,7 @@ const INTEREST_OPTIONS = [
   { value: 'cold', label: 'Cold', emoji: '🔵' },
   { value: 'not_interested', label: 'Not Interested', emoji: '🚫' },
   { value: 'busy', label: 'Busy', emoji: '🔕' },
-  { value: 'unknown', label: "Don't Know", emoji: '❓' },
+  { value: 'channel_partner', label: 'Channel Partner', emoji: '🤝' },
 ]
 
 const TOPIC_OPTIONS = [

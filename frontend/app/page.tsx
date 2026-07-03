@@ -100,25 +100,31 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Lead Category Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-5">
+        {/* Lead Category Cards — counts reflect the agent's latest call marking */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-5 mb-5">
           <div className="rounded-3xl p-5 bg-red-50 border border-red-100 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/leads?lead_score=hot')}>
+            onClick={() => router.push('/leads?call_outcome=hot')}>
             <p className="text-[11px] tracking-[0.16em] text-red-500 font-semibold uppercase mb-1">Hot Leads</p>
             <p className="text-4xl font-semibold tracking-tight text-red-600">{summary?.hot_leads ?? '—'}</p>
             <p className="text-[11px] font-medium text-red-400 mt-2 tracking-[0.12em]">MARKED BY AGENTS</p>
           </div>
           <div className="rounded-3xl p-5 bg-yellow-50 border border-yellow-100 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/leads?lead_score=warm')}>
+            onClick={() => router.push('/leads?call_outcome=warm')}>
             <p className="text-[11px] tracking-[0.16em] text-yellow-600 font-semibold uppercase mb-1">Warm Leads</p>
             <p className="text-4xl font-semibold tracking-tight text-yellow-700">{summary?.warm_leads ?? '—'}</p>
             <p className="text-[11px] font-medium text-yellow-500 mt-2 tracking-[0.12em]">MARKED BY AGENTS</p>
           </div>
           <div className="rounded-3xl p-5 bg-blue-50 border border-blue-100 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push('/leads?lead_score=cold')}>
+            onClick={() => router.push('/leads?call_outcome=cold')}>
             <p className="text-[11px] tracking-[0.16em] text-blue-500 font-semibold uppercase mb-1">Cold Leads</p>
             <p className="text-4xl font-semibold tracking-tight text-blue-600">{summary?.cold_leads ?? '—'}</p>
             <p className="text-[11px] font-medium text-blue-400 mt-2 tracking-[0.12em]">MARKED BY AGENTS</p>
+          </div>
+          <div className="rounded-3xl p-5 bg-purple-50 border border-purple-100 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/leads?call_outcome=callback')}>
+            <p className="text-[11px] tracking-[0.16em] text-purple-500 font-semibold uppercase mb-1">Callback</p>
+            <p className="text-4xl font-semibold tracking-tight text-purple-600">{summary?.callback_leads ?? '—'}</p>
+            <p className="text-[11px] font-medium text-purple-400 mt-2 tracking-[0.12em]">NO ANSWER · BUSY · LATER</p>
           </div>
           <div className="rounded-3xl p-5 bg-gray-50 border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/leads?assigned=assigned')}>

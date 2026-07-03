@@ -52,6 +52,25 @@ const activityBgColor: Record<string, string> = {
   campaign_call: 'border-indigo-100 bg-indigo-50/30',
 }
 
+// Maps a task-completion activity's meta to a coloured outcome chip for the
+// timeline, so the lead's Hot/Warm/Cold/Callback history reads at a glance.
+function completionOutcomeChip(meta: any): { label: string; cls: string } | null {
+  const interest = String(meta?.interest_level ?? '').toLowerCase()
+  const callStatus = String(meta?.call_status ?? '').toLowerCase()
+  if (['hot', 'warm', 'cold'].includes(interest)) {
+    const cls = interest === 'hot' ? 'bg-red-100 text-red-700'
+      : interest === 'warm' ? 'bg-yellow-100 text-yellow-700'
+      : 'bg-blue-100 text-blue-700'
+    return { label: interest.toUpperCase(), cls }
+  }
+  if (interest === 'not_interested') return { label: 'NOT INTERESTED', cls: 'bg-gray-100 text-gray-600' }
+  if (['callback', 'no_answer'].includes(callStatus) || ['busy', 'unknown'].includes(interest)) {
+    return { label: 'CALLBACK', cls: 'bg-purple-100 text-purple-700' }
+  }
+  if (callStatus === 'wrong_number') return { label: 'WRONG NUMBER', cls: 'bg-gray-100 text-gray-600' }
+  return null
+}
+
 // ─── LEAD TIMELINE ────────────────────────────────────────────────────────────
 export function LeadTimeline({ activities }: { activities: Activity[] }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -202,6 +221,17 @@ export function LeadTimeline({ activities }: { activities: Activity[] }) {
                 )}
               </div>
             )}
+
+            {/* Task completion — show the agent's outcome (heat / callback) as a
+                coloured chip so the lead's history reads at a glance down the timeline. */}
+            {act.type === 'task_completion_remark' && (() => {
+              const chip = completionOutcomeChip(act.meta)
+              return chip ? (
+                <div className="mt-1.5">
+                  <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${chip.cls}`}>{chip.label}</span>
+                </div>
+              ) : null
+            })()}
 
             {/* Generic description for non-special types */}
             {!AI_ACTIVITY_TYPES.has(act.type) && act.type !== 'campaign_call' && act.type !== 'classified' && act.description && (

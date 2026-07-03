@@ -55,6 +55,7 @@ export default function LeadsPage() {
   const [waStatus, setWaStatus] = useState('')
   const [assigned, setAssigned] = useState('')
   const [retry, setRetry] = useState('')
+  const [callOutcome, setCallOutcome] = useState('')
   const [scoreRange, setScoreRange] = useState<{ min?: number; max?: number }>({})
   const [dateFilter, setDateFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -69,9 +70,10 @@ export default function LeadsPage() {
     setScore(params.get('lead_score') ?? '')
     setSource(params.get('source') ?? '')
     setCampaignId(params.get('campaign_id') ?? '')
+    setCallOutcome(params.get('call_outcome') ?? '')
   }, [])
 
-  useEffect(() => { setPage(1) }, [stage, score, source, campaignId, search, sentiment, waStatus, assigned, retry, scoreRange, dateFilter, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [stage, score, source, campaignId, search, sentiment, waStatus, assigned, retry, callOutcome, scoreRange, dateFilter, dateFrom, dateTo])
 
   const [waSearchResults, setWaSearchResults] = useState<any[]>([])
 
@@ -99,6 +101,7 @@ export default function LeadsPage() {
     ...(waStatus && { whatsapp_status: waStatus }),
     ...(assigned && { assigned }),
     ...(retry && { retry }),
+    ...(callOutcome && { call_outcome: callOutcome }),
     ...(scoreRange.min !== undefined && { min_score: scoreRange.min }),
     ...(scoreRange.max !== undefined && { max_score: scoreRange.max }),
     ...(dateFilter && { date_filter: dateFilter }),
@@ -117,11 +120,11 @@ export default function LeadsPage() {
   const startPage = Math.max(1, Math.min(page - 2, totalPages - 4))
   const endPage = Math.min(totalPages, startPage + 4)
 
-  const hasActiveFilters = !!(stage || score || source || search || campaignId || sentiment || waStatus || assigned || retry || scoreRange.min !== undefined || dateFilter)
+  const hasActiveFilters = !!(stage || score || source || search || campaignId || sentiment || waStatus || assigned || retry || callOutcome || scoreRange.min !== undefined || dateFilter)
 
   const clearFilters = () => {
     setStage(''); setScore(''); setSource(''); setCampaignId(''); setSearch('')
-    setSentiment(''); setWaStatus(''); setAssigned(''); setRetry('')
+    setSentiment(''); setWaStatus(''); setAssigned(''); setRetry(''); setCallOutcome('')
     setScoreRange({}); setDateFilter(''); setDateFrom(''); setDateTo('')
   }
 

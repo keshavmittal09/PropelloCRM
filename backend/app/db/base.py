@@ -75,6 +75,10 @@ async def init_db():
             # Feature 1-3: new columns on tasks and leads
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_remark TEXT"))
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_tags JSONB"))
+            # Structured heat + call status the agent chose on task completion (drive
+            # the dashboard Hot/Warm/Cold/Callback counts). Backfilled from remark text below.
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_interest VARCHAR(20)"))
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completion_call_status VARCHAR(20)"))
             await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS dnd BOOLEAN DEFAULT FALSE"))
             await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_remark VARCHAR(200)"))
             await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_interaction_at TIMESTAMP"))
@@ -186,6 +190,34 @@ async def init_db():
         "ALTER TABLE leads ALTER COLUMN last_call_status TYPE VARCHAR(30)",
         # Dashboard-only 'reception' staff role — isolated so it never blocks startup.
         "ALTER TYPE agent_role ADD VALUE IF NOT EXISTS 'reception'",
+        # One-time backfill of tasks.completion_interest from the remark text that the
+        # completion form writes ("Interest: Hot"). Idempotent: only fills NULLs, so it
+        # is a no-op once every done task carries a structured heat. Ordered priority
+        # doesn't matter — a remark carries at most one "Interest:" line.
+        "UPDATE tasks SET completion_interest = 'hot' WHERE completion_interest IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%interest: hot%'",
+        "UPDATE tasks SET completion_interest = 'warm' WHERE completion_interest IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%interest: warm%'",
+        "UPDATE tasks SET completion_interest = 'cold' WHERE completion_interest IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%interest: cold%'",
+        # Non-heat outcomes too, so a lead whose latest call was one of these is
+        # correctly dropped from the Hot/Warm/Cold counts (latest marking wins).
+        "UPDATE tasks SET completion_interest = 'not_interested' WHERE completion_interest IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%interest: not interested%'",
+        "UPDATE tasks SET completion_interest = 'busy' WHERE completion_interest IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%interest: busy%'",
+        "UPDATE tasks SET completion_interest = 'unknown' WHERE completion_interest IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%interest: don''t know%'",
+        # Backfill call status from the "Call status: <Label>" line the form writes,
+        # so callback outcomes (No Answer / Call Back Later) are recognised historically.
+        "UPDATE tasks SET completion_call_status = 'no_answer' WHERE completion_call_status IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%call status: no answer%'",
+        "UPDATE tasks SET completion_call_status = 'callback' WHERE completion_call_status IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%call status: call back later%'",
+        "UPDATE tasks SET completion_call_status = 'wrong_number' WHERE completion_call_status IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%call status: wrong number%'",
+        "UPDATE tasks SET completion_call_status = 'connected' WHERE completion_call_status IS NULL "
+        "AND status = 'done' AND completion_remark ILIKE '%call status: yes, connected%'",
     ):
         try:
             async with engine.begin() as conn2:

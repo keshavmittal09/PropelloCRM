@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, case, or_
+from sqlalchemy import select, func, and_, case, or_, literal
 from datetime import datetime, timedelta
 from app.models.models import Property, Activity, Task, Notification
 from app.models.lead import Lead
@@ -207,26 +207,67 @@ def is_sales_scoped_admin(agent) -> bool:
     return (agent.email or "").strip().lower() in SALES_SCOPED_ADMIN_EMAILS
 
 
+# Interest values / call statuses that mean "try again later" rather than a heat.
+_CALLBACK_INTERESTS = ["busy", "unknown"]
+_CALLBACK_CALL_STATUSES = ["callback", "no_answer"]
+
+
+def _completion_bucket(interest_col, call_status_col):
+    """Bucket a completed task's raw outcome into one dashboard/pipeline label.
+    Precedence: an explicit heat wins; then a hard 'no' (not interested); then any
+    'try again' signal -> callback; everything else -> other (uncounted)."""
+    return case(
+        (interest_col.in_(["hot", "warm", "cold"]), interest_col),
+        (interest_col == "not_interested", literal("not_interested")),
+        (or_(call_status_col.in_(_CALLBACK_CALL_STATUSES),
+             interest_col.in_(_CALLBACK_INTERESTS)), literal("callback")),
+        else_=literal("other"),
+    )
+
+
+def latest_completion_bucket_sq(scope_agent_id: Optional[str] = None):
+    """Subquery of (lead_id, bucket): each lead's MOST RECENT completed-task outcome,
+    bucketed via _completion_bucket. The latest marking wins, so a lead re-marked
+    across calls lands in exactly one bucket and is never double-counted.
+
+    scope_agent_id None counts every agent's markings (admin / main dashboard);
+    a value restricts to that agent's own completed tasks.
+    """
+    inner = (
+        select(
+            Task.lead_id.label("lead_id"),
+            Task.completion_interest.label("interest"),
+            Task.completion_call_status.label("call_status"),
+        )
+        .where(
+            Task.status == "done",
+            or_(Task.completion_interest.isnot(None), Task.completion_call_status.isnot(None)),
+        )
+        .distinct(Task.lead_id)
+        .order_by(Task.lead_id, Task.completed_at.desc())
+    )
+    if scope_agent_id:
+        inner = inner.where(Task.assigned_to == scope_agent_id)
+    inner_sq = inner.subquery()
+    return select(
+        inner_sq.c.lead_id.label("lead_id"),
+        _completion_bucket(inner_sq.c.interest, inner_sq.c.call_status).label("bucket"),
+    ).subquery()
+
+
 async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional[str] = None) -> dict:
     from_date = datetime.utcnow() - timedelta(days=days)
 
-    # The dashboard reflects only *assigned* leads — never the full ~2500-lead
-    # database (that stays on the All Leads page). Scope depends on the viewer:
-    #   - scope_agent_id set  -> a single sales agent sees only their own leads
-    #     (e.g. Chitra's dashboard = Chitra's leads and her call categorisation).
+    # The volume metrics (Assigned / New today) reflect only *assigned* leads —
+    # never the full ~2500-lead database (that stays on the All Leads page):
+    #   - scope_agent_id set  -> a single sales agent sees only their own leads.
     #   - scope_agent_id None -> admin/reception see the live sales team's leads
-    #     (leads assigned to Sunil/Chitra/Priyanka, ~210) — NOT every leftover
-    #     agent/campaign account, which would balloon the number to ~1800.
-    # Hot/Warm/Cold reflect what the agent selected on their last call
-    # (last_call_interest), not the raw AI lead_score. Won/lost are NOT excluded
-    # so the assigned count matches the raw number of leads handed to agents.
+    #     (Sunil/Chitra/Priyanka, ~210) — NOT every leftover agent/campaign
+    #     account, which would balloon the number to ~1800.
     if scope_agent_id:
         assigned_scope = [Lead.assigned_to == scope_agent_id]
-        task_scope = Task.assigned_to == scope_agent_id
     else:
-        sales_agent_ids = live_sales_agent_ids()
-        assigned_scope = [Lead.assigned_to.in_(sales_agent_ids)]
-        task_scope = Task.assigned_to.in_(sales_agent_ids)
+        assigned_scope = [Lead.assigned_to.in_(live_sales_agent_ids())]
 
     total = await db.execute(
         select(func.count(Lead.id)).where(*assigned_scope)
@@ -238,29 +279,25 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
         select(func.count(Lead.id)).where(*assigned_scope, Lead.created_at >= today_start)
     )
 
-    # Hot/Warm/Cold = what the sales agent actually chose on the Done board. The
-    # choice lives either on Lead.last_call_interest OR inside the completed
-    # task's remark ("Interest: Hot" / "Interest Hot"), so count leads matching
-    # either source — this keeps the dashboard consistent with the Done page.
-    async def _interest_count(label: str) -> int:
-        remark_like = or_(
-            func.lower(Task.completion_remark).like(f"%interest: {label}%"),
-            func.lower(Task.completion_remark).like(f"%interest {label}%"),
-        )
-        lead_ids_from_tasks = select(Task.lead_id).where(
-            Task.status == "done", task_scope, remark_like
-        )
-        result = await db.execute(
-            select(func.count(func.distinct(Lead.id))).where(
-                *assigned_scope,
-                or_(Lead.last_call_interest == label, Lead.id.in_(lead_ids_from_tasks)),
-            )
-        )
-        return result.scalar() or 0
-
-    hot_count = await _interest_count("hot")
-    warm_count = await _interest_count("warm")
-    cold_count = await _interest_count("cold")
+    # Hot / Warm / Cold / Callback = the outcome the call agent chose on the task-
+    # completion form, taken from each lead's MOST RECENT completed task (latest
+    # marking wins). See latest_completion_bucket_sq for the bucketing rules:
+    #   hot / warm / cold    -> counted in that card
+    #   callback             -> Call Back Later / No Answer / Busy / Don't Know
+    #   not_interested/other -> excluded from every card
+    # The underlying columns are written in the same commit that marks the task done,
+    # so the counts are reliable even if the later demographic enrichment rolls back.
+    #   - scope_agent_id set  -> only that agent's completed tasks.
+    #   - scope_agent_id None -> every agent's markings (admin / main dashboard).
+    bucket_sq = latest_completion_bucket_sq(scope_agent_id)
+    bucket_rows = await db.execute(
+        select(bucket_sq.c.bucket, func.count()).group_by(bucket_sq.c.bucket)
+    )
+    bucket_counts = {row[0]: row[1] for row in bucket_rows.all()}
+    hot_count = bucket_counts.get("hot", 0) or 0
+    warm_count = bucket_counts.get("warm", 0) or 0
+    cold_count = bucket_counts.get("cold", 0) or 0
+    callback_count = bucket_counts.get("callback", 0) or 0
     assigned = await db.execute(
         select(func.count(Lead.id)).where(*assigned_scope)
     )
@@ -308,6 +345,7 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
         "hot_leads": hot_count,
         "warm_leads": warm_count,
         "cold_leads": cold_count,
+        "callback_leads": callback_count,
         "assigned_leads": assigned.scalar() or 0,
         "won_this_month": won_in_period,
         "lost_this_month": lost.scalar() or 0,

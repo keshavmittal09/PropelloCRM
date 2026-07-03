@@ -487,6 +487,11 @@ async def complete_task_with_remark(
     task.completed_at = datetime.utcnow()
     task.completion_remark = data.remark_text
     task.completion_tags = data.preset_tags
+    # Store the agent's heat + call status as structured data in this same (reliable)
+    # commit, so the dashboard Hot/Warm/Cold/Callback counts survive even if the later
+    # enrichment rolls back.
+    task.completion_interest = (data.interest_level or "").strip().lower() or None
+    task.completion_call_status = (data.call_status or "").strip().lower() or None
     lead.last_remark = data.remark_text[:120]
     lead.last_interaction_at = datetime.utcnow()
     lead.last_contacted_at = datetime.utcnow()
@@ -529,6 +534,8 @@ async def complete_task_with_remark(
             performed_by=current_user.id,
             meta={
                 "task_id": task.id,
+                "interest_level": (data.interest_level or "").strip().lower() or None,
+                "call_status": (data.call_status or "").strip().lower() or None,
                 "preset_tags": data.preset_tags,
                 "remark_text": data.remark_text,
                 "updated_lead_fields": updated_lead_fields,
@@ -584,6 +591,9 @@ async def complete_task_demographic(
     # Mark task done
     task.status = "done"
     task.completed_at = datetime.utcnow()
+    # Structured heat + call status for the dashboard (see complete-with-remark).
+    task.completion_interest = (data.interest_level or "").strip().lower() or None
+    task.completion_call_status = (data.call_status or "").strip().lower() or None
 
     # Get the lead
     lead = await db.get(Lead, task.lead_id)
@@ -613,6 +623,32 @@ async def complete_task_demographic(
             next_followup_at=data.next_followup_at,
             agent_id=current_user.id,
         )
+
+    # Log a timeline activity so this completion (and its interest marking) shows in
+    # the lead's profile history — same as the web complete-with-remark path.
+    interest_clean = (data.interest_level or "").strip().lower() or None
+    desc_parts = [f"Call status: {data.call_status}"]
+    if interest_clean:
+        desc_parts.append(f"Interest: {interest_clean}")
+    if data.topics_discussed:
+        desc_parts.append(f"Discussed: {', '.join(data.topics_discussed)}")
+    if data.note:
+        desc_parts.append(f"Note: {data.note}")
+    db.add(Activity(
+        lead_id=task.lead_id,
+        contact_id=lead.contact_id,
+        type="task_completion_remark",
+        title=f"Task completed: {task.title}",
+        description=". ".join(desc_parts),
+        performed_by=current_user.id,
+        meta={
+            "task_id": task.id,
+            "interest_level": interest_clean,
+            "call_status": (data.call_status or "").strip().lower() or None,
+            "topics_discussed": data.topics_discussed,
+            "updated_lead_fields": updated_fields,
+        },
+    ))
 
     # Update performance
     if task.assigned_to:
