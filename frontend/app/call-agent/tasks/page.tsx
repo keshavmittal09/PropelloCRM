@@ -42,6 +42,8 @@ export default function MobileTasksPage() {
     const today = new Date()
     return d > today && t.status !== 'done'
   })
+  // Pending tasks with no due date — these must still appear on Pending/All.
+  const noDate = sorted.filter(t => !t.due_at && t.status !== 'done')
   const done = sorted.filter(t => t.status === 'done')
 
   const counts = {
@@ -54,7 +56,7 @@ export default function MobileTasksPage() {
   const visibleCount = filter === 'done'
     ? done.length
     : filter === 'pending'
-      ? overdue.length + today.length + upcoming.length
+      ? overdue.length + today.length + upcoming.length + noDate.length
       : sorted.length
 
   return (
@@ -104,6 +106,9 @@ export default function MobileTasksPage() {
             )}
             {filter !== 'done' && upcoming.length > 0 && (
               <Section title="Upcoming" tasks={upcoming} onComplete={setCompletingTask} />
+            )}
+            {filter !== 'done' && noDate.length > 0 && (
+              <Section title="No due date" tasks={noDate} onComplete={setCompletingTask} />
             )}
             {filter !== 'pending' && done.length > 0 && (
               <Section title="Done" tasks={done} onComplete={setCompletingTask} />
