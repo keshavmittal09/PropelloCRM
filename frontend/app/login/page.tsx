@@ -11,10 +11,12 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
     try {
       const data = await authApi.login(email, password)
       setAuth(data.agent, data.access_token)
@@ -29,7 +31,8 @@ export default function LoginPage() {
         router.push('/tasks')
       }
     } catch {
-      toast.error('Invalid email or password')
+      setError('Wrong email or password. Please try again.')
+      toast.error('Wrong email or password')
     } finally {
       setLoading(false)
     }
@@ -60,6 +63,9 @@ export default function LoginPage() {
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
               />
             </div>
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+            )}
             <button
               type="submit" disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-medium py-2.5 rounded-lg transition-colors text-sm"
