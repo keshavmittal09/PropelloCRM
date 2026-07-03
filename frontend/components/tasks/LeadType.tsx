@@ -45,7 +45,7 @@ export function parseCompletion(task: Task): { connected: boolean; leadType: str
   const lead = task.lead
 
   const statusRaw = remark.match(/Call status:?\s*(Yes,?\s*Connected|Connected|No Answer|Wrong Number|Call Back Later|Callback)/i)?.[1] ?? null
-  const interestRaw = remark.match(/Interest:?\s*(Hot|Warm|Cold|Not Interested|Busy|Don'?t Know|Unknown)/i)?.[1] ?? null
+  const interestRaw = remark.match(/Interest:?\s*(Hot|Warm|Cold|Not Interested|Busy|Channel Partner|Don'?t Know|Unknown)/i)?.[1] ?? null
   const followUp = remark.match(/Follow-?up on:?\s*([^.]+?)(?:\.|Follow-?up note|Note|Occupation|Family|Budget|$)/i)?.[1]?.trim() || null
 
   const statusText = statusRaw ?? lead?.last_call_status ?? ''
@@ -64,6 +64,7 @@ export function parseCompletion(task: Task): { connected: boolean; leadType: str
     else if (TEMPERATURES.includes(interestKey)) remarkText = cap(interestKey)
     else if (interestKey === 'not_interested') remarkText = 'Not Interested'
     else if (interestKey === 'busy') remarkText = 'Busy'
+    else if (interestKey === 'channel_partner') remarkText = 'Channel Partner'
     else remarkText = 'Connected'
   } else if (/wrong/i.test(statusText) || lead?.last_call_status === 'wrong_number') {
     remarkText = 'Wrong Number'
