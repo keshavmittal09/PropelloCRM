@@ -91,24 +91,27 @@ export function MobileTaskCard({ task, onComplete }: Props) {
           )
         })()}
 
-        {/* Action buttons */}
-        <div className="flex gap-2 mt-3">
-          {callUrl && (
-            <a
-              href={callUrl}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#f0f7ff] border border-blue-200 text-blue-700 text-sm font-semibold active:bg-blue-50 transition-colors"
-            >
-              <span>📞</span> Call
-            </a>
-          )}
-          <button
-            onClick={() => onComplete(task)}
-            disabled={task.status === 'done'}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#2f2317] text-white text-sm font-semibold active:bg-[#1f1610] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span>✅</span> Done
-          </button>
-        </div>
+        {/* Action buttons — done tasks only show Call (no redundant Done button) */}
+        {(task.status !== 'done' || callUrl) && (
+          <div className="flex gap-2 mt-3">
+            {callUrl && (
+              <a
+                href={callUrl}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#f0f7ff] border border-blue-200 text-blue-700 text-sm font-semibold active:bg-blue-50 transition-colors"
+              >
+                <span>📞</span> Call
+              </a>
+            )}
+            {task.status !== 'done' && (
+              <button
+                onClick={() => onComplete(task)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#2f2317] text-white text-sm font-semibold active:bg-[#1f1610] transition-colors"
+              >
+                <span>✅</span> Done
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

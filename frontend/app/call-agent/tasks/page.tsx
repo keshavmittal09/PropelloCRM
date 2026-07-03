@@ -12,8 +12,11 @@ export default function MobileTasksPage() {
   const [filter, setFilter] = useState<Filter>('pending')
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
 
+  // Fetch ALL tasks for both 'all' and 'pending' so the Pending tab includes
+  // overdue tasks too (the API's status=pending filter drops overdue ones). The
+  // section rendering below already hides 'done' tasks on the Pending tab.
   const { data: tasks, isLoading } = useAllTasks(
-    filter === 'all' ? undefined : filter === 'pending' ? { status: 'pending' } : { status: 'done' }
+    filter === 'done' ? { status: 'done' } : undefined
   )
 
   // Sort: overdue first, then due today, then future
@@ -47,6 +50,13 @@ export default function MobileTasksPage() {
     done: done.length,
   }
 
+  // Tasks actually visible on the current tab (drives the empty state).
+  const visibleCount = filter === 'done'
+    ? done.length
+    : filter === 'pending'
+      ? overdue.length + today.length + upcoming.length
+      : sorted.length
+
   return (
     <div className="min-h-screen bg-[#f8f4ef] pb-20">
       <MobileHeader title="My Tasks" subtitle={`${counts.pending} pending`} />
@@ -78,7 +88,7 @@ export default function MobileTasksPage() {
               <div key={i} className="bg-white rounded-2xl h-28 animate-pulse border border-[#e8ddcf]" />
             ))}
           </div>
-        ) : sorted.length === 0 ? (
+        ) : visibleCount === 0 ? (
           <div className="text-center py-16">
             <p className="text-4xl mb-3">✅</p>
             <p className="text-[#8f8378] font-medium">All caught up!</p>
