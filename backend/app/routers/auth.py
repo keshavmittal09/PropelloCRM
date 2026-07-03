@@ -54,7 +54,10 @@ class LeaderboardEntry(BaseModel):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Agent).where(Agent.email == data.email))
+    # Case-insensitive email match — accounts may be stored with mixed case
+    # (e.g. "Priyanka@propello.ai"), so login shouldn't depend on exact casing.
+    email = (data.email or "").strip().lower()
+    result = await db.execute(select(Agent).where(func.lower(Agent.email) == email))
     agent = result.scalar_one_or_none()
 
     if not agent or not verify_password(data.password, agent.password_hash):
