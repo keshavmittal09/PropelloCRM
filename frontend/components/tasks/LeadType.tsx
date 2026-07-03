@@ -33,7 +33,18 @@ function clean(value?: string | null): string | null {
   return v
 }
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+// Pull a real written remark out of the completion text (the free note, the
+// follow-up note, or the discussed topics — so Your Remarks shows an actual
+// comment rather than repeating the lead type.
+function extractNote(remark: string): string | null {
+  const note = remark.match(/(?:^|\.\s*)Note:\s*([^.]+)/i)?.[1]?.trim()
+  if (note && clean(note)) return clean(note)
+  const fnote = remark.match(/Follow-?up note:\s*([^.]+)/i)?.[1]?.trim()
+  if (fnote && clean(fnote)) return clean(fnote)
+  const discussed = remark.match(/Discussed:\s*([^.]+?)(?:\.|Follow|Note|Occupation|Family|Budget|$)/i)?.[1]?.trim()
+  if (discussed) return `Discussed: ${discussed}`
+  return null
+}
 
 // Derive a short, clean call outcome for the Done board — never the raw remark
 // dump. Works whether the completion remark is punctuated
@@ -57,15 +68,15 @@ export function parseCompletion(task: Task): { connected: boolean; leadType: str
   // Your Lead = a real temperature (hot/warm/cold) only, and only when connected.
   const leadType = connected && TEMPERATURES.includes(interestKey) ? interestKey : null
 
-  // Your Remarks = a single short label.
+  // Your Remarks = the actual remark (follow-up / note / outcome) — NOT the lead
+  // type, which already shows in the Your Lead column.
   let remarkText: string
   if (connected) {
     if (followUp) remarkText = `Follow-up: ${followUp}`
-    else if (TEMPERATURES.includes(interestKey)) remarkText = cap(interestKey)
     else if (interestKey === 'not_interested') remarkText = 'Not Interested'
     else if (interestKey === 'busy') remarkText = 'Busy'
     else if (interestKey === 'channel_partner') remarkText = 'Channel Partner'
-    else remarkText = 'Connected'
+    else remarkText = extractNote(remark) ?? '—'
   } else if (/wrong/i.test(statusText) || lead?.last_call_status === 'wrong_number') {
     remarkText = 'Wrong Number'
   } else if (/call\s*back|callback/i.test(statusText) || lead?.last_call_status === 'callback') {
