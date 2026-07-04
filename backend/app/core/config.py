@@ -17,7 +17,14 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def validate_database_url(cls, value: str) -> str:
-        url = (value or "").strip().lower()
+        # Strip stray whitespace/newlines. A trailing newline in the env var
+        # otherwise becomes part of the database name (e.g. "postgres\n") and
+        # asyncpg fails at startup with:
+        #   InvalidCatalogNameError: database "postgres\n" does not exist
+        # We must return the CLEANED value (the old code stripped only a copy
+        # used for validation and returned the raw value, letting the \n through).
+        value = (value or "").strip()
+        url = value.lower()
         if url.startswith("sqlite"):
             raise ValueError("SQLite is not supported. Use Supabase/PostgreSQL with postgresql+asyncpg://")
         if not url.startswith("postgresql+asyncpg://"):

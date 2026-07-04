@@ -2,11 +2,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
+import { useQueryClient } from '@tanstack/react-query'
 import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/store/useAuthStore'
 
 export default function LoginPage() {
   const router = useRouter()
+  const qc = useQueryClient()
   const setAuth = useAuthStore(s => s.setAuth)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -19,6 +21,9 @@ export default function LoginPage() {
     setError('')
     try {
       const data = await authApi.login(email, password)
+      // Drop any cached data from a previous account so agents never see each
+      // other's tasks/leads.
+      qc.clear()
       setAuth(data.agent, data.access_token)
       toast.success(`Welcome back, ${data.agent.name}!`)
       // Sales agents land on their Tasks page first; admins/managers on the dashboard.
