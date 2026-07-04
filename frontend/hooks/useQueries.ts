@@ -77,8 +77,11 @@ export const useLogCall = (leadId: string) => {
 export const useTodayTasks = () =>
   {
     const role = useAuthStore((s) => s.agent?.role)
+    const agentId = useAuthStore((s) => s.agent?.id)
     return useQuery({
-      queryKey: ['tasks', 'today', role],
+      // Key by agent id (not role) so different agents of the same role never
+      // share cached results.
+      queryKey: ['tasks', 'today', agentId],
       queryFn: () => (role === 'call_agent' ? meApi.getTasks('pending') : tasksApi.today()),
       staleTime: 60000,
     })
@@ -87,8 +90,9 @@ export const useTodayTasks = () =>
 export const useAllTasks = (params?: Record<string, string>) =>
   {
     const role = useAuthStore((s) => s.agent?.role)
+    const agentId = useAuthStore((s) => s.agent?.id)
     return useQuery({
-      queryKey: ['tasks', params, role],
+      queryKey: ['tasks', params, agentId],
       queryFn: () => (role === 'call_agent' ? meApi.getTasks(params?.status) : tasksApi.list(params)),
     })
   }
@@ -107,9 +111,10 @@ export const useCompleteTask = () => {
 // ─── ANALYTICS ───────────────────────────────────────────────────────────────
 export const useAnalyticsSummary = (days = 30) => {
   const role = useAuthStore((s) => s.agent?.role)
+  const agentId = useAuthStore((s) => s.agent?.id)
   const mine = role === 'call_agent' || role === 'agent'
   return useQuery({
-    queryKey: ['analytics', 'summary', days, role],
+    queryKey: ['analytics', 'summary', days, agentId],
     queryFn: () => (mine ? meApi.summary(days) : analyticsApi.summary(days)),
     staleTime: 60000,
   })
