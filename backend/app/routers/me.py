@@ -85,10 +85,14 @@ async def get_my_tasks(
         else_=3,
     )
 
+    # Show tasks for the leads CURRENTLY assigned to this agent — not stale tasks
+    # left pointing at them after a lead was reassigned to someone else. This
+    # keeps the count aligned with the agent's actual assigned-lead workload.
+    my_lead_ids = select(Lead.id).where(Lead.assigned_to == current_user.id)
     query = (
         select(Task)
         .options(*_task_query_options())
-        .where(Task.assigned_to == current_user.id)
+        .where(Task.lead_id.in_(my_lead_ids))
         .order_by(priority_order.asc(), Task.due_at.asc(), Task.created_at.desc())
     )
 
