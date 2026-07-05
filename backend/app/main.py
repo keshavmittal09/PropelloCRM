@@ -148,7 +148,7 @@ async def root():
 # Build marker to prove which code is actually running after a deploy.
 @app.get("/api/_build")
 async def build_marker():
-    return {"build": "2026-07-02-krishna-scope-tasks"}
+    return {"build": "2026-07-04-my-tasks-lead-scoped"}
 
 
 @app.get("/health")
