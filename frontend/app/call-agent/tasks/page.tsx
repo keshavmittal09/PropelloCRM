@@ -33,12 +33,20 @@ export default function MobileTasksPage() {
     return new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
   })
 
+  // Leads the agent has already completed a task for belong in Done — not
+  // Pending. This makes a completed lead move out of the pending list even if
+  // completing it created a follow-up task.
+  const doneLeadIds = new Set(
+    sorted.filter(t => t.status === 'done' && t.lead_id).map(t => t.lead_id as string)
+  )
+
   // One card per lead on the pending tabs. A lead can have several tasks (the
   // original assignment plus follow-ups), so dedupe by lead — the count then
   // reflects assigned leads, not raw task rows.
   const seenLead = new Set<string>()
   const pendingByLead = sorted.filter(t => {
     if (t.status === 'done') return false
+    if (t.lead_id && doneLeadIds.has(t.lead_id)) return false
     const key = t.lead_id ?? t.id
     if (seenLead.has(key)) return false
     seenLead.add(key)
