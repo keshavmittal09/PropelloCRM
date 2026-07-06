@@ -4,14 +4,9 @@ import { useEffect, useState } from 'react'
 
 export default function CallAgentLayout({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    const check = () => setIsMobile(window.innerWidth < 768)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
   }, [])
 
   if (!mounted) {
@@ -22,23 +17,16 @@ export default function CallAgentLayout({ children }: { children: React.ReactNod
     )
   }
 
-  if (!isMobile) {
-    // On desktop, show a centered message for call_agent mobile routes
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f8f4ef] p-8">
-        <p className="text-4xl mb-4">📱</p>
-        <p className="text-xl font-semibold text-[#1f1914]">Mobile view</p>
-        <p className="text-sm text-[#8f8378] mt-2 text-center">This page is optimized for mobile.<br />Please view on a phone or resize your browser.</p>
-      </div>
-    )
-  }
-
+  // Render on both phone and desktop. On desktop we center the app in a
+  // phone-width column so sales agents can also use it from a computer.
   return (
-    <div className="min-h-screen bg-[#f8f4ef] flex flex-col">
-      <main className="flex-1 overflow-auto pb-20">
-        {children}
-      </main>
-      <MobileBottomNav />
+    <div className="min-h-screen bg-[#e9e2d8] flex justify-center">
+      <div className="w-full max-w-lg min-h-screen bg-[#f8f4ef] flex flex-col shadow-sm">
+        <main className="flex-1 overflow-auto pb-20">
+          {children}
+        </main>
+        <MobileBottomNav />
+      </div>
     </div>
   )
 }

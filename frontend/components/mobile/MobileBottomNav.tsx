@@ -6,7 +6,7 @@ import { useNotifications } from '@/hooks/useQueries'
 import { cn } from '@/lib/cn'
 
 const tabs = [
-  { href: '/tasks', label: 'Tasks', icon: '📋' },
+  { href: '/call-agent/tasks', label: 'Tasks', icon: '📋' },
   { href: '/call-agent/my-leads', label: 'My Leads', icon: '👥' },
   { href: '/call-agent/alerts', label: 'Alerts', icon: '🔔' },
   { href: '/call-agent/me', label: 'Me', icon: '👤' },
@@ -22,7 +22,7 @@ export default function MobileBottomNav() {
   const unreadCount = (notifications ?? []).filter(n => !n.is_read).length
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-[#e8ddcf] flex safe-area-pb">
+    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-50 bg-white border-t border-[#e8ddcf] flex safe-area-pb">
       {tabs.map(tab => {
         const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/')
         const showBadge = tab.href === '/alerts' && unreadCount > 0

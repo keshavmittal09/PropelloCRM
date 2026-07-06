@@ -39,6 +39,10 @@ export default function Sidebar() {
     if (isReception && pathname !== '/') router.replace('/')
   }, [isReception, pathname, router])
 
+  // Sales agents use the mobile-style UI (header menu + bottom nav) on every
+  // device, so the desktop sidebar is hidden for them.
+  if (agent?.role === 'call_agent') return null
+
   const visibleNav = nav.filter(item => {
     if (isReception) return item.href === '/'
     if (!('roles' in item) || !item.roles) return true
