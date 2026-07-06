@@ -51,7 +51,8 @@ export function MobileLeadCard({ lead }: Props) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="font-semibold text-[#1f1914] truncate">{name}</p>
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${colors.badge}`}>
+            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full capitalize ${colors.badge}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
               {lead.lead_score}
             </span>
           </div>
@@ -59,6 +60,11 @@ export function MobileLeadCard({ lead }: Props) {
             <p className="text-xs text-[#8f8378] mt-0.5 font-mono">{phone}</p>
           )}
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            {lead.last_call_interest && ['hot', 'warm', 'cold'].includes(lead.last_call_interest.toLowerCase()) && (
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${SCORE_COLORS[lead.last_call_interest.toLowerCase() as keyof typeof SCORE_COLORS]?.badge ?? 'bg-gray-100 text-gray-600'}`}>
+                Your rating: {lead.last_call_interest}
+              </span>
+            )}
             <span className="text-[11px] bg-[#f5f0e8] text-[#6e6357] px-2 py-0.5 rounded-full">
               {stageLabel}
             </span>

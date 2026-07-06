@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useAllTasks } from '@/hooks/useQueries'
+import { useAuthStore } from '@/store/useAuthStore'
 import { MobileTaskCard } from '@/components/mobile/MobileTaskCard'
 import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskCompletionSheet'
 import { MobileHeader } from '@/components/mobile/MobileHeader'
@@ -11,6 +12,7 @@ type Filter = 'all' | 'pending' | 'done'
 export default function MobileTasksPage() {
   const [filter, setFilter] = useState<Filter>('pending')
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
+  const agentId = useAuthStore(s => s.agent?.id)
 
   // Fetch ALL tasks for both 'all' and 'pending' so the Pending tab includes
   // overdue tasks too (the API's status=pending filter drops overdue ones). The
@@ -19,8 +21,13 @@ export default function MobileTasksPage() {
     filter === 'done' ? { status: 'done' } : undefined
   )
 
+  // Only show tasks for leads currently assigned to me — not stale tasks left
+  // over from leads that were reassigned to another agent. This keeps the count
+  // correct even before the backend fix is deployed.
+  const myTasks = (tasks ?? []).filter(t => !t.lead || t.lead.assigned_to === agentId)
+
   // Sort: overdue first, then due today, then future
-  const sorted = [...(tasks ?? [])].sort((a, b) => {
+  const sorted = [...myTasks].sort((a, b) => {
     if (!a.due_at) return 1
     if (!b.due_at) return -1
     return new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
