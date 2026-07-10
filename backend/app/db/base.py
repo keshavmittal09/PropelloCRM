@@ -240,7 +240,7 @@ DEFAULT_CALL_AGENTS = [
 #                        never the full ~2500 lead database.
 #   - reception-krishna: limited role — dashboard only, no other pages.
 DEFAULT_STAFF_ACCOUNTS = [
-    {"name": "Krishna Group", "email": "krishna-group@propelloai", "password": "krishna123", "role": "admin"},
+    {"name": "Krishna Group", "email": "krishna-group@propelloai", "password": "krishna@aura", "role": "admin"},
     {"name": "Reception Krishna", "email": "reception-krishna@propelloai", "password": "reception123", "role": "reception"},
 ]
 
