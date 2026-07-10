@@ -1122,11 +1122,14 @@ async def distribute_leads(
     # something to act on (and the call-completion form to fill after calling).
     all_assigned = [lid for ids in buckets.values() for lid in ids]
     if all_assigned:
-        name_rows = await db.execute(
-            select(Lead.id, Contact.name).join(Contact, Lead.contact_id == Contact.id)
+        name_rows = (await db.execute(
+            select(Lead.id, Contact.name, Lead.lead_score).join(Contact, Lead.contact_id == Contact.id)
             .where(Lead.id.in_(all_assigned))
-        )
-        names = {r[0]: r[1] for r in name_rows.all()}
+        )).all()
+        names = {r[0]: r[1] for r in name_rows}
+        scores = {r[0]: r[2] for r in name_rows}
+        # Task priority follows the lead type so Hot leads are called first.
+        _score_task_priority = {"hot": "high", "warm": "normal", "cold": "low"}
         # Don't double up if the lead already has a pending task.
         existing_rows = await db.execute(
             select(Task.lead_id).where(Task.lead_id.in_(all_assigned), Task.status == "pending")
@@ -1142,7 +1145,7 @@ async def distribute_leads(
                     task_type="call",
                     assigned_to=aid,
                     due_at=None,  # no due date → stays under Pending, not Overdue
-                    priority="high",
+                    priority=_score_task_priority.get(scores.get(lid), "normal"),
                     status="pending",
                 ))
         await db.commit()
@@ -1324,11 +1327,14 @@ async def upload_leads(
             contact = Contact(name=row["name"], phone=row["phone"], source="upload")
             db.add(contact)
             await db.flush()
+        # Priority follows the uploaded type: Hot=P1 (call first), Warm=P2, Cold=P3.
+        _score_priority = {"hot": "P1", "warm": "P2", "cold": "P3"}
         lead = Lead(
             contact_id=contact.id,
             source="manual",  # 'upload' isn't a valid lead_source enum value
             stage="new",
             lead_score=row["lead_score"],
+            priority=_score_priority.get(row["lead_score"], "P3"),
             is_uploaded=True,  # marks this lead as part of an uploaded batch
             stage_changed_at=datetime.utcnow(),
         )
