@@ -1128,8 +1128,15 @@ async def distribute_leads(
         )).all()
         names = {r[0]: r[1] for r in name_rows}
         scores = {r[0]: r[2] for r in name_rows}
-        # Task priority follows the lead type so Hot leads are called first.
+        # On assignment, set the LEAD priority by type (Hot=P1/Warm=P2/Cold=P3)
+        # and the call-task priority so Hot leads are worked first.
+        _score_lead_priority = {"hot": "P1", "warm": "P2", "cold": "P3"}
         _score_task_priority = {"hot": "high", "warm": "normal", "cold": "low"}
+        from sqlalchemy import update as _sa_update
+        for _score, _pri in _score_lead_priority.items():
+            _ids = [lid for lid, sc in scores.items() if sc == _score]
+            if _ids:
+                await db.execute(_sa_update(Lead).where(Lead.id.in_(_ids)).values(priority=_pri))
         # Don't double up if the lead already has a pending task.
         existing_rows = await db.execute(
             select(Task.lead_id).where(Task.lead_id.in_(all_assigned), Task.status == "pending")
@@ -1327,14 +1334,13 @@ async def upload_leads(
             contact = Contact(name=row["name"], phone=row["phone"], source="upload")
             db.add(contact)
             await db.flush()
-        # Priority follows the uploaded type: Hot=P1 (call first), Warm=P2, Cold=P3.
-        _score_priority = {"hot": "P1", "warm": "P2", "cold": "P3"}
         lead = Lead(
             contact_id=contact.id,
             source="manual",  # 'upload' isn't a valid lead_source enum value
             stage="new",
             lead_score=row["lead_score"],
-            priority=_score_priority.get(row["lead_score"], "P3"),
+            # Priority stays default until the lead is ASSIGNED to a sales agent —
+            # only then does it become P1/P2/P3 by type (see the distribute step).
             is_uploaded=True,  # marks this lead as part of an uploaded batch
             stage_changed_at=datetime.utcnow(),
         )
