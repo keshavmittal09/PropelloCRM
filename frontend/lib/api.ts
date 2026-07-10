@@ -39,14 +39,41 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Redirect to login on 401
+// Sign out on 401 — but only after confirming the token is really invalid, so a
+// transient/racey 401 (e.g. a DB-pooler blip after the app was idle during a
+// phone call) doesn't log agents out mid-shift.
+async function forceLogout() {
+  localStorage.removeItem('propello_token')
+  localStorage.removeItem('propello_agent')
+  window.location.href = '/login'
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('propello_token')
-      localStorage.removeItem('propello_agent')
-      window.location.href = '/login'
+  async (err) => {
+    const status = err.response?.status
+    const url: string = err.config?.url || ''
+    if (status === 401 && typeof window !== 'undefined') {
+      const token = localStorage.getItem('propello_token')
+      const isAuthCall = url.includes('/auth/')
+      if (!token || isAuthCall) {
+        await forceLogout()
+        return Promise.reject(err)
+      }
+      // Verify the token before nuking the session.
+      try {
+        await axios.get(`${api.defaults.baseURL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 8000,
+        })
+        // Token still valid → this was a transient error; keep the agent signed in.
+        return Promise.reject(err)
+      } catch (verifyErr: any) {
+        if (verifyErr?.response?.status === 401) {
+          await forceLogout()
+        }
+        // Any other failure (network/timeout) → keep the session, just surface the error.
+      }
     }
     return Promise.reject(err)
   }

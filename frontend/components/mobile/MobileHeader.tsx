@@ -18,10 +18,12 @@ export function MobileHeader({ title, subtitle, showBack = true, rightElement, o
   const { agent, logout } = useAuthStore()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  if (!isMobile) return null
-
-  // Sales agents get a menu to reach their Dashboard / Tasks and to sign out.
+  // Sales agents get a menu to reach their Dashboard / Tasks and to sign out —
+  // and their header shows on desktop too (not just phone widths).
   const showMenu = agent?.role === 'call_agent' || agent?.role === 'agent'
+
+  if (!isMobile && !showMenu) return null
+
   const go = (href: string) => { setMenuOpen(false); router.push(href) }
 
   return (
