@@ -497,16 +497,41 @@ async def complete_task_with_remark(
     lead.last_contacted_at = datetime.utcnow()
     await db.commit()
 
-    # Capture plain values now. If the enrichment below fails and we rollback,
-    # ORM attribute access on the expired task/lead would itself raise greenlet
+    # Capture plain values now. If a block below fails and we rollback, ORM
+    # attribute access on the expired task/lead would itself raise greenlet
     # errors — so never touch task.* / lead.* after a rollback; use these.
     task_assigned_to = task.assigned_to
     task_title = task.title
+    task_lead_id = task.lead_id
+    lead_contact_id = lead.contact_id
 
-    # --- Fast enrichment (DB only): demographics, follow-up task, activity log
-    # (admin visibility) and notification. AI scoring + performance run in the
-    # background so the request never waits on the slow Groq call. ---
+    # --- Follow-up task: its OWN transaction, so a failure anywhere else can
+    # never roll it back. This is the record the reminder + auto-AI-call job
+    # fires on, so it must be created reliably. ---
+    followup_task_id = None
+    if data.next_followup_at:
+        try:
+            fresh_lead = await db.get(Lead, task_lead_id)
+            if fresh_lead is not None:
+                ft = await create_followup_from_completion(
+                    db, fresh_lead, data.next_followup_at, current_user.id
+                )
+                await db.commit()
+                if ft is not None:
+                    followup_task_id = ft.id
+        except Exception as e:
+            await db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(
+                "Follow-up task creation failed for %s: %s", task_id, e, exc_info=True
+            )
+
+    # --- Best-effort enrichment: demographics, activity log (admin visibility)
+    # and notification. AI scoring + performance run in the background so the
+    # request never waits on the slow Groq call. ---
     try:
+        # Re-fetch: a rollback above would have expired these objects.
+        lead = await db.get(Lead, task_lead_id)
         updated_lead_fields = await sync_demographics_to_lead(
             db=db,
             lead=lead,
@@ -518,39 +543,37 @@ async def complete_task_with_remark(
             agent_id=current_user.id,
         )
 
-        followup_task = await create_followup_from_completion(db, lead, data.next_followup_at, current_user.id)
-
         tag_str = ", ".join(data.preset_tags) if data.preset_tags else ""
         description = data.remark_text
         if tag_str:
             description = f"[Tags: {tag_str}] {description}"
 
         activity = Activity(
-            lead_id=task.lead_id,
-            contact_id=lead.contact_id,
+            lead_id=task_lead_id,
+            contact_id=lead_contact_id,
             type="task_completion_remark",
-            title=f"Task completed: {task.title}",
+            title=f"Task completed: {task_title}",
             description=description,
             performed_by=current_user.id,
             meta={
-                "task_id": task.id,
+                "task_id": task_id,
                 "interest_level": (data.interest_level or "").strip().lower() or None,
                 "call_status": (data.call_status or "").strip().lower() or None,
                 "preset_tags": data.preset_tags,
                 "remark_text": data.remark_text,
                 "updated_lead_fields": updated_lead_fields,
                 "next_followup_at": data.next_followup_at.isoformat() if data.next_followup_at else None,
-                "followup_task_id": followup_task.id if followup_task else None,
+                "followup_task_id": followup_task_id,
             },
         )
         db.add(activity)
 
-        if task.assigned_to:
+        if task_assigned_to:
             await create_notification(
                 db,
-                task.assigned_to,
+                task_assigned_to,
                 title="Task completed with remark",
-                body=f"{current_user.name} completed: {task.title}",
+                body=f"{current_user.name} completed: {task_title}",
                 notif_type="reminder",
                 link="/tasks",
             )
