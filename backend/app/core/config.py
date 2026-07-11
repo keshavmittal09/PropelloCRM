@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     # SendGrid
     SENDGRID_API_KEY: str = ""
 
+    # Vaani Voice — outbound AI calls (used to auto-call leads at follow-up time)
+    VAANI_API_URL: str = "https://api.vaanivoice.ai/api/trigger-call/"
+    VAANI_API_KEY: str = ""
+    VAANI_AGENT_ID: str = ""
+    # Master switch: place an automatic AI voice call when a follow-up falls due.
+    FOLLOWUP_AUTO_AI_CALL: bool = True
+    # Minutes before the follow-up time to send the "coming up" alert.
+    FOLLOWUP_UPCOMING_MINUTES: int = 15
+
     # Priya AI webhook secret
     PRIYA_WEBHOOK_SECRET: str = "priya-secret-change-in-prod"
     CAMPAIGN_WEBHOOK_SECRET: str = "campaign-secret-change-in-prod"

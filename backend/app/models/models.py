@@ -107,6 +107,10 @@ class Task(Base):
     # Remark quality scoring (Feature 5)
     remark_quality_score: Mapped[float | None] = mapped_column(Numeric(4, 2), nullable=True)
     remark_quality_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Follow-up reminders / auto AI call (set once so we never double-fire)
+    upcoming_alert_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ai_call_triggered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     lead = relationship("Lead", back_populates="tasks")
     assigned_agent = relationship("Agent", back_populates="tasks", foreign_keys=[assigned_to])
