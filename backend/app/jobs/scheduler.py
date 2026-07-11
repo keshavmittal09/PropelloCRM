@@ -139,6 +139,106 @@ async def execute_followups():
             logger.error(f"Error in execute_followups: {e}")
 
 
+async def process_due_followups():
+    """
+    Runs every 2 minutes.
+
+    For each pending follow-up whose scheduled time has arrived:
+      1. Alerts the assigned agent in the CRM (notification bell).
+      2. Automatically places a Vaani AI voice call to the lead.
+
+    Also sends an "upcoming" heads-up N minutes before the follow-up is due.
+    Each alert/call is stamped so it can never fire twice for the same task.
+    """
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy import or_
+    from app.models.contact import Contact
+    from app.services.lead_service import create_notification
+    from app.services.vaani_service import trigger_ai_call
+
+    now = datetime.utcnow()
+    lead_window = now + timedelta(minutes=settings.FOLLOWUP_UPCOMING_MINUTES)
+
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(
+                select(Task)
+                .options(selectinload(Task.lead).selectinload(Lead.contact))
+                .where(
+                    Task.status == "pending",
+                    Task.due_at.isnot(None),
+                    Task.due_at <= lead_window,
+                    or_(Task.reminder_sent_at.is_(None), Task.upcoming_alert_at.is_(None)),
+                )
+                .limit(100)
+            )
+            tasks = result.scalars().all()
+
+            due_count = 0
+            for task in tasks:
+                lead = task.lead
+                contact = lead.contact if lead else None
+                name = (contact.name if contact else None) or "Lead"
+                phone = contact.phone if contact else None
+                is_due = task.due_at <= now
+
+                # --- "Coming up" heads-up (before it's actually due) ---
+                if not is_due and task.upcoming_alert_at is None:
+                    if task.assigned_to:
+                        await create_notification(
+                            db,
+                            task.assigned_to,
+                            title=f"Follow-up soon: {name}",
+                            body=f"Your follow-up with {name} ({phone or 'no phone'}) is due in "
+                                 f"{settings.FOLLOWUP_UPCOMING_MINUTES} minutes.",
+                            notif_type="reminder",
+                            link=f"/leads/{task.lead_id}",
+                        )
+                    task.upcoming_alert_at = now
+                    continue
+
+                if not is_due:
+                    continue
+
+                # --- Due now: alert the agent ---
+                if task.reminder_sent_at is None:
+                    if task.assigned_to:
+                        await create_notification(
+                            db,
+                            task.assigned_to,
+                            title=f"Follow-up due now: {name}",
+                            body=f"Time to call {name} ({phone or 'no phone'}).",
+                            notif_type="reminder",
+                            link=f"/leads/{task.lead_id}",
+                        )
+                    task.reminder_sent_at = now
+                    if task.upcoming_alert_at is None:
+                        task.upcoming_alert_at = now
+                    due_count += 1
+
+                # --- Due now: auto AI voice call ---
+                if settings.FOLLOWUP_AUTO_AI_CALL and phone and task.ai_call_triggered_at is None:
+                    placed = await trigger_ai_call(phone, name)
+                    if placed:
+                        task.ai_call_triggered_at = now
+                        if task.assigned_to:
+                            await create_notification(
+                                db,
+                                task.assigned_to,
+                                title=f"AI call started: {name}",
+                                body=f"An automatic AI voice call was placed to {name} ({phone}).",
+                                notif_type="reminder",
+                                link=f"/leads/{task.lead_id}",
+                            )
+
+            await db.commit()
+            if due_count:
+                logger.info("Follow-up reminders: %s follow-up(s) fired", due_count)
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Error in process_due_followups: {e}")
+
+
 async def ai_batch_rescore():
     """
     Runs every 6 hours.
@@ -261,6 +361,9 @@ def start_scheduler():
 
     # Every minute — follow-up engine (supports precise 15-min automations)
     scheduler.add_job(execute_followups, IntervalTrigger(minutes=1))
+
+    # Every 2 minutes — follow-up reminders + automatic AI voice call at due time
+    scheduler.add_job(process_due_followups, IntervalTrigger(minutes=2))
 
     # Every 6 hours — AI batch rescore
     scheduler.add_job(ai_batch_rescore, IntervalTrigger(hours=6))
