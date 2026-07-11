@@ -179,6 +179,12 @@ async def init_db():
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_phone ON whatsapp_messages (phone)"))
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_whatsapp_messages_lead_id ON whatsapp_messages (lead_id)"))
 
+            # Follow-up reminders + auto AI call tracking
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS upcoming_alert_at TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP"))
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ai_call_triggered_at TIMESTAMP"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_due_reminder ON tasks (due_at, reminder_sent_at)"))
+
             # Marker for leads imported via the Staff-page upload (separate batch)
             await conn.execute(text("ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_uploaded BOOLEAN DEFAULT FALSE"))
 
