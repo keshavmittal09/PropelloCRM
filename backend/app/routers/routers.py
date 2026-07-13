@@ -209,6 +209,11 @@ def _task_query_options():
     )
 
 
+# Call outcomes that mean "nobody picked up" — the lead still owes us a call, so
+# the task stays in Pending for a redial instead of being closed as Done.
+NO_ANSWER_STATUSES = {"no_answer", "no-answer", "noanswer", "not_answered", "unanswered"}
+
+
 async def _load_task_for_response(db: AsyncSession, task_id: str) -> Task:
     # Expire identity-map objects first so the eager loaders below actually run.
     # Otherwise the already-loaded task is returned WITHOUT its relationships, and
@@ -481,17 +486,25 @@ async def complete_task_with_remark(
     # MissingGreenlet (a 500). Use these locals after the try/except instead.
     task_assigned_to = task.assigned_to
 
-    # --- Essential completion: commit first so the task is definitely marked
-    # done even if any of the optional enrichment below fails. ---
-    task.status = "done"
-    task.completed_at = datetime.utcnow()
+    # "No answer" is not a finished call — the agent still has to ring them back.
+    # Keep the task in Pending (with the outcome recorded) instead of closing it.
+    call_status_norm = (data.call_status or "").strip().lower()
+    needs_callback = call_status_norm in NO_ANSWER_STATUSES
+
+    # --- Essential completion: commit first so the outcome is definitely saved
+    # even if any of the optional enrichment below fails. ---
+    task.status = "pending" if needs_callback else "done"
+    task.completed_at = None if needs_callback else datetime.utcnow()
+    if needs_callback:
+        # No due date keeps it under Pending (not Overdue) so it's ready to redial.
+        task.due_at = None
     task.completion_remark = data.remark_text
     task.completion_tags = data.preset_tags
     # Store the agent's heat + call status as structured data in this same (reliable)
     # commit, so the dashboard Hot/Warm/Cold/Callback counts survive even if the later
     # enrichment rolls back.
     task.completion_interest = (data.interest_level or "").strip().lower() or None
-    task.completion_call_status = (data.call_status or "").strip().lower() or None
+    task.completion_call_status = call_status_norm or None
     lead.last_remark = data.remark_text[:120]
     lead.last_interaction_at = datetime.utcnow()
     lead.last_contacted_at = datetime.utcnow()
@@ -611,12 +624,18 @@ async def complete_task_demographic(
     if current_user.role in {"agent", "call_agent"} and task.assigned_to != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized to complete this task")
 
-    # Mark task done
-    task.status = "done"
-    task.completed_at = datetime.utcnow()
+    # "No answer" keeps the task in Pending so the agent can ring back (see
+    # complete-with-remark).
+    call_status_norm = (data.call_status or "").strip().lower()
+    needs_callback = call_status_norm in NO_ANSWER_STATUSES
+
+    task.status = "pending" if needs_callback else "done"
+    task.completed_at = None if needs_callback else datetime.utcnow()
+    if needs_callback:
+        task.due_at = None
     # Structured heat + call status for the dashboard (see complete-with-remark).
     task.completion_interest = (data.interest_level or "").strip().lower() or None
-    task.completion_call_status = (data.call_status or "").strip().lower() or None
+    task.completion_call_status = call_status_norm or None
 
     # Get the lead
     lead = await db.get(Lead, task.lead_id)
