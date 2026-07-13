@@ -209,9 +209,13 @@ def _task_query_options():
     )
 
 
-# Call outcomes that mean "nobody picked up" — the lead still owes us a call, so
-# the task stays in Pending for a redial instead of being closed as Done.
-NO_ANSWER_STATUSES = {"no_answer", "no-answer", "noanswer", "not_answered", "unanswered"}
+# Call outcomes that mean "nobody picked up / needs a callback" — the lead still
+# owes us a call, so the task stays in Pending for a redial instead of being
+# closed as Done.
+NO_ANSWER_STATUSES = {
+    "no_answer", "no-answer", "noanswer", "not_answered", "unanswered",
+    "callback", "call_back_later", "call back later", "callbacklater",
+}
 
 
 async def _load_task_for_response(db: AsyncSession, task_id: str) -> Task:

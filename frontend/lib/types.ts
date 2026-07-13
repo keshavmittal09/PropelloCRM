@@ -208,6 +208,7 @@ export interface AnalyticsSummary {
   ai_calls_completed: number
   whatsapp_sent: number
   conversion_rate: number
+  pending_tasks: number
 }
 
 export interface FunnelStage {
