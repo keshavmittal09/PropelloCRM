@@ -339,6 +339,17 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
     total_in_period_count = total_in_period.scalar() or 0
     conversion_rate = round((won_in_period / total_in_period_count * 100), 1) if total_in_period_count > 0 else 0.0
 
+    # Pending tasks count — scoped to the same sales team as the leads view.
+    # For a specific agent: only their pending tasks.
+    # For admin / scoped admin: all pending tasks across the live sales team.
+    pending_tasks_query = select(func.count(Task.id)).where(Task.status.in_(["pending", "overdue"]))
+    if scope_agent_id:
+        pending_tasks_query = pending_tasks_query.where(Task.assigned_to == scope_agent_id)
+    else:
+        pending_tasks_query = pending_tasks_query.where(Task.assigned_to.in_(live_sales_agent_ids()))
+    pending_tasks_result = await db.execute(pending_tasks_query)
+    pending_tasks_count = pending_tasks_result.scalar() or 0
+
     return {
         "total_leads": total_count or 0,
         "new_leads_today": new_today.scalar() or 0,
@@ -354,6 +365,7 @@ async def get_summary(db: AsyncSession, days: int = 30, scope_agent_id: Optional
         "ai_calls_completed": ai_calls.scalar() or 0,
         "whatsapp_sent": whatsapp_sent.scalar() or 0,
         "conversion_rate": conversion_rate,
+        "pending_tasks": pending_tasks_count,
     }
 
 

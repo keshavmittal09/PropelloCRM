@@ -124,7 +124,7 @@ export default function Dashboard() {
             onClick={() => router.push('/leads?call_outcome=callback')}>
             <p className="text-[11px] tracking-[0.16em] text-purple-500 font-semibold uppercase mb-1">Callback</p>
             <p className="text-4xl font-semibold tracking-tight text-purple-600">{summary?.callback_leads ?? '—'}</p>
-            <p className="text-[11px] font-medium text-purple-400 mt-2 tracking-[0.12em]">NO ANSWER · BUSY · LATER</p>
+            <p className="text-[11px] font-medium text-purple-400 mt-2 tracking-[0.12em]">NO ANSWER · CALL BACK LATER</p>
           </div>
           <div className="rounded-3xl p-5 bg-gray-50 border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => router.push('/leads?assigned=assigned')}>
@@ -134,6 +134,22 @@ export default function Dashboard() {
             </p>
             <p className="text-[11px] font-medium text-gray-400 mt-2 tracking-[0.12em]">HOT + WARM + COLD</p>
           </div>
+        </div>
+
+        {/* Pending Tasks — all sales agents (admin) or own tasks */}
+        <div
+          className="crm-surface crm-card-hover rounded-3xl p-6 mb-5 cursor-pointer hover:shadow-md transition-shadow flex items-center gap-6"
+          onClick={() => router.push('/tasks?status=pending')}
+        >
+          <div className="flex-shrink-0 w-12 h-12 rounded-2xl bg-orange-100 border border-orange-200 flex items-center justify-center text-2xl">📋</div>
+          <div className="flex-1">
+            <p className="text-[11px] tracking-[0.16em] text-[#887d72] font-semibold uppercase mb-1">Pending Tasks</p>
+            <div className="flex items-end gap-4">
+              <p className="text-4xl font-semibold tracking-tight text-orange-600">{summary?.pending_tasks ?? '—'}</p>
+              <p className="text-[11px] font-medium text-[#9d9185] mb-1 tracking-[0.12em]">CALLS TO BE MADE · ALL AGENTS</p>
+            </div>
+          </div>
+          <div className="text-[#c6b9aa] text-sm font-medium">View all →</div>
         </div>
 
         {/* Won / Lost Stats */}

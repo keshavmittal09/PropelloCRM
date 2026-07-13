@@ -231,6 +231,11 @@ async def init_db():
         "UPDATE tasks SET status = 'pending', completed_at = NULL, due_at = NULL "
         "WHERE status = 'done' AND lower(coalesce(completion_call_status, '')) "
         "IN ('no_answer', 'no-answer', 'noanswer', 'not_answered', 'unanswered')",
+        # Re-open "Call Back Later" tasks too — agent explicitly said they'd ring
+        # back, so leaving them in Done loses the follow-up. Same pattern as above.
+        "UPDATE tasks SET status = 'pending', completed_at = NULL, due_at = NULL "
+        "WHERE status = 'done' AND lower(coalesce(completion_call_status, '')) "
+        "IN ('callback', 'call_back_later', 'callbacklater')",
     ):
         try:
             async with engine.begin() as conn2:
