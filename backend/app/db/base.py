@@ -218,6 +218,13 @@ async def init_db():
         "AND status = 'done' AND completion_remark ILIKE '%call status: wrong number%'",
         "UPDATE tasks SET completion_call_status = 'connected' WHERE completion_call_status IS NULL "
         "AND status = 'done' AND completion_remark ILIKE '%call status: yes, connected%'",
+        # Re-open every historical "No Answer" call. Nobody picked up, so the agent
+        # still owes the lead a call — it belongs in Pending, not Done. Runs after
+        # the call-status backfill above so older rows are tagged first. Safe to
+        # re-run: new no-answer calls never reach status='done' anymore.
+        "UPDATE tasks SET status = 'pending', completed_at = NULL, due_at = NULL "
+        "WHERE status = 'done' AND lower(coalesce(completion_call_status, '')) "
+        "IN ('no_answer', 'no-answer', 'noanswer', 'not_answered', 'unanswered')",
     ):
         try:
             async with engine.begin() as conn2:
