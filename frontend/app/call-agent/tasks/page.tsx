@@ -82,7 +82,7 @@ export default function MobileTasksPage() {
 
   return (
     <div className="min-h-screen bg-[#f8f4ef] pb-20">
-      <MobileHeader title="My Tasks" subtitle={
+      <MobileHeader title={<>Tasks (<span className="text-[#be6a3f]">Follow up</span>)</>} subtitle={
         filter === 'done' ? `${counts.done} done`
           : filter === 'pending' ? `${counts.pending} pending`
             : `${counts.all} tasks`

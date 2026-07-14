@@ -228,14 +228,18 @@ async def init_db():
         # still owes the lead a call — it belongs in Pending, not Done. Runs after
         # the call-status backfill above so older rows are tagged first. Safe to
         # re-run: new no-answer calls never reach status='done' anymore.
-        "UPDATE tasks SET status = 'pending', completed_at = NULL, due_at = NULL "
+        "UPDATE tasks SET status = 'pending', completed_at = NULL "
         "WHERE status = 'done' AND lower(coalesce(completion_call_status, '')) "
         "IN ('no_answer', 'no-answer', 'noanswer', 'not_answered', 'unanswered')",
         # Re-open "Call Back Later" tasks too — agent explicitly said they'd ring
         # back, so leaving them in Done loses the follow-up. Same pattern as above.
-        "UPDATE tasks SET status = 'pending', completed_at = NULL, due_at = NULL "
+        "UPDATE tasks SET status = 'pending', completed_at = NULL "
         "WHERE status = 'done' AND lower(coalesce(completion_call_status, '')) "
         "IN ('callback', 'call_back_later', 'callbacklater')",
+        # Fix missing due dates on pending tasks (such as those reopened by the above queries
+        # before this fix was applied). Maps to the lead's requested follow-up date, or defaults to now.
+        "UPDATE tasks SET due_at = COALESCE(leads.next_followup_date, leads.next_call_date, CURRENT_TIMESTAMP) "
+        "FROM leads WHERE tasks.lead_id = leads.id AND tasks.status = 'pending' AND tasks.due_at IS NULL",
     ):
         try:
             async with engine.begin() as conn2:

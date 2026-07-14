@@ -5,7 +5,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { useAuthStore } from '@/store/useAuthStore'
 
 interface Props {
-  title: string
+  title: ReactNode
   subtitle?: string
   showBack?: boolean
   rightElement?: ReactNode
