@@ -346,6 +346,14 @@ async def detect_dormant_leads():
             logger.error(f"Error in detect_dormant_leads: {e}")
 
 
+async def sync_meta_ads_job():
+    """ Runs every 2 hours to sync Facebook campaigns and ads insights. """
+    try:
+        from app.services.meta import sync_meta_ads
+        await sync_meta_ads()
+    except Exception as e:
+        logger.error(f"Error in sync_meta_ads_job: {e}")
+
 def start_scheduler():
     # Every night at midnight UTC (5:30 AM IST)
     scheduler.add_job(update_days_in_stage, CronTrigger(hour=0, minute=0))
@@ -390,8 +398,11 @@ def start_scheduler():
         CronTrigger(hour=19, minute=30),  # 1 AM IST
     )
 
+    # Every 2 hours — sync Meta Ads
+    scheduler.add_job(sync_meta_ads_job, IntervalTrigger(hours=2))
+
     scheduler.start()
     logger.info(
         "APScheduler started — jobs: stale leads, overdue tasks, "
-        "follow-up engine (1min), AI rescore (6h), daily digest, dormant detection, EOD summary"
+        "follow-up engine (1min), AI rescore (6h), meta ads (2h), daily digest, dormant, EOD summary"
     )

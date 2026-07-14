@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/useAuthStore'
-import { useAnalyticsSummary, useTodayTasks, useNotifications, useSourceStats } from '@/hooks/useQueries'
+import { useAnalyticsSummary, useTodayTasks, useNotifications, useSourceStats, useMetaMarketingStats } from '@/hooks/useQueries'
 import { formatCurrency, formatDateTime, timeAgo } from '@/lib/utils'
 import Sidebar from '@/components/shared/Sidebar'
 import LeadSourceChart from '@/components/shared/LeadSourceChart'
@@ -35,6 +35,7 @@ export default function Dashboard() {
   const { data: tasks } = useTodayTasks()
   const { data: notifications } = useNotifications()
   const { data: sourceStats } = useSourceStats()
+  const { data: metaStats } = useMetaMarketingStats()
   const dashboardTasks = (tasks ?? []).slice(0, 12)
   const [showBroadcast, setShowBroadcast] = useState(false)
   const [showAICall, setShowAICall] = useState(false)
@@ -159,6 +160,19 @@ export default function Dashboard() {
           <StatCard label="Lost (30d)" value={summary?.lost_this_month ?? '—'} color="text-gray-400"
             onClick={() => router.push('/leads?stage=lost')} />
         </div>
+
+        {/* Marketing Stats */}
+        {agent?.role === 'admin' && (
+          <>
+            <h3 className="text-[11px] tracking-[0.16em] text-[#887d72] font-semibold uppercase mb-4 px-2">Meta Ads (30d)</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+              <StatCard label="Spend" value={metaStats?.spend ? formatCurrency(metaStats.spend) : '₹0'} color="text-[#0ea5e9]" />
+              <StatCard label="Clicks" value={metaStats?.clicks ?? '—'} sub={`${metaStats?.impressions ?? 0} IMP`} color="text-[#0ea5e9]" />
+              <StatCard label="CPC" value={metaStats?.cpc ? `₹${metaStats.cpc.toFixed(2)}` : '—'} sub="COST PER CLICK" color="text-[#0ea5e9]" />
+              <StatCard label="CTR" value={metaStats?.ctr ? `${metaStats.ctr.toFixed(2)}%` : '—'} sub="CLICK-THROUGH" color="text-[#0ea5e9]" />
+            </div>
+          </>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Today's tasks */}

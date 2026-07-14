@@ -129,6 +129,9 @@ export const useSourceStats = () =>
 export const useAgentStats = () =>
   useQuery({ queryKey: ['analytics', 'agents'], queryFn: analyticsApi.agentPerformance, staleTime: 60000 })
 
+export const useMetaMarketingStats = (days = 30) =>
+  useQuery({ queryKey: ['analytics', 'meta', days], queryFn: () => analyticsApi.meta(days), staleTime: 60000 })
+
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 export const useNotifications = () =>
   useQuery({ queryKey: ['notifications'], queryFn: notificationsApi.list, refetchInterval: 5000 })

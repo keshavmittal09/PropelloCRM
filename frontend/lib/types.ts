@@ -224,6 +224,15 @@ export interface SourceStat {
   conversion_rate: number
 }
 
+export interface MetaMarketingStats {
+  spend: number
+  impressions: number
+  clicks: number
+  cpc: number
+  ctr: number
+  days: number
+}
+
 export interface AgentStat {
   agent_id: string
   agent_name: string
