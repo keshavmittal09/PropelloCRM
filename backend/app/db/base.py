@@ -237,9 +237,12 @@ async def init_db():
         "WHERE status = 'done' AND lower(coalesce(completion_call_status, '')) "
         "IN ('callback', 'call_back_later', 'callbacklater')",
         # Fix missing due dates on pending tasks (such as those reopened by the above queries
-        # before this fix was applied). Maps to the lead's requested follow-up date, or defaults to now.
-        "UPDATE tasks SET due_at = COALESCE(leads.next_followup_date, leads.next_call_date, CURRENT_TIMESTAMP) "
-        "FROM leads WHERE tasks.lead_id = leads.id AND tasks.status = 'pending' AND tasks.due_at IS NULL",
+        # before this fix was applied). Maps to the lead's requested follow-up date, or stays NULL 
+        # so they properly show as "No due date" rather than all having the same fallback time.
+        "UPDATE tasks SET due_at = COALESCE(leads.next_followup_date, leads.next_call_date) "
+        "FROM leads WHERE tasks.lead_id = leads.id AND tasks.status = 'pending' "
+        "AND (tasks.due_at IS NULL OR lower(coalesce(tasks.completion_call_status, '')) "
+        "IN ('no_answer', 'no-answer', 'noanswer', 'not_answered', 'unanswered', 'callback', 'call_back_later', 'callbacklater'))",
     ):
         try:
             async with engine.begin() as conn2:
