@@ -1017,6 +1017,11 @@ async def get_meta_stats(days: int = 30, db: AsyncSession = Depends(get_db)):
     from app.services.services import get_marketing_stats
     return await get_marketing_stats(db, days)
 
+@analytics_router.get("/meta-campaigns")
+async def get_meta_campaigns_route(days: int = 30, db: AsyncSession = Depends(get_db)):
+    from app.services.services import get_meta_campaigns
+    return await get_meta_campaigns(db, days)
+
 
 # ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
 

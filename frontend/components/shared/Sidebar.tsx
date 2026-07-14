@@ -18,6 +18,7 @@ const nav = [
   { href: '/properties', label: 'Properties',   icon: '🏠', roles: ['admin', 'manager'] as const },
   { href: '/visits',     label: 'Site Visits',  icon: '📅', roles: ['admin', 'manager'] as const },
   { href: '/analytics',  label: 'Analytics',    icon: '📊', roles: ['admin', 'manager'] as const },
+  { href: '/meta',       label: 'Meta Ads',     icon: '🎯', roles: ['admin'] as const },
   { href: '/staff',      label: 'Staff & Agents', icon: '🧑‍💼', roles: ['admin', 'manager'] as const },
   { href: '/settings',   label: 'Settings',    icon: '⚙️', roles: ['admin'] as const },
 ]

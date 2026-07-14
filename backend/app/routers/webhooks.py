@@ -90,41 +90,69 @@ async def facebook_verify(
 
 @router.post("/facebook", response_model=InboundLeadResponse)
 async def facebook_lead_ads_webhook(
-    payload: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Receives leads from Facebook Lead Ads via the Meta Graph API webhook.
-    Facebook sends: {entry: [{changes: [{value: {field_data: [...]}}]}]}
-    In production, you'd fetch the full lead data via the Graph API.
-    For now, this handles the common forwarded/n8n format.
+    It takes the leadgen_id from the payload and fetches the real details.
     """
     try:
-        # Try to parse Facebook's native format
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    import httpx
+    import os
+
+    try:
+        # Check for standard webhook structure (contains leadgen_id)
         entry = payload.get("entry", [{}])[0]
         changes = entry.get("changes", [{}])[0]
         value = changes.get("value", {})
-        field_data = value.get("field_data", [])
+        leadgen_id = value.get("leadgen_id")
 
-        # Build a dict from field_data [{name, values}] format
+        name = "Facebook Lead"
+        phone = ""
+        email = ""
         fields = {}
-        for field in field_data:
-            fname = field.get("name", "").lower()
-            fvalues = field.get("values", [""])
-            fields[fname] = fvalues[0] if fvalues else ""
 
-        name = fields.get("full_name") or fields.get("name") or "Facebook Lead"
-        phone = fields.get("phone_number") or fields.get("phone") or ""
-        email = fields.get("email") or ""
-
-        if not phone:
-            # Fallback: try flat payload (n8n/Zapier forwarded format)
-            name = payload.get("name") or payload.get("full_name") or "Facebook Lead"
+        if leadgen_id:
+            # We must fetch the actual lead details from Graph API
+            token = os.getenv("META_ACCESS_TOKEN")
+            if not token:
+                logger.error("Meta Webhook received leadgen_id but META_ACCESS_TOKEN missing.")
+                raise HTTPException(status_code=500, detail="CRM not configured for Meta Ads API")
+            
+            url = f"https://graph.facebook.com/v19.0/{leadgen_id}"
+            params = {
+                "access_token": token,
+                "fields": "field_data,campaign_name,form_id,created_time"
+            }
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                for field in data.get("field_data", []):
+                    fname = field.get("name", "").lower()
+                    fvalues = field.get("values", [""])
+                    fields[fname] = fvalues[0] if fvalues else ""
+                    
+                name = fields.get("full_name") or fields.get("name") or name
+                phone = fields.get("phone_number") or fields.get("phone") or ""
+                email = fields.get("email") or ""
+        else:
+            # Fallback: Flat payload (n8n/Zapier)
+            name = payload.get("name") or payload.get("full_name") or name
             phone = payload.get("phone") or payload.get("phone_number") or ""
             email = payload.get("email") or ""
+            fields = payload
 
         if not phone:
-            raise HTTPException(status_code=400, detail="No phone number in Facebook payload")
+            raise HTTPException(status_code=400, detail="No phone number retrieved for Facebook lead")
+
+        campaign_id = value.get("campaign_id") or payload.get("campaign_id")
 
         lead_data = InboundLead(
             source="facebook_ads",
@@ -134,7 +162,8 @@ async def facebook_lead_ads_webhook(
             location_preference=fields.get("city") or payload.get("city"),
             budget_max=_parse_budget(fields.get("budget") or payload.get("budget")),
             property_type=fields.get("property_type") or payload.get("property_type"),
-            personal_notes=f"Facebook Lead Ad campaign",
+            campaign_id=str(campaign_id) if campaign_id else None,
+            personal_notes="Meta Ads Autopilot Webhook Lead",
         )
 
         logger.info(f"[Facebook] Inbound lead: {name} | {phone}")

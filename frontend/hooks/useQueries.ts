@@ -132,6 +132,9 @@ export const useAgentStats = () =>
 export const useMetaMarketingStats = (days = 30) =>
   useQuery({ queryKey: ['analytics', 'meta', days], queryFn: () => analyticsApi.meta(days), staleTime: 60000 })
 
+export const useMetaCampaigns = (days = 30) =>
+  useQuery({ queryKey: ['analytics', 'meta-campaigns', days], queryFn: () => analyticsApi.metaCampaigns(days), staleTime: 60000 })
+
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
 export const useNotifications = () =>
   useQuery({ queryKey: ['notifications'], queryFn: notificationsApi.list, refetchInterval: 5000 })

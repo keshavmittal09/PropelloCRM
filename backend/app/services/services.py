@@ -470,3 +470,62 @@ async def get_marketing_stats(db: AsyncSession, days: int = 30) -> dict:
         "ctr": ctr,
         "days": days
     }
+
+
+async def get_meta_campaigns(db: AsyncSession, days: int = 30) -> list[dict]:
+    from app.models.meta_ads import MetaCampaign, MetaAdInsight
+    
+    from_date = datetime.utcnow().date() - timedelta(days=days)
+    
+    query = (
+        select(
+            MetaCampaign.id,
+            MetaCampaign.name,
+            MetaCampaign.status,
+            func.sum(MetaAdInsight.spend).label("spend"),
+            func.sum(MetaAdInsight.impressions).label("impressions"),
+            func.sum(MetaAdInsight.clicks).label("clicks"),
+        )
+        .outerjoin(MetaAdInsight, and_(
+            MetaCampaign.id == MetaAdInsight.campaign_id,
+            MetaAdInsight.date_start >= from_date
+        ))
+        .group_by(MetaCampaign.id, MetaCampaign.name, MetaCampaign.status)
+        .order_by(func.sum(MetaAdInsight.spend).desc().nulls_last())
+    )
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    campaigns = []
+    
+    from app.models.lead import Lead
+    
+    # Count leads per campaign
+    leads_query = await db.execute(
+        select(Lead.campaign_id, func.count(Lead.id))
+        .where(Lead.source == 'facebook_ads')
+        .where(Lead.campaign_id.isnot(None))
+        .group_by(Lead.campaign_id)
+    )
+    leads_map = {row[0]: row[1] for row in leads_query.all()}
+    
+    for r in rows:
+        spend = float(r.spend or 0)
+        clicks = int(r.clicks or 0)
+        leads = leads_map.get(r.id, 0)
+        cpl = round(spend / leads, 2) if leads > 0 else 0.0
+        
+        campaigns.append({
+            "id": r.id,
+            "name": r.name,
+            "status": r.status,
+            "spend": spend,
+            "impressions": int(r.impressions or 0),
+            "clicks": clicks,
+            "cpc": round(spend / clicks, 2) if clicks > 0 else 0.0,
+            "leads": leads,
+            "cpl": cpl
+        })
+        
+    return campaigns
