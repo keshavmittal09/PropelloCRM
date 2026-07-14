@@ -233,6 +233,18 @@ export interface MetaMarketingStats {
   days: number
 }
 
+export interface MetaCampaignStat {
+  id: string
+  name: string
+  status: string
+  spend: number
+  impressions: number
+  clicks: number
+  cpc: number
+  leads: number
+  cpl: number
+}
+
 export interface AgentStat {
   agent_id: string
   agent_name: string
