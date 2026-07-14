@@ -6,6 +6,7 @@ from app.models.models import Property, Activity, Task, SiteVisit, Notification
 from app.models.followup import FollowUp
 from app.models.notification_dispatch import NotificationDispatchLog, NotificationLog
 from app.models.whatsapp import WhatsAppMessage
+from app.models.meta_ads import MetaCampaign, MetaAdInsight
 
 __all__ = [
 	"Agent",
@@ -22,4 +23,6 @@ __all__ = [
 	"NotificationDispatchLog",
 	"NotificationLog",
 	"WhatsAppMessage",
+	"MetaCampaign",
+	"MetaAdInsight",
 ]

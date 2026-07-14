@@ -1009,7 +1009,13 @@ async def by_source(db: AsyncSession = Depends(get_db), current_user: Agent = De
 async def agent_performance(db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
     if current_user.role not in ("admin", "manager"):
         raise HTTPException(status_code=403, detail="Manager/Admin only")
+    from app.services.services import get_agent_stats
     return await get_agent_stats(db)
+
+@analytics_router.get("/meta")
+async def get_meta_stats(days: int = 30, db: AsyncSession = Depends(get_db)):
+    from app.services.services import get_marketing_stats
+    return await get_marketing_stats(db, days)
 
 
 # ─── NOTIFICATIONS ───────────────────────────────────────────────────────────

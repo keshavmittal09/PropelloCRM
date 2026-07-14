@@ -3,6 +3,7 @@ import type {
   Agent, Lead, Contact, Property, Task, Activity,
   SiteVisit, Notification, AnalyticsSummary, FunnelStage,
   SourceStat, AgentStat, KanbanBoard, TokenResponse,
+  MetaMarketingStats,
   Campaign, CampaignDetail, CampaignIngestPayload, CampaignPreview, CampaignResult,
   CampaignAnalytics, CampaignLeadDetail, AgentAssignment, Project, ProjectDetail,
   LeadPaginatedResponse,
@@ -234,6 +235,7 @@ export const analyticsApi = {
   funnel: () => api.get<FunnelStage[]>('/api/analytics/funnel').then(r => r.data),
   bySource: () => api.get<SourceStat[]>('/api/analytics/by-source').then(r => r.data),
   agentPerformance: () => api.get<AgentStat[]>('/api/analytics/agent-performance').then(r => r.data),
+  meta: (days = 30) => api.get<MetaMarketingStats>('/api/analytics/meta', { params: { days } }).then(r => r.data),
   // Leaderboard is in authApi
   agentLeaderboard: () => authApi.getLeaderboard(),
 }

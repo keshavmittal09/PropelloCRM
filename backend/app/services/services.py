@@ -439,3 +439,34 @@ async def get_agent_stats(db: AsyncSession) -> List[dict]:
         })
 
     return sorted(stats, key=lambda x: x["won"], reverse=True)
+
+
+async def get_marketing_stats(db: AsyncSession, days: int = 30) -> dict:
+    from app.models.meta_ads import MetaAdInsight
+    
+    from_date = datetime.utcnow().date() - timedelta(days=days)
+    
+    result = await db.execute(
+        select(
+            func.sum(MetaAdInsight.spend),
+            func.sum(MetaAdInsight.impressions),
+            func.sum(MetaAdInsight.clicks)
+        ).where(MetaAdInsight.date_start >= from_date)
+    )
+    
+    row = result.first()
+    spend = float(row[0] or 0)
+    impressions = int(row[1] or 0)
+    clicks = int(row[2] or 0)
+    
+    cpc = round(spend / clicks, 2) if clicks > 0 else 0.0
+    ctr = round((clicks / impressions) * 100, 2) if impressions > 0 else 0.0
+    
+    return {
+        "spend": spend,
+        "impressions": impressions,
+        "clicks": clicks,
+        "cpc": cpc,
+        "ctr": ctr,
+        "days": days
+    }
