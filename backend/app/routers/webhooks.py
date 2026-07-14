@@ -83,7 +83,9 @@ async def facebook_verify(
     hub_verify_token: str = Query(None, alias="hub.verify_token"),
 ):
     """Facebook webhook verification endpoint (required by Meta Graph API)."""
-    if hub_mode == "subscribe" and hub_verify_token == settings.PRIYA_WEBHOOK_SECRET:
+    import os
+    expected_token = os.getenv("META_WEBHOOK_VERIFY_TOKEN", settings.PRIYA_WEBHOOK_SECRET)
+    if hub_mode == "subscribe" and hub_verify_token == expected_token:
         return int(hub_challenge)
     raise HTTPException(status_code=403, detail="Verification failed")
 
