@@ -67,7 +67,7 @@ export function TasksPageContent() {
         <MobileHeader title="Tasks" subtitle={tasks ? `${tasks.filter(t => t.status !== 'done').length} pending` : ''} />
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-4xl font-semibold tracking-tight text-[#1f1914]">Tasks</h2>
+            <h2 className="text-4xl font-semibold tracking-tight text-[#1f1914]">Tasks (<span className="text-[#be6a3f]">Follow up</span>)</h2>
             <p className="text-[#7a7065] font-medium tracking-wide text-sm mt-1.5">
               {canViewAll ? 'Track and manage assignments across all agents' : 'Your assigned follow-ups and action items'}
             </p>
