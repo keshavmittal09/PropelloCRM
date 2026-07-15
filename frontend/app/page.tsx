@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/store/useAuthStore'
-import { useAnalyticsSummary, useTodayTasks, useNotifications, useSourceStats, useMetaMarketingStats } from '@/hooks/useQueries'
+import { useAnalyticsSummary, useTodayTasks, useAllTasks, useNotifications, useSourceStats, useMetaMarketingStats } from '@/hooks/useQueries'
 import { formatCurrency, formatDateTime, timeAgo } from '@/lib/utils'
 import Sidebar from '@/components/shared/Sidebar'
 import LeadSourceChart from '@/components/shared/LeadSourceChart'
@@ -36,7 +36,12 @@ export default function Dashboard() {
   const { data: notifications } = useNotifications()
   const { data: sourceStats } = useSourceStats()
   const { data: metaStats } = useMetaMarketingStats()
+  const { data: allTasks } = useAllTasks()
   const dashboardTasks = (tasks ?? []).slice(0, 12)
+  const dashboardFollowups = (allTasks ?? [])
+    .filter(t => t.status === 'pending' && (t.due_at || t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')))
+    .sort((a, b) => new Date(a.due_at ?? 0).getTime() - new Date(b.due_at ?? 0).getTime())
+    .slice(0, 6)
   const [showBroadcast, setShowBroadcast] = useState(false)
   const [showAICall, setShowAICall] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
@@ -174,7 +179,7 @@ export default function Dashboard() {
           </>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Today's tasks */}
           <div className="crm-surface rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
