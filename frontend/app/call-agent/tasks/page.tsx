@@ -51,7 +51,7 @@ export default function MobileTasksPage() {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
   const startOfTomorrow = new Date(startOfToday.getTime() + 86400000)
 
-  const followup = pendingByLead.filter(t => (t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')) && t.due_at)
+  const followup = pendingByLead.filter(t => t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow'))
   const generalPending = pendingByLead.filter(t => !followup.includes(t))
 
   const listToGroup = (filter === 'pending') ? generalPending : pendingByLead
