@@ -222,6 +222,37 @@ export default function Dashboard() {
             )}
           </div>
 
+          {/* Follow Up Leads / Tasks */}
+          <div className="crm-surface rounded-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-[#2a231d]">Follow Up Leads</h3>
+              <button onClick={() => router.push('/tasks')} className="text-xs text-[#a65630] hover:text-[#894827] transition-colors">View all</button>
+            </div>
+            {!dashboardFollowups.length ? (
+              <div className="text-center py-8">
+                <p className="text-[#8f8378] text-sm">No follow-ups pending</p>
+                <p className="text-[#afa499] text-xs mt-1">Check back later.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[34rem] overflow-y-auto pr-1">
+                {dashboardFollowups.map(t => (
+                  <div key={t.id} className="flex flex-col gap-1 p-3 rounded-xl border border-[#eadfce] bg-[#fffdf9] hover:border-[#dcc9b3] transition-all">
+                    <p className="text-sm font-medium text-[#2d261f]">{t.title}</p>
+                    {t.lead && (
+                      <button onClick={() => router.push(`/leads/${t.lead_id}`)} className="text-left text-xs text-[#a65630] hover:underline">
+                        {t.lead.contact?.name} — {t.lead.contact?.phone}
+                      </button>
+                    )}
+                    {t.due_at && <p className="text-xs font-semibold text-emerald-600 mt-1">Due: {formatDateTime(t.due_at)}</p>}
+                    <button onClick={() => setCompletingTask(t)} className="mt-2 w-full py-1.5 bg-[#2f2317] text-white text-xs font-medium rounded-lg hover:bg-[#1a130d] transition-colors">
+                      Action Task
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Notifications */}
           <div className="crm-surface rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
