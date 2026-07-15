@@ -51,22 +51,26 @@ export default function MobileTasksPage() {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
   const startOfTomorrow = new Date(startOfToday.getTime() + 86400000)
 
-  const overdue = pendingByLead.filter(t => t.due_at && new Date(t.due_at) < startOfToday)
-  const today = pendingByLead.filter(t => {
+  const followup = pendingByLead.filter(t => (t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')) && t.due_at)
+  const generalPending = pendingByLead.filter(t => !followup.includes(t))
+
+  const listToGroup = (filter === 'pending') ? generalPending : pendingByLead
+
+  const overdue = listToGroup.filter(t => t.due_at && new Date(t.due_at) < startOfToday)
+  const today = listToGroup.filter(t => {
     if (!t.due_at) return false
     const d = new Date(t.due_at)
     return d >= startOfToday && d < startOfTomorrow
   })
-  const upcoming = pendingByLead.filter(t => t.due_at && new Date(t.due_at) >= startOfTomorrow)
+  const upcoming = listToGroup.filter(t => t.due_at && new Date(t.due_at) >= startOfTomorrow)
   // Pending tasks with no due date — these must still appear on Pending/All.
-  const noDate = pendingByLead.filter(t => !t.due_at)
+  const noDate = listToGroup.filter(t => !t.due_at)
+  
   const done = sorted.filter(t => t.status === 'done')
-
-  const followup = pendingByLead.filter(t => t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow'))
 
   const counts = {
     all: pendingByLead.length + done.length,
-    pending: pendingByLead.length,
+    pending: generalPending.length,
     followup: followup.length,
     done: done.length,
   }
@@ -75,7 +79,7 @@ export default function MobileTasksPage() {
   const visibleCount = filter === 'done'
     ? done.length
     : filter === 'pending'
-      ? pendingByLead.length
+      ? generalPending.length
       : filter === 'followup'
         ? followup.length
         : counts.all
@@ -136,7 +140,7 @@ export default function MobileTasksPage() {
               <Section title="No due date" tasks={noDate} onComplete={setCompletingTask} />
             )}
             {filter === 'followup' && followup.length > 0 && (
-              <Section title="Follow Ups" tasks={followup} onComplete={setCompletingTask} />
+              <Section title="Follow Up (Scheduled)" tasks={followup} onComplete={setCompletingTask} />
             )}
             {filter !== 'pending' && filter !== 'followup' && done.length > 0 && (
               <Section title="Done" tasks={done} onComplete={setCompletingTask} />
