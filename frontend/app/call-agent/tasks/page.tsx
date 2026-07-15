@@ -7,7 +7,7 @@ import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskComple
 import { MobileHeader } from '@/components/mobile/MobileHeader'
 import type { Task } from '@/lib/types'
 
-type Filter = 'all' | 'pending' | 'followup' | 'done'
+type Filter = 'all' | 'pending' | 'done'
 
 export default function MobileTasksPage() {
   const [filter, setFilter] = useState<Filter>('pending')
@@ -28,12 +28,20 @@ export default function MobileTasksPage() {
     return new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
   })
 
+  // Leads the agent has already completed a task for belong in Done — not
+  // Pending. This makes a completed lead move out of the pending list even if
+  // completing it created a follow-up task.
+  const doneLeadIds = new Set(
+    sorted.filter(t => t.status === 'done' && t.lead_id).map(t => t.lead_id as string)
+  )
+
   // One card per lead on the pending tabs. A lead can have several tasks (the
   // original assignment plus follow-ups), so dedupe by lead — the count then
   // reflects assigned leads, not raw task rows.
   const seenLead = new Set<string>()
   const pendingByLead = sorted.filter(t => {
     if (t.status === 'done') return false
+    if (t.lead_id && doneLeadIds.has(t.lead_id)) return false
     const key = t.lead_id ?? t.id
     if (seenLead.has(key)) return false
     seenLead.add(key)
@@ -43,15 +51,7 @@ export default function MobileTasksPage() {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
   const startOfTomorrow = new Date(startOfToday.getTime() + 86400000)
 
-  const rawDone = sorted.filter(t => t.status === 'done')
-  const doneFollowups = rawDone.filter(t => t.completion_remark?.toLowerCase().includes('follow-up') || t.completion_remark?.toLowerCase().includes('follow up'))
-  const done = rawDone.filter(t => !doneFollowups.includes(t))
-
-  const pendingFollowups = pendingByLead.filter(t => t.due_at || t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow'))
-  const followup = [...pendingFollowups, ...doneFollowups]
-  const generalPending = pendingByLead.filter(t => !pendingFollowups.includes(t))
-
-  const listToGroup = (filter === 'pending') ? generalPending : pendingByLead
+  const listToGroup = pendingByLead
 
   const overdue = listToGroup.filter(t => t.due_at && new Date(t.due_at) < startOfToday)
   const today = listToGroup.filter(t => {
@@ -63,12 +63,11 @@ export default function MobileTasksPage() {
   // Pending tasks with no due date — these must still appear on Pending/All.
   const noDate = listToGroup.filter(t => !t.due_at)
   
-  // done definition moved up
+  const done = sorted.filter(t => t.status === 'done')
 
   const counts = {
-    all: generalPending.length + followup.length + done.length,
-    pending: generalPending.length,
-    followup: followup.length,
+    all: pendingByLead.length + done.length,
+    pending: pendingByLead.length,
     done: done.length,
   }
 
@@ -76,10 +75,8 @@ export default function MobileTasksPage() {
   const visibleCount = filter === 'done'
     ? done.length
     : filter === 'pending'
-      ? generalPending.length
-      : filter === 'followup'
-        ? followup.length
-        : counts.all
+      ? pendingByLead.length
+      : counts.all
 
   return (
     <div className="min-h-screen bg-[#f8f4ef] pb-20">
@@ -92,7 +89,7 @@ export default function MobileTasksPage() {
       {/* Filter tabs */}
       <div className="sticky top-[60px] z-10 bg-white border-b border-[#e8ddcf] px-4">
         <div className="flex gap-1 mt-0">
-          {(['all', 'pending', 'followup', 'done'] as Filter[]).map(f => (
+          {(['all', 'pending', 'done'] as Filter[]).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -124,22 +121,16 @@ export default function MobileTasksPage() {
           </div>
         ) : (
           <>
-            {filter !== 'done' && filter !== 'followup' && overdue.length > 0 && (
-              <Section title="Overdue" tasks={overdue} onComplete={setCompletingTask} />
+            {/* Pending Groups */}
+            {(filter === 'pending' || filter === 'all') && (
+              <>
+                {overdue.length > 0 && <Section title="Overdue" tasks={overdue} onComplete={setCompletingTask} />}
+                {today.length > 0 && <Section title="Due Today" tasks={today} onComplete={setCompletingTask} />}
+                {upcoming.length > 0 && <Section title="Upcoming" tasks={upcoming} onComplete={setCompletingTask} />}
+                {noDate.length > 0 && <Section title="No Due Date" tasks={noDate} onComplete={setCompletingTask} />}
+              </>
             )}
-            {filter !== 'done' && filter !== 'followup' && today.length > 0 && (
-              <Section title="Today" tasks={today} onComplete={setCompletingTask} />
-            )}
-            {filter !== 'done' && filter !== 'followup' && upcoming.length > 0 && (
-              <Section title="Upcoming" tasks={upcoming} onComplete={setCompletingTask} />
-            )}
-            {filter !== 'done' && filter !== 'followup' && noDate.length > 0 && (
-              <Section title="No due date" tasks={noDate} onComplete={setCompletingTask} />
-            )}
-            {filter === 'followup' && followup.length > 0 && (
-              <Section title="Follow Up (Scheduled)" tasks={followup} onComplete={setCompletingTask} />
-            )}
-            {filter !== 'pending' && filter !== 'followup' && done.length > 0 && (
+            {filter !== 'pending' && done.length > 0 && (
               <Section title="Done" tasks={done} onComplete={setCompletingTask} />
             )}
           </>
