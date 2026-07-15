@@ -181,10 +181,8 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
     if (interestLabel) remarkLines.push(`Interest: ${interestLabel}`)
     if (topics.length > 0) remarkLines.push(`Discussed: ${topics.map(t => L[t] ?? t).join(', ')}`)
     if (topics.includes('site_visit') && siteVisitDate) remarkLines.push(`Site visit scheduled: ${fmtDate(siteVisitDate)}`)
-    if (topics.includes('follow_up')) {
-      if (followUpAt) remarkLines.push(`Follow-up on: ${fmtDate(followUpAt)}`)
-      if (followUpNote.trim()) remarkLines.push(`Follow-up note: ${followUpNote.trim()}`)
-    }
+    if (followUpAt) remarkLines.push(`Follow-up on: ${fmtDate(followUpAt)}`)
+    if (followUpNote.trim()) remarkLines.push(`Follow-up note: ${followUpNote.trim()}`)
     if (demographics.occupation) remarkLines.push(`Occupation: ${L[demographics.occupation] ?? demographics.occupation}`)
     if (demographics.family_size) remarkLines.push(`Family: ${L[demographics.family_size]}`)
     if (demographics.property_budget) remarkLines.push(`Budget: ${L[demographics.property_budget] ?? demographics.property_budget}`)
@@ -193,7 +191,7 @@ export function UnifiedTaskCompletionSheet({ task, lead, onClose, onComplete }: 
     // Schedule next follow-up from the topic date pickers (site visit or follow-up date)
     const scheduledDate =
       (topics.includes('site_visit') && siteVisitDate ? dateToIso(siteVisitDate) : null) ??
-      (topics.includes('follow_up') && followUpAt ? dateToIso(followUpAt) : null) ??
+      (followUpAt ? dateToIso(followUpAt) : null) ??
       getNextFollowupDate()
     const followUpComboNote = [followUpNote.trim(), remarkText.trim()].filter(Boolean).join(' — ')
 
@@ -416,29 +414,27 @@ function Step1({ callStatus, setCallStatus, interest, setInterest, topics, toggl
             </div>
           )}
 
-          {topics.includes('follow_up') && (
-            <div className="mt-3 bg-[#fef7f2] border border-[#efd7c6] rounded-xl p-3 space-y-2.5">
-              <div>
-                <p className="text-sm font-semibold text-[#1f1914] mb-1.5">📅 Follow-up date &amp; time</p>
-                <input
-                  type="datetime-local"
-                  value={followUpAt}
-                  onChange={e => setFollowUpAt(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 focus:border-[#c86f43]"
-                />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-[#1f1914] mb-1.5">Note</p>
-                <textarea
-                  rows={2}
-                  value={followUpNote}
-                  onChange={e => setFollowUpNote(e.target.value)}
-                  placeholder="e.g. Need to talk about loan approval…"
-                  className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 focus:border-[#c86f43]"
-                />
-              </div>
+          <div className="mt-3 bg-[#fef7f2] border border-[#efd7c6] rounded-xl p-3 space-y-2.5">
+            <div>
+              <p className="text-sm font-semibold text-[#1f1914] mb-1.5">📅 Follow-up date &amp; time</p>
+              <input
+                type="datetime-local"
+                value={followUpAt}
+                onChange={e => setFollowUpAt(e.target.value)}
+                className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 focus:border-[#c86f43]"
+              />
             </div>
-          )}
+            <div>
+              <p className="text-sm font-semibold text-[#1f1914] mb-1.5">Note</p>
+              <textarea
+                rows={2}
+                value={followUpNote}
+                onChange={e => setFollowUpNote(e.target.value)}
+                placeholder="e.g. Need to talk about loan approval…"
+                className="w-full px-3 py-2.5 border border-[#e1d3c2] rounded-xl text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#c86f43]/30 focus:border-[#c86f43]"
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>
