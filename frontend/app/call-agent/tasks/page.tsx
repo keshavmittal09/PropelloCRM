@@ -43,8 +43,13 @@ export default function MobileTasksPage() {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
   const startOfTomorrow = new Date(startOfToday.getTime() + 86400000)
 
-  const followup = pendingByLead.filter(t => (t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')) && t.due_at)
-  const generalPending = pendingByLead.filter(t => !followup.includes(t))
+  const rawDone = sorted.filter(t => t.status === 'done')
+  const doneFollowups = rawDone.filter(t => t.completion_remark?.toLowerCase().includes('follow-up') || t.completion_remark?.toLowerCase().includes('follow up'))
+  const done = rawDone.filter(t => !doneFollowups.includes(t))
+
+  const pendingFollowups = pendingByLead.filter(t => t.due_at || t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow'))
+  const followup = [...pendingFollowups, ...doneFollowups]
+  const generalPending = pendingByLead.filter(t => !pendingFollowups.includes(t))
 
   const listToGroup = (filter === 'pending') ? generalPending : pendingByLead
 
@@ -58,10 +63,10 @@ export default function MobileTasksPage() {
   // Pending tasks with no due date — these must still appear on Pending/All.
   const noDate = listToGroup.filter(t => !t.due_at)
   
-  const done = sorted.filter(t => t.status === 'done')
+  // done definition moved up
 
   const counts = {
-    all: pendingByLead.length + done.length,
+    all: generalPending.length + followup.length + done.length,
     pending: generalPending.length,
     followup: followup.length,
     done: done.length,
