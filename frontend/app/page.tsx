@@ -39,8 +39,9 @@ export default function Dashboard() {
   const { data: allTasks } = useAllTasks()
   const dashboardTasks = (tasks ?? []).slice(0, 12)
   const dashboardFollowups = (allTasks ?? [])
-    .filter(t => t.status === 'pending' && (t.due_at || t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')))
-    .sort((a, b) => new Date(a.due_at ?? 0).getTime() - new Date(b.due_at ?? 0).getTime())
+    .filter(t => t.status === 'done' && (t.completion_remark?.toLowerCase().includes('follow-up') || t.completion_remark?.toLowerCase().includes('follow up')))
+    // sort by the actual task completion time so the most recent ones are on top
+    .sort((a, b) => new Date(b.completed_at ?? 0).getTime() - new Date(a.completed_at ?? 0).getTime())
     .slice(0, 6)
   const [showBroadcast, setShowBroadcast] = useState(false)
   const [showAICall, setShowAICall] = useState(false)
@@ -230,7 +231,7 @@ export default function Dashboard() {
             </div>
             {!dashboardFollowups.length ? (
               <div className="text-center py-8">
-                <p className="text-[#8f8378] text-sm">No follow-ups pending</p>
+                <p className="text-[#8f8378] text-sm">No follow-ups found</p>
                 <p className="text-[#afa499] text-xs mt-1">Check back later.</p>
               </div>
             ) : (
@@ -243,10 +244,14 @@ export default function Dashboard() {
                         {t.lead.contact?.name} — {t.lead.contact?.phone}
                       </button>
                     )}
-                    {t.due_at && <p className="text-xs font-semibold text-emerald-600 mt-1">Due: {formatDateTime(t.due_at)}</p>}
-                    <button onClick={() => setCompletingTask(t)} className="mt-2 w-full py-1.5 bg-[#2f2317] text-white text-xs font-medium rounded-lg hover:bg-[#1a130d] transition-colors">
-                      Action Task
-                    </button>
+                    {t.completion_remark && (
+                      <p className="text-xs font-semibold text-emerald-600 mt-1 line-clamp-2">
+                        {t.completion_remark}
+                      </p>
+                    )}
+                    <a href={`tel:${t.lead?.contact?.phone}`} className="mt-2 text-center w-full py-1.5 bg-[#2f2317] text-white text-xs font-medium rounded-lg hover:bg-[#1a130d] transition-colors block">
+                      Call Lead
+                    </a>
                   </div>
                 ))}
               </div>
