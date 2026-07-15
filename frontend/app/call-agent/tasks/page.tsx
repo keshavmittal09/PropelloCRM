@@ -28,20 +28,12 @@ export default function MobileTasksPage() {
     return new Date(a.due_at).getTime() - new Date(b.due_at).getTime()
   })
 
-  // Leads the agent has already completed a task for belong in Done — not
-  // Pending. This makes a completed lead move out of the pending list even if
-  // completing it created a follow-up task.
-  const doneLeadIds = new Set(
-    sorted.filter(t => t.status === 'done' && t.lead_id).map(t => t.lead_id as string)
-  )
-
   // One card per lead on the pending tabs. A lead can have several tasks (the
   // original assignment plus follow-ups), so dedupe by lead — the count then
   // reflects assigned leads, not raw task rows.
   const seenLead = new Set<string>()
   const pendingByLead = sorted.filter(t => {
     if (t.status === 'done') return false
-    if (t.lead_id && doneLeadIds.has(t.lead_id)) return false
     const key = t.lead_id ?? t.id
     if (seenLead.has(key)) return false
     seenLead.add(key)
@@ -51,8 +43,13 @@ export default function MobileTasksPage() {
   const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
   const startOfTomorrow = new Date(startOfToday.getTime() + 86400000)
 
-  const followup = pendingByLead.filter(t => (t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')) && t.due_at)
-  const generalPending = pendingByLead.filter(t => !followup.includes(t))
+  const rawDone = sorted.filter(t => t.status === 'done')
+  const doneFollowups = rawDone.filter(t => t.completion_remark?.toLowerCase().includes('follow-up') || t.completion_remark?.toLowerCase().includes('follow up'))
+  const done = rawDone.filter(t => !doneFollowups.includes(t))
+
+  const pendingFollowups = pendingByLead.filter(t => t.due_at || t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow'))
+  const followup = [...pendingFollowups, ...doneFollowups]
+  const generalPending = pendingByLead.filter(t => !pendingFollowups.includes(t))
 
   const listToGroup = (filter === 'pending') ? generalPending : pendingByLead
 
@@ -66,10 +63,10 @@ export default function MobileTasksPage() {
   // Pending tasks with no due date — these must still appear on Pending/All.
   const noDate = listToGroup.filter(t => !t.due_at)
   
-  const done = sorted.filter(t => t.status === 'done')
+  // done definition moved up
 
   const counts = {
-    all: pendingByLead.length + done.length,
+    all: generalPending.length + followup.length + done.length,
     pending: generalPending.length,
     followup: followup.length,
     done: done.length,
