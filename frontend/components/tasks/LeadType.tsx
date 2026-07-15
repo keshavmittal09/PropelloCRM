@@ -72,11 +72,14 @@ export function parseCompletion(task: Task): { connected: boolean; leadType: str
   // type, which already shows in the Your Lead column.
   let remarkText: string
   if (connected) {
-    if (followUp) remarkText = `Follow-up: ${followUp}`
+    const rawNote = extractNote(remark)
+    if (followUp) {
+      remarkText = rawNote ? `Follow-up: ${followUp} — ${rawNote}` : `Follow-up: ${followUp}`
+    }
     else if (interestKey === 'not_interested') remarkText = 'Not Interested'
     else if (interestKey === 'busy') remarkText = 'Busy'
     else if (interestKey === 'channel_partner') remarkText = 'Channel Partner'
-    else remarkText = extractNote(remark) ?? '—'
+    else remarkText = rawNote ?? '—'
   } else if (/wrong/i.test(statusText) || lead?.last_call_status === 'wrong_number') {
     remarkText = 'Wrong Number'
   } else if (/call\s*back|callback/i.test(statusText) || lead?.last_call_status === 'callback') {

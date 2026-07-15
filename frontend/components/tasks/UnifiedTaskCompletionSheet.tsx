@@ -428,7 +428,7 @@ function Step1({ callStatus, setCallStatus, interest, setInterest, topics, toggl
                 />
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#1f1914] mb-1.5">What to discuss?</p>
+                <p className="text-sm font-semibold text-[#1f1914] mb-1.5">Note</p>
                 <textarea
                   rows={2}
                   value={followUpNote}
