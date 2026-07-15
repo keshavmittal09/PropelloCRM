@@ -14,12 +14,7 @@ export default function MobileTasksPage() {
   const [completingTask, setCompletingTask] = useState<Task | null>(null)
   const agentId = useAuthStore(s => s.agent?.id)
 
-  // Fetch ALL tasks for both 'all' and 'pending' so the Pending tab includes
-  // overdue tasks too (the API's status=pending filter drops overdue ones). The
-  // section rendering below already hides 'done' tasks on the Pending tab.
-  const { data: tasks, isLoading } = useAllTasks(
-    filter === 'done' ? { status: 'done' } : undefined
-  )
+  const { data: tasks, isLoading } = useAllTasks()
 
   // Only show tasks for leads currently assigned to me — not stale tasks left
   // over from leads that were reassigned to another agent. This keeps the count
@@ -67,7 +62,7 @@ export default function MobileTasksPage() {
   const noDate = pendingByLead.filter(t => !t.due_at)
   const done = sorted.filter(t => t.status === 'done')
 
-  const followup = pendingByLead.filter(t => (t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')) && t.due_at)
+  const followup = pendingByLead.filter(t => t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow'))
 
   const counts = {
     all: pendingByLead.length + done.length,
@@ -141,7 +136,7 @@ export default function MobileTasksPage() {
               <Section title="No due date" tasks={noDate} onComplete={setCompletingTask} />
             )}
             {filter === 'followup' && followup.length > 0 && (
-              <Section title="Follow Up (Scheduled)" tasks={followup} onComplete={setCompletingTask} />
+              <Section title="Follow Ups" tasks={followup} onComplete={setCompletingTask} />
             )}
             {filter !== 'pending' && filter !== 'followup' && done.length > 0 && (
               <Section title="Done" tasks={done} onComplete={setCompletingTask} />
