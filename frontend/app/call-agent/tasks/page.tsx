@@ -7,7 +7,7 @@ import { UnifiedTaskCompletionSheet } from '@/components/tasks/UnifiedTaskComple
 import { MobileHeader } from '@/components/mobile/MobileHeader'
 import type { Task } from '@/lib/types'
 
-type Filter = 'all' | 'pending' | 'done'
+type Filter = 'all' | 'pending' | 'followup' | 'done'
 
 export default function MobileTasksPage() {
   const [filter, setFilter] = useState<Filter>('pending')
@@ -67,9 +67,12 @@ export default function MobileTasksPage() {
   const noDate = pendingByLead.filter(t => !t.due_at)
   const done = sorted.filter(t => t.status === 'done')
 
+  const followup = pendingByLead.filter(t => (t.task_type === 'follow_up' || t.title?.toLowerCase().includes('follow')) && t.due_at)
+
   const counts = {
     all: pendingByLead.length + done.length,
     pending: pendingByLead.length,
+    followup: followup.length,
     done: done.length,
   }
 
@@ -78,11 +81,13 @@ export default function MobileTasksPage() {
     ? done.length
     : filter === 'pending'
       ? pendingByLead.length
-      : counts.all
+      : filter === 'followup'
+        ? followup.length
+        : counts.all
 
   return (
     <div className="min-h-screen bg-[#f8f4ef] pb-20">
-      <MobileHeader title={<>Tasks (<span className="text-[#be6a3f]">Follow up</span>)</>} subtitle={
+      <MobileHeader title={<>Tasks <span className="text-[#8f8378]"></span></>} subtitle={
         filter === 'done' ? `${counts.done} done`
           : filter === 'pending' ? `${counts.pending} pending`
             : `${counts.all} tasks`
@@ -91,7 +96,7 @@ export default function MobileTasksPage() {
       {/* Filter tabs */}
       <div className="sticky top-[60px] z-10 bg-white border-b border-[#e8ddcf] px-4">
         <div className="flex gap-1 mt-0">
-          {(['all', 'pending', 'done'] as Filter[]).map(f => (
+          {(['all', 'pending', 'followup', 'done'] as Filter[]).map(f => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -123,19 +128,22 @@ export default function MobileTasksPage() {
           </div>
         ) : (
           <>
-            {filter !== 'done' && overdue.length > 0 && (
+            {filter !== 'done' && filter !== 'followup' && overdue.length > 0 && (
               <Section title="Overdue" tasks={overdue} onComplete={setCompletingTask} />
             )}
-            {filter !== 'done' && today.length > 0 && (
+            {filter !== 'done' && filter !== 'followup' && today.length > 0 && (
               <Section title="Today" tasks={today} onComplete={setCompletingTask} />
             )}
-            {filter !== 'done' && upcoming.length > 0 && (
+            {filter !== 'done' && filter !== 'followup' && upcoming.length > 0 && (
               <Section title="Upcoming" tasks={upcoming} onComplete={setCompletingTask} />
             )}
-            {filter !== 'done' && noDate.length > 0 && (
+            {filter !== 'done' && filter !== 'followup' && noDate.length > 0 && (
               <Section title="No due date" tasks={noDate} onComplete={setCompletingTask} />
             )}
-            {filter !== 'pending' && done.length > 0 && (
+            {filter === 'followup' && followup.length > 0 && (
+              <Section title="Follow Up (Scheduled)" tasks={followup} onComplete={setCompletingTask} />
+            )}
+            {filter !== 'pending' && filter !== 'followup' && done.length > 0 && (
               <Section title="Done" tasks={done} onComplete={setCompletingTask} />
             )}
           </>
