@@ -114,6 +114,18 @@ export interface Activity {
   performed_by_agent?: Agent
 }
 
+export interface AICall {
+  id: string
+  title: string
+  description: string | null
+  recording_url: string | null
+  transcript: string | null
+  call_summary: string | null
+  performed_at: string
+  lead_id: string
+  lead_name: string | null
+}
+
 export interface Task {
   id: string
   lead_id: string

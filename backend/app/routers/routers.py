@@ -1022,6 +1022,38 @@ async def get_meta_campaigns_route(days: int = 30, db: AsyncSession = Depends(ge
     from app.services.services import get_meta_campaigns
     return await get_meta_campaigns(db, days)
 
+@analytics_router.get("/ai-calls")
+async def get_ai_calls(limit: int = 15, db: AsyncSession = Depends(get_db), current_user: Agent = Depends(get_current_user)):
+    from app.models.models import Activity, Lead
+    from sqlalchemy.orm import joinedload
+    from sqlalchemy import select
+    if current_user.role not in ("admin", "manager"):
+        raise HTTPException(status_code=403, detail="Manager/Admin only")
+    
+    res = await db.execute(
+        select(Activity)
+        .options(joinedload(Activity.lead).joinedload(Lead.contact))
+        .where(Activity.type == "ai_call_completed")
+        .order_by(Activity.performed_at.desc())
+        .limit(limit)
+    )
+    activities = res.scalars().all()
+    
+    return [
+        {
+            "id": a.id,
+            "title": a.title,
+            "description": a.description,
+            "recording_url": a.recording_url,
+            "transcript": a.transcript,
+            "call_summary": a.call_summary,
+            "performed_at": a.performed_at,
+            "lead_id": a.lead_id,
+            "lead_name": a.lead.contact.name if a.lead and a.lead.contact else None
+        }
+        for a in activities
+    ]
+
 
 # ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
 

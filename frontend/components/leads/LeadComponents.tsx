@@ -222,6 +222,46 @@ export function LeadTimeline({ activities }: { activities: Activity[] }) {
               </div>
             )}
 
+            {/* AI Call Completed */}
+            {act.type === 'ai_call_completed' && (
+              <div className={`mt-2 border rounded-xl p-3 ${activityBgColor[act.type]}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-600 text-white">AI Voice Call</span>
+                  {(act.meta as any)?.duration && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                      {(act.meta as any).duration}s
+                    </span>
+                  )}
+                  {act.call_eval_tag && (
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${act.call_eval_tag.toLowerCase() === 'yes' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {act.call_eval_tag.toLowerCase() === 'yes' ? 'Objective Met ✓' : 'Objective Not Met ✗'}
+                    </span>
+                  )}
+                </div>
+                {(act.call_summary || act.description) && (
+                  <p className="text-sm text-gray-700 mt-2">{act.call_summary || act.description}</p>
+                )}
+                {act.recording_url && (
+                  <audio controls src={act.recording_url} className="w-full mt-2 h-8" />
+                )}
+                {act.transcript && (
+                  <div className="mt-2">
+                    <button
+                      onClick={() => setExpanded(prev => ({ ...prev, [act.id]: !prev[act.id] }))}
+                      className="text-xs text-violet-700 hover:underline"
+                    >
+                      {expanded[act.id] ? 'Hide Transcript' : 'View Transcript'}
+                    </button>
+                    {expanded[act.id] && (
+                      <p className="text-xs whitespace-pre-wrap text-gray-600 mt-1 bg-white rounded-lg p-2 border border-violet-100">
+                        {act.transcript.length > 2000 ? `${act.transcript.slice(0, 2000)}...` : act.transcript}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Task completion — show the agent's outcome (heat / callback) as a
                 coloured chip so the lead's history reads at a glance down the timeline. */}
             {act.type === 'task_completion_remark' && (() => {

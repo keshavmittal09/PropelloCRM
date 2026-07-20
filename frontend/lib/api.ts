@@ -25,6 +25,7 @@ import type {
   AgentPerformanceResponse,
   DemographicsProfile,
   TaskCompleteDemographicPayload,
+  AICall
 } from './types'
 
 const api = axios.create({
@@ -238,6 +239,7 @@ export const analyticsApi = {
   agentPerformance: () => api.get<AgentStat[]>('/api/analytics/agent-performance').then(r => r.data),
   meta: (days = 30) => api.get<MetaMarketingStats>('/api/analytics/meta', { params: { days } }).then(r => r.data),
   metaCampaigns: (days = 30) => api.get<MetaCampaignStat[]>('/api/analytics/meta-campaigns', { params: { days } }).then(r => r.data),
+  aiCalls: (limit = 15) => api.get<AICall[]>('/api/analytics/ai-calls', { params: { limit } }).then(r => r.data),
   // Leaderboard is in authApi
   agentLeaderboard: () => authApi.getLeaderboard(),
 }

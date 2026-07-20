@@ -165,6 +165,9 @@ export const useCampaignAnalytics = (id: string) =>
     enabled: !!id,
   })
 
+export const useAICalls = (limit = 15) =>
+  useQuery({ queryKey: ['ai-calls', limit], queryFn: () => analyticsApi.aiCalls(limit), refetchInterval: 30000 })
+
 export const useCampaignLeadsDetail = (id: string, params?: { tier?: string; search?: string }) =>
   useQuery({
     queryKey: ['campaign-leads-detail', id, params?.tier ?? '', params?.search ?? ''],
