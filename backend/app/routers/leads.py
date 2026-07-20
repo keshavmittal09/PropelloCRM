@@ -797,26 +797,26 @@ async def get_master_profile(
             # Best-effort enrichment — never let a campaign-lookup error break the
             # whole master profile (e.g. for uploaded leads with no campaign data).
             try:
-                cd_result = await db.execute(
-                    select(CDLead)
-                    .where(CDLead.phone_number == phone_int)
-                    .order_by(CDLead.updated_at.desc())
-                    .limit(1)
-                )
-                cd_lead = cd_result.scalar_one_or_none()
-                if cd_lead:
-                    ai_data = {
-                        "config_preference": cd_lead.config_interest,
-                        "budget_range": cd_lead.budget_signal,
-                        "site_visit_intent": "Yes" if cd_lead.site_visit_committed else ("Maybe" if cd_lead.site_visit_timeframe else "No"),
-                        "primary_language": cd_lead.language_preference,
-                        "objection_type": cd_lead.objection_type,
-                        "intent_level": cd_lead.intent_level,
-                        "ai_summary": cd_lead.enriched_summary,
-                        "key_quote": cd_lead.key_quote,
-                    }
+                async with db.begin_nested():
+                    cd_result = await db.execute(
+                        select(CDLead)
+                        .where(CDLead.phone_number == phone_int)
+                        .order_by(CDLead.updated_at.desc())
+                        .limit(1)
+                    )
+                    cd_lead = cd_result.scalar_one_or_none()
+                    if cd_lead:
+                        ai_data = {
+                            "config_preference": cd_lead.config_interest,
+                            "budget_range": cd_lead.budget_signal,
+                            "site_visit_intent": "Yes" if cd_lead.site_visit_committed else ("Maybe" if cd_lead.site_visit_timeframe else "No"),
+                            "primary_language": cd_lead.language_preference,
+                            "objection_type": cd_lead.objection_type,
+                            "intent_level": cd_lead.intent_level,
+                            "ai_summary": cd_lead.enriched_summary,
+                            "key_quote": cd_lead.key_quote,
+                        }
             except Exception:
-                await db.rollback()
                 ai_data = {}
 
     # Compute stats
